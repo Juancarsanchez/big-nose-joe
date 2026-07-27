@@ -1,0 +1,850 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1"]
+[ext_resource type="Theme" path="res://assets/joe_theme.tres" id="2"]
+[ext_resource type="Texture2D" path="res://assets/art/gameplay/sprites/pawn_empty.png" id="3"]
+[ext_resource type="Texture2D" path="res://assets/art/gameplay/sprites/pawn_carry.png" id="4"]
+[ext_resource type="Texture2D" path="res://assets/art/gameplay/sprites/collection_box.png" id="5"]
+[ext_resource type="Texture2D" path="res://assets/art/gameplay/sprites/cocaine_wall.png" id="6"]
+[ext_resource type="Texture2D" path="res://assets/art/gameplay/sprites/cocaine_grain.png" id="7"]
+[ext_resource type="Texture2D" path="res://assets/art/gameplay/background/nasal_cavity.png" id="8"]
+[ext_resource type="Texture2D" path="res://assets/art/gameplay/environment/septum.png" id="9"]
+[ext_resource type="Texture2D" path="res://assets/art/gameplay/environment/septum_gate.png" id="10"]
+
+[node name="Main" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2")
+texture_filter = 1
+script = ExtResource("1")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.047, 0.043, 0.067, 1)
+
+[node name="World" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_left = 0.21
+anchor_right = 0.9
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Title" type="Label" parent="World"]
+layout_mode = 0
+offset_left = 28.0
+offset_top = 12.0
+offset_right = 500.0
+offset_bottom = 42.0
+theme_override_colors/font_color = Color(0.96, 0.91, 0.74, 1)
+theme_override_font_sizes/font_size = 25
+text = "BIG NOSE JOE"
+
+[node name="Subtitle" type="Label" parent="World"]
+layout_mode = 0
+offset_left = 30.0
+offset_top = 40.0
+offset_right = 700.0
+offset_bottom = 62.0
+theme_override_colors/font_color = Color(0.76, 0.49, 0.48, 1)
+theme_override_font_sizes/font_size = 13
+text = "OPERACIÓN: DOS FOSAS, UN SOLO PROBLEMA"
+
+[node name="TopBar" type="PanelContainer" parent="World"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 26.0
+offset_top = 68.0
+offset_right = -24.0
+offset_bottom = 124.0
+grow_horizontal = 2
+
+[node name="DamageMeter" type="PanelContainer" parent="World"]
+visible = false
+layout_mode = 1
+anchors_preset = 10
+anchor_left = 0.34
+anchor_right = 0.66
+offset_top = 128.0
+offset_bottom = 158.0
+grow_horizontal = 2
+
+[node name="Margin" type="MarginContainer" parent="World/DamageMeter"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 5
+
+[node name="Content" type="HBoxContainer" parent="World/DamageMeter/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="Label" type="Label" parent="World/DamageMeter/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.91, 0.56, 0.54, 1)
+theme_override_font_sizes/font_size = 10
+text = "DAÑO TISULAR  0%"
+vertical_alignment = 1
+
+[node name="Progress" type="ProgressBar" parent="World/DamageMeter/Margin/Content"]
+custom_minimum_size = Vector2(120, 14)
+modulate = Color(1, 0.48, 0.45, 1)
+layout_mode = 2
+size_flags_horizontal = 3
+show_percentage = false
+
+[node name="ContaminationMeter" type="PanelContainer" parent="World"]
+visible = false
+layout_mode = 1
+anchors_preset = 10
+anchor_left = 0.02
+anchor_right = 0.32
+offset_top = 128.0
+offset_bottom = 158.0
+grow_horizontal = 2
+
+[node name="Margin" type="MarginContainer" parent="World/ContaminationMeter"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 5
+
+[node name="Content" type="HBoxContainer" parent="World/ContaminationMeter/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="Label" type="Label" parent="World/ContaminationMeter/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.72, 0.39, 1)
+theme_override_font_sizes/font_size = 9
+text = "CAJA CONTAMINADA  0%"
+vertical_alignment = 1
+
+[node name="Progress" type="ProgressBar" parent="World/ContaminationMeter/Margin/Content"]
+custom_minimum_size = Vector2(92, 14)
+modulate = Color(0.94, 0.7, 0.34, 1)
+layout_mode = 2
+size_flags_horizontal = 3
+show_percentage = false
+
+[node name="Margin" type="MarginContainer" parent="World/TopBar"]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 10
+
+[node name="Stats" type="HBoxContainer" parent="World/TopBar/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Phase" type="Label" parent="World/TopBar/Margin/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.77, 0.56, 1)
+theme_override_font_sizes/font_size = 12
+text = "FASE 1/5"
+vertical_alignment = 1
+
+[node name="Cells" type="Label" parent="World/TopBar/Margin/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.91, 0.77, 1)
+theme_override_font_sizes/font_size = 18
+text = "CÉLULAS  0"
+vertical_alignment = 1
+
+[node name="Rate" type="Label" parent="World/TopBar/Margin/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.57, 0.78, 0.75, 1)
+theme_override_font_sizes/font_size = 14
+text = "+0 / s  ·  1 / clic"
+vertical_alignment = 1
+
+[node name="Pressure" type="Label" parent="World/TopBar/Margin/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.51, 0.73, 0.68, 1)
+theme_override_font_sizes/font_size = 12
+text = "FLUJO ESTABLE"
+vertical_alignment = 1
+
+[node name="Spacer" type="Control" parent="World/TopBar/Margin/Stats"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="WallState" type="Label" parent="World/TopBar/Margin/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.64, 0.65, 1)
+theme_override_font_sizes/font_size = 12
+text = "PARED DERECHA"
+vertical_alignment = 1
+
+[node name="ClickCounter" type="Label" parent="World/TopBar/Margin/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.55, 0.5, 1)
+theme_override_font_sizes/font_size = 12
+text = "CLICS  0 / 40K"
+vertical_alignment = 1
+
+[node name="StageViewport" type="Control" parent="World"]
+clip_contents = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 164.0
+offset_bottom = -46.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Stage" type="Control" parent="World/StageViewport"]
+custom_minimum_size = Vector2(5200, 860)
+layout_mode = 0
+offset_right = 5200.0
+offset_bottom = 860.0
+
+[node name="Layer00_Backdrop" type="Control" parent="World/StageViewport/Stage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="PanelA" type="TextureRect" parent="World/StageViewport/Stage/Layer00_Backdrop"]
+layout_mode = 0
+offset_right = 1300.0
+offset_bottom = 860.0
+mouse_filter = 2
+texture = ExtResource("8")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="PanelB" type="TextureRect" parent="World/StageViewport/Stage/Layer00_Backdrop"]
+layout_mode = 0
+offset_left = 1300.0
+offset_right = 2600.0
+offset_bottom = 860.0
+mouse_filter = 2
+texture = ExtResource("8")
+expand_mode = 1
+stretch_mode = 0
+flip_h = true
+
+[node name="PanelC" type="TextureRect" parent="World/StageViewport/Stage/Layer00_Backdrop"]
+layout_mode = 0
+offset_left = 2600.0
+offset_right = 3900.0
+offset_bottom = 860.0
+mouse_filter = 2
+texture = ExtResource("8")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="PanelD" type="TextureRect" parent="World/StageViewport/Stage/Layer00_Backdrop"]
+layout_mode = 0
+offset_left = 3900.0
+offset_right = 5200.0
+offset_bottom = 860.0
+mouse_filter = 2
+texture = ExtResource("8")
+expand_mode = 1
+stretch_mode = 0
+flip_h = true
+
+[node name="LeftTint" type="ColorRect" parent="World/StageViewport/Stage/Layer00_Backdrop"]
+layout_mode = 0
+offset_right = 2540.0
+offset_bottom = 860.0
+mouse_filter = 2
+color = Color(0.12, 0.08, 0.13, 0.24)
+
+[node name="RightTint" type="ColorRect" parent="World/StageViewport/Stage/Layer00_Backdrop"]
+layout_mode = 0
+offset_left = 2660.0
+offset_right = 5200.0
+offset_bottom = 860.0
+mouse_filter = 2
+color = Color(0.11, 0.07, 0.1, 0.2)
+
+[node name="LeftCaption" type="Label" parent="World/StageViewport/Stage"]
+layout_mode = 0
+offset_left = 760.0
+offset_top = 38.0
+offset_right = 1760.0
+offset_bottom = 68.0
+theme_override_colors/font_color = Color(0.35, 0.29, 0.38, 1)
+theme_override_font_sizes/font_size = 18
+text = "FOSA IZQUIERDA  ·  BLOQUEADA"
+horizontal_alignment = 1
+
+[node name="RightCaption" type="Label" parent="World/StageViewport/Stage"]
+layout_mode = 0
+offset_left = 3500.0
+offset_top = 38.0
+offset_right = 4500.0
+offset_bottom = 68.0
+theme_override_colors/font_color = Color(0.48, 0.35, 0.39, 1)
+theme_override_font_sizes/font_size = 18
+text = "FOSA DERECHA"
+horizontal_alignment = 1
+
+[node name="Layer10_Septum" type="Control" parent="World/StageViewport/Stage"]
+layout_mode = 1
+anchors_preset = 0
+anchor_bottom = 1.0
+offset_left = 2540.0
+offset_right = 2660.0
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Upper" type="TextureRect" parent="World/StageViewport/Stage/Layer10_Septum"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 615.0
+grow_horizontal = 2
+mouse_filter = 2
+texture = ExtResource("9")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="Gate" type="TextureRect" parent="World/StageViewport/Stage/Layer10_Septum"]
+layout_mode = 1
+anchors_preset = 12
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -245.0
+offset_bottom = -95.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("10")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="Hole" type="ColorRect" parent="World/StageViewport/Stage/Layer10_Septum"]
+visible = false
+layout_mode = 1
+anchors_preset = 12
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -245.0
+offset_bottom = -95.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+color = Color(0.035, 0.031, 0.05, 1)
+
+[node name="Layer20_Ground" type="ColorRect" parent="World/StageViewport/Stage"]
+layout_mode = 1
+anchors_preset = 12
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -95.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+color = Color(0.18, 0.12, 0.15, 1)
+
+[node name="TopLine" type="ColorRect" parent="World/StageViewport/Stage/Layer20_Ground"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 10.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.76, 0.35, 0.34, 1)
+
+[node name="BaseLine" type="ColorRect" parent="World/StageViewport/Stage/Layer20_Ground"]
+layout_mode = 1
+anchors_preset = 12
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -10.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+color = Color(0.08, 0.055, 0.075, 1)
+
+[node name="Layer30_Props" type="Control" parent="World/StageViewport/Stage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="CollectionBox" type="TextureRect" parent="World/StageViewport/Stage/Layer30_Props"]
+layout_mode = 1
+anchors_preset = 0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 3250.0
+offset_top = -150.0
+offset_right = 3385.0
+offset_bottom = -95.0
+grow_vertical = 0
+mouse_filter = 2
+texture = ExtResource("5")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Layer40_Resources" type="Control" parent="World/StageViewport/Stage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="LeftWallButton" type="Button" parent="World/StageViewport/Stage/Layer40_Resources"]
+layout_mode = 1
+anchors_preset = 0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 2428.0
+offset_top = -455.0
+offset_right = 2540.0
+offset_bottom = -95.0
+grow_vertical = 0
+mouse_default_cursor_shape = 2
+focus_mode = 0
+flat = true
+disabled = true
+
+[node name="Visual" type="TextureRect" parent="World/StageViewport/Stage/Layer40_Resources/LeftWallButton"]
+modulate = Color(0.42, 0.42, 0.48, 1)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("6")
+expand_mode = 1
+stretch_mode = 5
+flip_h = true
+
+[node name="RightWallButton" type="Button" parent="World/StageViewport/Stage/Layer40_Resources"]
+layout_mode = 1
+anchors_preset = 0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 2660.0
+offset_top = -455.0
+offset_right = 2772.0
+offset_bottom = -95.0
+grow_vertical = 0
+mouse_default_cursor_shape = 2
+focus_mode = 0
+flat = true
+
+[node name="Visual" type="TextureRect" parent="World/StageViewport/Stage/Layer40_Resources/RightWallButton"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("6")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Layer46_Crisis" type="Control" parent="World/StageViewport/Stage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="BloodWash" type="ColorRect" parent="World/StageViewport/Stage/Layer46_Crisis"]
+modulate = Color(1, 1, 1, 0)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.58, 0.035, 0.06, 0.16)
+
+[node name="BloodDrops" type="Control" parent="World/StageViewport/Stage/Layer46_Crisis"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Layer50_Chunks" type="Control" parent="World/StageViewport/Stage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Layer55_Platelets" type="Control" parent="World/StageViewport/Stage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Layer58_Punchers" type="Control" parent="World/StageViewport/Stage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Layer60_Pawns" type="Control" parent="World/StageViewport/Stage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Layer70_Effects" type="Control" parent="World/StageViewport/Stage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="PanShadeLeft" type="ColorRect" parent="World/StageViewport"]
+layout_mode = 1
+anchors_preset = 11
+anchor_bottom = 1.0
+offset_right = 34.0
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.5, 0.23, 0.26, 0.08)
+
+[node name="PanShadeRight" type="ColorRect" parent="World/StageViewport"]
+layout_mode = 1
+anchors_preset = 9
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -34.0
+grow_horizontal = 0
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.5, 0.23, 0.26, 0.08)
+
+[node name="PanHint" type="Label" parent="World"]
+layout_mode = 1
+anchors_preset = 12
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = -40.0
+offset_right = -20.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.48, 0.39, 0.45, 1)
+theme_override_font_sizes/font_size = 11
+text = "A / D  ·  FLECHAS  ·  RATÓN EN LOS BORDES PARA DESPLAZAR"
+horizontal_alignment = 1
+
+[node name="Toast" type="Label" parent="World"]
+modulate = Color(1, 1, 1, 0)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -290.0
+offset_top = -185.0
+offset_right = 290.0
+offset_bottom = -145.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.97, 0.92, 0.75, 1)
+theme_override_font_sizes/font_size = 19
+horizontal_alignment = 1
+
+[node name="Shop" type="PanelContainer" parent="."]
+z_index = 20
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 0.21
+anchor_bottom = 1.0
+offset_left = 14.0
+offset_top = 14.0
+offset_right = -8.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Margin" type="MarginContainer" parent="Shop"]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
+
+[node name="Content" type="VBoxContainer" parent="Shop/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Shop/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.77, 0.56, 1)
+theme_override_font_sizes/font_size = 18
+text = "ADAPTACIONES INMUNOLÓGICAS"
+
+[node name="Subtitle" type="Label" parent="Shop/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.57, 0.49, 0.53, 1)
+theme_override_font_sizes/font_size = 11
+text = "Producción, transporte y tratamiento a la vista."
+autowrap_mode = 2
+
+[node name="PhaseProgress" type="ProgressBar" parent="Shop/Margin/Content"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+show_percentage = false
+
+[node name="PhaseHint" type="Label" parent="Shop/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.69, 0.58, 0.58, 1)
+theme_override_font_sizes/font_size = 10
+text = "ESTABILIDAD  0 / 250"
+autowrap_mode = 2
+
+[node name="UpgradeScroll" type="ScrollContainer" parent="Shop/Margin/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="UpgradeList" type="VBoxContainer" parent="Shop/Margin/Content/UpgradeScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 9
+
+[node name="SeptumUpgradeButton" type="Button" parent="Shop/Margin/Content"]
+visible = false
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.78, 0.56, 1)
+text = "PERFORAR TABIQUE\nDESBLOQUEO: 40.000 CLICS"
+alignment = 0
+
+[node name="SaveLabel" type="Label" parent="Shop/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.44, 0.62, 0.59, 1)
+theme_override_font_sizes/font_size = 10
+text = "AUTOGUARDADO ACTIVO"
+horizontal_alignment = 1
+
+[node name="ExitButton" type="Button" parent="Shop/Margin/Content"]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+text = "GUARDAR Y SALIR"
+
+[node name="PhaseLab" type="PanelContainer" parent="."]
+z_index = 20
+layout_mode = 1
+anchors_preset = 15
+anchor_left = 0.9
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 14.0
+offset_right = -14.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Margin" type="MarginContainer" parent="PhaseLab"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 14
+
+[node name="Content" type="VBoxContainer" parent="PhaseLab/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="Title" type="Label" parent="PhaseLab/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.77, 0.56, 1)
+theme_override_font_sizes/font_size = 15
+text = "PRUEBA DE FASES"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Note" type="Label" parent="PhaseLab/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.57, 0.49, 0.53, 1)
+theme_override_font_sizes/font_size = 9
+text = "CAMBIO INMEDIATO\nNO CONCEDE MEJORAS"
+horizontal_alignment = 1
+
+[node name="PhaseList" type="VBoxContainer" parent="PhaseLab/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Spacer" type="Control" parent="PhaseLab/Margin/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Active" type="Label" parent="PhaseLab/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.48, 0.65, 0.62, 1)
+theme_override_font_sizes/font_size = 9
+text = "FASE ACTIVA: 1"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="ResetHint" type="Label" parent="PhaseLab/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45, 0.38, 0.43, 1)
+theme_override_font_sizes/font_size = 8
+text = "REPITE EL BOTÓN PARA REINICIAR LA CRISIS"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="StartScreen" type="Control" parent="."]
+z_index = 50
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Veil" type="ColorRect" parent="StartScreen"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.025, 0.022, 0.035, 0.92)
+
+[node name="Menu" type="PanelContainer" parent="StartScreen"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -310.0
+offset_top = -215.0
+offset_right = 310.0
+offset_bottom = 215.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Margin" type="MarginContainer" parent="StartScreen/Menu"]
+layout_mode = 2
+theme_override_constants/margin_left = 42
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 42
+theme_override_constants/margin_bottom = 28
+
+[node name="Content" type="VBoxContainer" parent="StartScreen/Menu/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Kicker" type="Label" parent="StartScreen/Menu/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.76, 0.49, 0.48, 1)
+theme_override_font_sizes/font_size = 13
+text = "UNA TRAGEDIA NASAL INCREMENTAL"
+horizontal_alignment = 1
+
+[node name="GameTitle" type="Label" parent="StartScreen/Menu/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.91, 0.74, 1)
+theme_override_font_sizes/font_size = 46
+text = "BIG NOSE JOE"
+horizontal_alignment = 1
+
+[node name="Tagline" type="Label" parent="StartScreen/Menu/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.64, 0.55, 0.59, 1)
+theme_override_font_sizes/font_size = 14
+text = "Dos fosas. Un tabique. Cero decisiones sensatas."
+horizontal_alignment = 1
+
+[node name="SaveState" type="Label" parent="StartScreen/Menu/Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.48, 0.65, 0.62, 1)
+theme_override_font_sizes/font_size = 12
+text = "Buscando historial clínico..."
+horizontal_alignment = 1
+
+[node name="ContinueButton" type="Button" parent="StartScreen/Menu/Margin/Content"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "CONTINUAR PARTIDA"
+
+[node name="NewGameButton" type="Button" parent="StartScreen/Menu/Margin/Content"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "NUEVA PARTIDA"
+
+[node name="ExitButton" type="Button" parent="StartScreen/Menu/Margin/Content"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+text = "SALIR"
+
+[node name="NewGameDialog" type="ConfirmationDialog" parent="."]
+title = "NUEVA PARTIDA"
+dialog_text = "Esto sustituirá el historial clínico actual de Joe. ¿Empezamos de cero?"
+ok_button_text = "EMPEZAR DE CERO"
+cancel_button_text = "VOLVER"
+
+[node name="BreakDialog" type="ConfirmationDialog" parent="."]
+title = "PERFORAR EL TABIQUE"
+dialog_text = "Abrirás el paso a la fosa izquierda. Los peones podrán cruzar y continuar minando al otro lado."
+ok_button_text = "HACER EL AGUJERO"
+cancel_button_text = "TODAVÍA NO"
+
+[node name="JoeEventDialog" type="AcceptDialog" parent="."]
+title = "OTRA DECISIÓN DE JOE"
+dialog_text = "Joe ha encontrado una forma nueva de complicar el turno."
+ok_button_text = "OTRA VEZ, JOE"
+
+[node name="SaveTimer" type="Timer" parent="."]
+wait_time = 10.0
+autostart = true
