@@ -33,6 +33,7 @@ const BASE_PAWN_SPEED := 70.0
 const BASE_CAPACITY := 3
 const PAWN_FOOT_DEPTH := 14.0
 const PUNCH_BASE_INTERVAL := 3.4
+const MANUAL_DELIVERY_BASE_TIME := 0.46
 const ANOTHER_LINE_INTERVAL := 180.0
 const ANOTHER_LINE_WARNING := 8.0
 const JOE_DROP_INTERVALS := [0.0, 0.0, 4.5, 4.0, 3.5, 3.0]
@@ -582,6 +583,87 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 	_settle_surface(side, maxi(2, capacity))
 	_restack_pile(side)
 	return _consolidate_cargo(cargo, side, pawn)
+
+func _surface_piece_at(world_pos: Vector2) -> Sprite2D:
+	var side := "left" if world_pos.x < SEPTUM_X else "right"
+	if side == "left" and not septum_open:
+		return null
+	var nearest: Sprite2D = null
+	var nearest_x := INF
+	for piece in _top_pieces(side):
+		var visual_height := maxf(6.0, float(piece.get_meta("height", GRAIN_HEIGHT)))
+		var hit_width := maxf(GRAIN_SPACING * 1.35, piece.texture.get_width() * absf(piece.scale.x) * 0.55)
+		var distance_x := absf(world_pos.x - piece.position.x)
+		if distance_x <= hit_width and world_pos.y >= piece.position.y - visual_height and world_pos.y <= _ground_y() + 5.0 and distance_x < nearest_x:
+			nearest = piece
+			nearest_x = distance_x
+	return nearest
+
+func _manual_collect_at(world_pos: Vector2) -> bool:
+	var piece := _surface_piece_at(world_pos)
+	if not piece:
+		return false
+	var kind: String = piece.get_meta("kind", "grain")
+	if kind == "rock":
+		_float_text("DEMASIADO APELMAZADA", world_pos)
+		return true
+	if kind == "bacteria":
+		_float_text("ESO SE MUEVE", world_pos)
+		return true
+	var side: String = piece.get_meta("side", "right")
+	piece.set_meta("carried", true)
+	piece.set_meta("manual_flying", true)
+	piece.z_index = 30
+	_settle_surface(side, 3)
+	_restack_pile(side)
+	var start := piece.position
+	var target := Vector2(_box_x() + 8.0, _ground_y() - 24.0)
+	var control := (start + target) * 0.5 - Vector2(0.0, 85.0 + absf(target.x - start.x) * 0.08)
+	var duration := MANUAL_DELIVERY_BASE_TIME + minf(0.28, start.distance_to(target) / 1500.0)
+	var tween := create_tween()
+	tween.tween_method(_animate_manual_flight.bind(piece, start, control, target), 0.0, 1.0, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_callback(_finish_manual_delivery.bind(piece))
+	return true
+
+func _animate_manual_flight(progress: float, piece: Variant, start: Vector2, control: Vector2, target: Vector2) -> void:
+	if not is_instance_valid(piece):
+		return
+	var sprite := piece as Sprite2D
+	if not sprite:
+		return
+	var inverse := 1.0 - progress
+	sprite.position = start * inverse * inverse + control * 2.0 * inverse * progress + target * progress * progress
+	sprite.rotation += 0.055
+	var base_scale := float(sprite.get_meta("base_scale", 0.07))
+	var flight_pop := 1.0 + sin(progress * PI) * 0.42 - progress * 0.24
+	sprite.scale = Vector2.ONE * base_scale * flight_pop
+
+func _finish_manual_delivery(piece: Variant) -> void:
+	if not is_instance_valid(piece):
+		return
+	var sprite := piece as Sprite2D
+	if not sprite:
+		return
+	var kind: String = sprite.get_meta("kind", "grain")
+	var value := float(sprite.get_meta("value", 1.0))
+	var previous_contamination := contamination
+	var delivered := 0.0
+	if kind == "impurity":
+		impurities_handled += 1
+		contamination = clampf(contamination + _impurity_contamination(str(sprite.get_meta("material", ""))), 0.0, 100.0)
+		_float_text("LA CAJA SE ENSUCIA", Vector2(_box_x(), _ground_y() - 22.0))
+	else:
+		delivered = value * _box_yield_multiplier()
+		cells += delivered
+		phase_work += value
+		_float_text("+%s" % _number(delivered), Vector2(_box_x(), _ground_y() - 22.0))
+	loose_chunks.erase(sprite)
+	sprite.queue_free()
+	_update_contamination_warning(previous_contamination)
+	_update_box()
+	_box_bump()
+	_check_phase_progress()
+	_update_ui()
 
 func _consolidate_cargo(cargo: Array, side: String, pawn: Sprite2D) -> Array:
 	if int(levels.smart_clump) == 0:
@@ -1677,6 +1759,16 @@ func _update_start_screen() -> void:
 func _exit_game() -> void:
 	_save()
 	get_tree().quit()
+
+func _input(event: InputEvent) -> void:
+	if not playing or not event is InputEventMouseButton:
+		return
+	var click := event as InputEventMouseButton
+	if click.button_index != MOUSE_BUTTON_LEFT or not click.pressed or not stage_view.get_global_rect().has_point(click.position):
+		return
+	var world_pos := stage.get_global_transform_with_canvas().affine_inverse() * click.position
+	if _manual_collect_at(world_pos):
+		get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if playing and event.is_action_pressed("ui_accept"): _click_wall(active_side)

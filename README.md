@@ -7,6 +7,7 @@ Al abrir el juego aparece una portada desde la que se puede continuar, empezar d
 ## Controles
 
 - Clic izquierdo sobre la pared: desprender cocaína.
+- Clic izquierdo sobre el montón: lanzar una pieza expuesta a la caja.
 - Barra espaciadora: clic alternativo.
 - `A`, `D` o flechas: desplazar el escenario.
 - Cursor en los bordes del área jugable: desplazamiento automático.
@@ -36,6 +37,8 @@ En la fase 2, un grano con al menos cinco vecinos cercanos forma un pedrusco de 
 `APELMAZADO INTELIGENTE` resuelve otro problema: cuando un peón carga seis granos normales, estos se convierten en una sola bola segura de valor seis. Esa bola de transporte no es un pedrusco y cualquier peón puede llevarla.
 
 Los peones recorren un ciclo físico completo: salen vacíos de la caja, rascan exactamente un grano de la pared, esperan la caída, levantan piezas expuestas, muestran la carga junto al cuerpo y la depositan dentro de la caja. Ese raspado mantiene una producción basal sin competir con los púgiles. `TRABAJO EN CADENA` solo aparece después de perforar el tabique.
+
+El jugador también puede intervenir directamente en la logística. Al pulsar sobre cualquier parte ocupada del montón, la pieza superior más cercana describe un arco hasta la caja y sólo se entrega al llegar. Las piezas que aún caen o están enterradas no responden. Los pedruscos siguen necesitando cascos azules, las bacterias necesitan cuidadores y enviar una impureza manualmente ensucia la caja igual que cualquier otra entrega.
 
 ## Automatización de los golpes
 

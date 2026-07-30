@@ -5,7 +5,7 @@ const PHASES := [
 		"id": 1,
 		"title": "UNA RAYITA PARA DESAYUNAR",
 		"joe": "Joe ha decidido que el desayuno equilibrado era opcional.",
-		"problem": "Aprende a limpiar, transportar y automatizar antes del primer desastre.",
+		"problem": "Haz clic en la pared para extraer y en el montón del suelo para lanzar una pieza a la caja. Aprende a limpiar, transportar y automatizar antes del primer desastre.",
 		"target": 800.0
 	},
 	{

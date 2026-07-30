@@ -120,6 +120,49 @@ func _run() -> void:
 	_check(is_equal_approx(game.cells, cells_before_delivery + cargo_value), "Cargo must become currency only after the deposit finishes.")
 	_check(game.get_node_or_null("World/StageViewport/Stage/Layer45_Pressure") == null, "The obsolete pile-height shadow must not exist.")
 
+	# The player can manually throw exposed powder to the box without bypassing specialist rules.
+	game._clear_pile()
+	await process_frame
+	game.current_phase = 1
+	game.contamination = 0.0
+	game.cells = 0.0
+	var manual_grain: Sprite2D = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
+	var manual_point := Vector2(manual_grain.position.x, game._ground_y() - 2.0)
+	_check(game._manual_collect_at(manual_point), "Clicking the visible pile must start a manual collection.")
+	_check(bool(manual_grain.get_meta("manual_flying", false)) and bool(manual_grain.get_meta("carried", false)), "A manually collected grain must leave the pile immediately.")
+	await create_timer(0.85).timeout
+	_check(is_equal_approx(game.cells, 1.0) and game.loose_chunks.is_empty(), "Manual cargo must become currency only after reaching the box.")
+
+	game.current_phase = 3
+	var manual_impurity: Sprite2D = game._create_piece("impurity", "right", 1.0, 0, 0, 0.064, "yeso")
+	_check(game._manual_collect_at(Vector2(manual_impurity.position.x, game._ground_y() - 2.0)), "An exposed impurity may be sent manually.")
+	await create_timer(0.85).timeout
+	_check(game.contamination > 0.0, "Manually delivering an impurity must still contaminate the box.")
+
+	var blocked_rock: Sprite2D = game._create_piece("rock", "right", 6.0, 0, 0, 0.18)
+	var cells_before_blocked_click: float = game.cells
+	_check(game._manual_collect_at(Vector2(blocked_rock.position.x, game._ground_y() - 2.0)), "A compacted rock must visibly acknowledge a manual click.")
+	_check(not bool(blocked_rock.get_meta("carried", false)) and is_equal_approx(game.cells, cells_before_blocked_click), "Manual collection must never bypass blue-helmet specialists.")
+	game._clear_pile()
+	await process_frame
+	var blocked_bacterium: Sprite2D = game._create_piece("bacteria", "right", 2.0, 0, 0, 0.08)
+	_check(game._manual_collect_at(Vector2(blocked_bacterium.position.x, game._ground_y() - 2.0)), "A bacterium must visibly acknowledge a manual click.")
+	_check(not bool(blocked_bacterium.get_meta("carried", false)), "Manual collection must never bypass bacteria handlers.")
+	game._clear_pile()
+	await process_frame
+	var input_grain: Sprite2D = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
+	var input_world_point := Vector2(input_grain.position.x, game._ground_y() - 2.0)
+	var manual_click := InputEventMouseButton.new()
+	manual_click.button_index = MOUSE_BUTTON_LEFT
+	manual_click.pressed = true
+	manual_click.position = game.stage.get_global_transform_with_canvas() * input_world_point
+	game.playing = true
+	game._input(manual_click)
+	game.playing = false
+	_check(bool(input_grain.get_meta("manual_flying", false)), "A real viewport click on the pile silhouette must trigger manual collection.")
+	game._clear_pile()
+	await process_frame
+
 	# Save/load preserves the extended pile and adaptation state.
 	game.levels = game._empty_levels()
 	game.levels.merge({"nails":2, "pawn":1, "shift":1, "box":1, "coord":0, "breaker":1, "smart_clump":1}, true)
