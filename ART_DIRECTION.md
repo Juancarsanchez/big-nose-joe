@@ -39,6 +39,7 @@ La cámara se mueve con `A`, `D`, las flechas o acercando el cursor a los bordes
 10. `Layer60_Pawns`: peones básicos y variantes funcionales.
 11. `Layer70_Effects`: números y confirmaciones visuales.
 12. Interfaz fija: laboratorio, daño, cabecera y prueba de fases. La contaminación exacta permanece oculta.
+13. `JoePrognosis`: retrato, etiqueta y barra global independientes de los medidores de crisis.
 
 No existe una silueta dinámica de presión detrás del montón: era la sombra roja que cambiaba con su altura y se eliminó por completo.
 
@@ -56,6 +57,8 @@ Los elementos jugables móviles usan sprites separados:
 - `collection_box.png`: caja de entrega;
 - `cocaine_wall.png`: pared compacta adherida al tabique;
 - `cocaine_grain.png`: grano, impureza, bola segura y base visual de los pedruscos.
+- `ui/joe_prognosis.png`: retrato de estado de Joe generado como pixel art y recortado con transparencia.
+- `effects/cocaine_wall_damage.gdshader`: máscara escalonada que muerde el borde de la pared sin alterar su textura.
 
 El escenario utiliza:
 
@@ -73,10 +76,12 @@ El polvo se comporta como un pequeño vertedero. Las partículas que aún están
 
 El clic manual sobre el relieve toma la pieza superior de la columna más cercana. Durante el vuelo aumenta ligeramente de tamaño, gira y describe un arco limpio hasta la caja; permanece en `Layer50_Chunks` y no necesita un asset compuesto nuevo. Al salir deja de sostener su columna, de modo que el valle y los corrimientos resultantes se ven desde el primer instante.
 
+La pared se estrecha de forma proporcional hasta el 5%. El shader redondea y profundiza mordiscos en el borde libre cada vez que se cruza otro 1% de resistencia; el borde unido al tabique permanece intacto. Cada hito reutiliza `cocaine_grain.png` a escala pequeña para lanzar tres fragmentos desde `Layer70_Effects`. El retrato de Joe no cambia de asset: la barra y un breve tinte verde o rojo comunican mejoría o retroceso.
+
 Una bola apelmazada natural representa seis granos vecinos y solo la transporta un casco azul después de tratarla. La bola creada por `APELMAZADO INTELIGENTE` también vale seis, pero es más clara, segura y transportable por cualquier peón.
 
 Las impurezas usan colores deliberadamente distintos —naranja, azul grisáceo y amarillo—. Al entrar en la caja la tiñen de marrón, alargan físicamente la descarga y reducen los números de entrega. No se muestran porcentajes, penalizaciones ni diagnósticos de equilibrio. Los avisos son comentarios sensoriales sobre la caja, no explicaciones de la fórmula. En la hemorragia no hay cúpulas: el peligro se representa mediante fondo rojo, gotas superiores y medidor de daño.
 
-El debut del primer púgil debe leerse como un salto de escala: calentamiento visible, texto `¡¡PUM!!`, doce partículas y un montón alterado de inmediato. Sus guantes y cinta continúan siendo capas hijas independientes del cuerpo básico.
+El debut del primer púgil debe leerse como un salto de escala: calentamiento visible, recorrido completo hasta la pared, texto `¡¡PUM!!`, doce partículas y un montón alterado de inmediato. Después regresa por el suelo a su punto de espera. El guante se refleja de forma independiente al cambiar de fosa, la criatura siempre mira hacia la pared y el punto de impacto sigue su borde libre mientras ésta se estrecha. Sus guantes y cinta continúan siendo capas hijas independientes del cuerpo básico.
 
 Cuando una fase exige tecnología, el botón correspondiente aumenta ligeramente de alto, recibe borde y resplandor cian, añade una línea explicativa y se desplaza automáticamente dentro del laboratorio para quedar completamente visible.

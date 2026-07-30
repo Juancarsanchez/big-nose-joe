@@ -24,7 +24,7 @@ Cada cambio de fase abre un diálogo que explica el nuevo problema. La adaptaci�
 4. `NARIZ EN MODO VOLCÁN`: el fondo se enrojece, caen gotas desde el techo y comienza el medidor de daño tisular. Las `PLAQUETAS TURBO` reparan el tejido mientras continúa la limpieza.
 5. `BIENVENIDOS AL ZOO`: aparecen bacterias que los peones normales ignoran por completo. Solo los cuidadores de `GUANTES DE PROTECTORA` pueden retirarlas y contener la infección.
 
-Las fases necesitan 800, 4.500, 14.000, 32.000 y 75.000 puntos de trabajo, además de usar realmente su mecánica. La barra de estabilidad muestra el progreso y la condición pendiente. La versión 6 del guardado conserva fase, acontecimientos de Joe, objetivos, contaminación, daño, infección, automatización, roles, recursos y estado del montón; las partidas anteriores se migran al cargar.
+Las fases necesitan 800, 4.500, 14.000, 32.000 y 75.000 puntos de trabajo, además de usar realmente su mecánica. La barra de estabilidad muestra el progreso y la condición pendiente. La versión 7 del guardado conserva fase, acontecimientos de Joe, objetivos, pronóstico, contaminación, daño, infección, automatización, roles, recursos y estado del montón; las partidas anteriores se migran al cargar.
 
 El panel `PRUEBA DE FASES`, fijado al extremo derecho, permite saltar inmediatamente a cualquiera de las cinco fases. Conserva células, mejoras y paredes, reinicia los indicadores de esa crisis y elimina los recursos futuros al volver hacia atrás.
 
@@ -40,11 +40,17 @@ Los peones recorren un ciclo físico completo: salen vacíos de la caja, rascan 
 
 El jugador también puede intervenir directamente en la logística. Al pulsar sobre cualquier parte ocupada del montón, la pieza superior más cercana describe un arco hasta la caja y sólo se entrega al llegar. Las piezas que aún caen o están enterradas no responden. Los pedruscos siguen necesitando cascos azules, las bacterias necesitan cuidadores y enviar una impureza manualmente ensucia la caja igual que cualquier otra entrega.
 
+## Pared y pronóstico de Joe
+
+La pared conserva su anchura completa al 100% y se reduce proporcionalmente hasta un mínimo visual del 5%. Cada punto porcentual de resistencia atravesado desprende fragmentos y añade un nuevo mordisco transparente al borde libre. Por debajo del 10% queda una tira muy fina y especialmente irregular, siempre pegada al tabique. La textura original no se modifica: el dentado vive en un shader independiente y los fragmentos en la capa de efectos.
+
+`PRONÓSTICO DE JOE` resume la evolución global sin revelar el cuello de botella concreto. Retirar cocaína limpia de la nariz lo mejora; las nuevas rayas producen retrocesos y una montaña excesiva, la contaminación, el daño tisular o la infección lo erosionan lentamente. Llegar a cero todavía no causa una derrota: primero debe demostrar que aporta decisiones interesantes.
+
 ## Automatización de los golpes
 
 La producción automática especializada no está disponible al comenzar. Cada 180 segundos Joe se mete `OTRA RAYITA`: aparece un aviso y una oleada de cocaína pura levanta varias lomas sobre el montón existente. Tras la primera avalancha se desbloquea `CÉLULA PÚGIL EN PRÁCTICAS`.
 
-El primer púgil entra con guante rojo y cinta azul, calienta el brazo y estrena su contrato con un golpe especial de doce granos. Después trabaja con su cadencia normal. Cada ronda daña la pared, cuenta para desbloquear el tabique y lanza granos físicos al montón.
+El primer púgil entra con guante rojo y cinta azul, calienta el brazo, atraviesa físicamente la zona de trabajo y estrena su contrato contra el borde visible de la pared con un golpe especial de doce granos. Después de cada impacto regresa a su posición de espera. Las rondas posteriores repiten ese ciclo; el punto de contacto acompaña a la pared mientras se estrecha. Cada ronda daña la pared, cuenta para desbloquear el tabique y lanza granos físicos desde el lugar exacto del golpe.
 
 `GUANTES EMPAPADOS EN COCAÍNA` aumenta los granos desprendidos por golpe y `CAMPANA SIN DESCANSO` reduce el intervalo entre rondas. Los recolectores siguen siendo necesarios para convertir el polvo del suelo en células, por lo que producción y logística pueden mejorarse por separado.
 

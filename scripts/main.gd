@@ -1,7 +1,7 @@
 extends Control
 
 const SAVE := "user://big_nose_joe.save"
-const SAVE_VERSION := 6
+const SAVE_VERSION := 7
 const ProgressionData = preload("res://scripts/progression_data.gd")
 const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
@@ -33,7 +33,11 @@ const BASE_PAWN_SPEED := 70.0
 const BASE_CAPACITY := 3
 const PAWN_FOOT_DEPTH := 14.0
 const PUNCH_BASE_INTERVAL := 3.4
+const PUNCHER_WALK_SPEED := 235.0
+const PUNCHER_STRIKE_TIME := 0.18
 const MANUAL_DELIVERY_BASE_TIME := 0.46
+const JOE_STARTING_HEALTH := 30.0
+const JOE_RECOVERY_PER_CLEAN_UNIT := 0.01
 const ANOTHER_LINE_INTERVAL := 180.0
 const ANOTHER_LINE_WARNING := 8.0
 const JOE_DROP_INTERVALS := [0.0, 0.0, 4.5, 4.0, 3.5, 3.0]
@@ -62,6 +66,9 @@ const GRAIN_TEXTURE := preload("res://assets/art/gameplay/sprites/cocaine_grain.
 @onready var damage_meter: PanelContainer = $World/DamageMeter
 @onready var damage_label: Label = $World/DamageMeter/Margin/Content/Label
 @onready var damage_progress: ProgressBar = $World/DamageMeter/Margin/Content/Progress
+@onready var joe_health_label: Label = $World/JoePrognosis/Margin/Content/Label
+@onready var joe_health_progress: ProgressBar = $World/JoePrognosis/Margin/Content/Progress
+@onready var joe_portrait: TextureRect = $World/JoePrognosis/Margin/Content/Portrait
 @onready var contamination_meter: PanelContainer = $World/ContaminationMeter
 @onready var contamination_label: Label = $World/ContaminationMeter/Margin/Content/Label
 @onready var contamination_progress: ProgressBar = $World/ContaminationMeter/Margin/Content/Progress
@@ -116,6 +123,8 @@ var phase_work := 0.0
 var contamination := 0.0
 var tissue_damage := 0.0
 var infection := 0.0
+var joe_health := JOE_STARTING_HEALTH
+var joe_health_display := JOE_STARTING_HEALTH
 var impurities_handled := 0
 var bacteria_handled := 0
 var joe_clock := 0.0
@@ -197,6 +206,7 @@ func _process(delta: float) -> void:
 	_update_camera(delta)
 	_update_another_line(delta)
 	_update_crisis(delta)
+	_update_joe_prognosis(delta)
 	_update_punchers(delta)
 	_update_pawns(delta)
 	_update_platelets(delta)
@@ -656,6 +666,7 @@ func _finish_manual_delivery(piece: Variant) -> void:
 		delivered = value * _box_yield_multiplier()
 		cells += delivered
 		phase_work += value
+		_improve_joe(value)
 		_float_text("+%s" % _number(delivered), Vector2(_box_x(), _ground_y() - 22.0))
 	loose_chunks.erase(sprite)
 	sprite.queue_free()
@@ -746,6 +757,7 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 				delivered += value
 				bacteria_handled += 1
 				infection = maxf(0.0, infection - 3.5)
+				_change_joe_health(0.18)
 				phase_work += 2.5
 			else:
 				piece.set_meta("carried", false)
@@ -756,6 +768,7 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 		else:
 			delivered += value * _box_yield_multiplier()
 			phase_work += value
+			_improve_joe(value)
 		loose_chunks.erase(piece)
 		piece.queue_free()
 	contamination = clampf(contamination + contamination_delta, 0.0, 100.0)
@@ -899,20 +912,53 @@ func _click_wall(side: String) -> void:
 
 func _damage_wall(amount: float, side: String = active_side) -> void:
 	if side == "left":
+		var previous_ratio := clampf(left_hp / left_max, 0.0, 1.0)
 		left_hp -= amount
+		_wall_damage_feedback(side, previous_ratio, clampf(left_hp / left_max, 0.0, 1.0))
 		if left_hp <= 0.0:
 			left_cleared += 1
 			left_max = FIRST_LEFT_WALL_HP * pow(1.18, left_cleared)
 			left_hp = left_max
+			_change_joe_health(3.0, true)
 			_show_toast("PARED IZQUIERDA DESPEJADA")
 	else:
+		var previous_ratio := clampf(right_hp / right_max, 0.0, 1.0)
 		right_hp -= amount
+		_wall_damage_feedback(side, previous_ratio, clampf(right_hp / right_max, 0.0, 1.0))
 		if right_hp <= 0.0:
 			right_cleared += 1
 			right_max = FIRST_WALL_HP * pow(1.16, right_cleared)
 			right_hp = right_max
+			_change_joe_health(3.0, true)
 			_show_toast("PARED DERECHA DESPEJADA")
 	_update_world()
+
+func _wall_damage_feedback(side: String, previous_ratio: float, current_ratio: float) -> void:
+	var previous_step := floori((1.0 - previous_ratio) * 100.0 + 0.001)
+	var current_step := floori((1.0 - current_ratio) * 100.0 + 0.001)
+	var crossed := current_step - previous_step
+	if crossed <= 0:
+		return
+	_spawn_wall_chips(side, mini(4, crossed))
+
+func _spawn_wall_chips(side: String, milestones: int) -> void:
+	var free_x := _wall_free_x(side)
+	var direction := -1.0 if side == "left" else 1.0
+	for milestone in range(milestones):
+		for index in range(3):
+			var chip := Sprite2D.new()
+			chip.texture = GRAIN_TEXTURE
+			chip.scale = Vector2.ONE * randf_range(0.018, 0.032)
+			chip.modulate = Color("e8edf0")
+			chip.z_index = 40
+			chip.position = Vector2(free_x, randf_range(_ground_y() - 330.0, _ground_y() - 24.0))
+			effects.add_child(chip)
+			var target := chip.position + Vector2(direction * randf_range(28.0, 72.0), randf_range(48.0, 105.0))
+			var tween := create_tween().set_parallel()
+			tween.tween_property(chip, "position", target, randf_range(0.42, 0.68)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			tween.tween_property(chip, "rotation", chip.rotation + direction * randf_range(1.4, 3.4), 0.56)
+			tween.tween_property(chip, "modulate:a", 0.0, 0.62).set_delay(0.18)
+			tween.chain().tween_callback(chip.queue_free)
 
 func _open_septum() -> void:
 	if septum_open or total_clicks < PERFORATE_CLICKS: return
@@ -936,8 +982,12 @@ func _update_world() -> void:
 	break_button.text = "PERFORAR TABIQUE\nMEJORA DESBLOQUEADA  ·  %s CLICS" % _number(total_clicks)
 	right_visual.pivot_offset = Vector2(0.0, right_visual.size.y)
 	left_visual.pivot_offset = Vector2(left_visual.size.x, left_visual.size.y)
-	right_visual.scale.x = lerpf(0.28, 1.0, clampf(right_hp / right_max, 0.0, 1.0))
-	left_visual.scale.x = lerpf(0.28, 1.0, clampf(left_hp / left_max, 0.0, 1.0))
+	var right_ratio := clampf(right_hp / right_max, 0.0, 1.0)
+	var left_ratio := clampf(left_hp / left_max, 0.0, 1.0)
+	right_visual.scale.x = maxf(0.05, right_ratio)
+	left_visual.scale.x = maxf(0.05, left_ratio)
+	(right_visual.material as ShaderMaterial).set_shader_parameter("health_ratio", right_ratio)
+	(left_visual.material as ShaderMaterial).set_shader_parameter("health_ratio", left_ratio)
 	_update_box()
 
 func _update_box() -> void:
@@ -986,9 +1036,13 @@ func _rebuild_punchers() -> void:
 		var puncher := Sprite2D.new()
 		puncher.texture = PAWN_EMPTY
 		puncher.scale = Vector2.ONE * 0.047
+		puncher.offset = Vector2(0.0, PAWN_FOOT_DEPTH / puncher.scale.y - PAWN_EMPTY.get_height() * 0.5)
 		puncher.z_index = index % 2
 		puncher.set_meta("index", index)
 		puncher.set_meta("side", active_side)
+		puncher.set_meta("state", "idle")
+		puncher.set_meta("timer", 0.0)
+		puncher.set_meta("debut", false)
 		var glove := Polygon2D.new()
 		glove.name = "BoxingGlove"
 		glove.polygon = PackedVector2Array([Vector2(-270, 30), Vector2(-225, 15), Vector2(-181, 37), Vector2(-166, 75), Vector2(-190, 118), Vector2(-240, 120), Vector2(-274, 82)])
@@ -1005,11 +1059,40 @@ func _rebuild_punchers() -> void:
 		_place_puncher(puncher)
 
 func _place_puncher(puncher: Sprite2D) -> void:
+	var side: String = puncher.get_meta("side", active_side)
+	puncher.flip_h = side == "left"
+	var glove := puncher.get_node_or_null("BoxingGlove") as Polygon2D
+	if glove:
+		glove.scale.x = -1.0 if side == "left" else 1.0
+	puncher.position = _puncher_home_position(puncher)
+	puncher.rotation = 0.0
+	puncher.set_meta("state", "idle")
+
+func _wall_free_x(side: String) -> float:
+	var visual := left_visual if side == "left" else right_visual
+	var button := left_button if side == "left" else right_button
+	return button.position.x + (visual.size.x * (1.0 - visual.scale.x) if side == "left" else visual.size.x * visual.scale.x)
+
+func _pile_outer_x(side: String) -> float:
+	var outer_column := -2 if side == "left" else 2
+	for piece in loose_chunks:
+		if not _piece_is_in_pile(piece, side):
+			continue
+		var column := int(piece.get_meta("column", 0))
+		outer_column = mini(outer_column, column) if side == "left" else maxi(outer_column, column)
+	var direction := -1.0 if side == "left" else 1.0
+	return _pile_center(side) + float(outer_column) * GRAIN_SPACING + direction * 22.0
+
+func _puncher_home_position(puncher: Sprite2D) -> Vector2:
 	var index := int(puncher.get_meta("index", 0))
 	var side: String = puncher.get_meta("side", active_side)
 	var direction := -1.0 if side == "left" else 1.0
-	puncher.flip_h = side == "left"
-	puncher.position = Vector2(_pile_access_point(side).x + direction * (30.0 + float(index) * 19.0), _ground_y() - 14.0)
+	return Vector2(_pile_outer_x(side) + direction * (30.0 + float(index) * 19.0), _ground_y() - 14.0)
+
+func _puncher_strike_position(puncher: Sprite2D) -> Vector2:
+	var side: String = puncher.get_meta("side", active_side)
+	var direction := -1.0 if side == "left" else 1.0
+	return Vector2(_wall_free_x(side) + direction * 14.0, _ground_y() - 14.0)
 
 func _punch_interval() -> float:
 	return PUNCH_BASE_INTERVAL * pow(0.84, int(levels.punch_speed))
@@ -1036,14 +1119,14 @@ func _update_punchers(delta: float) -> void:
 			_perform_punch_round(true)
 			punch_clock = _punch_interval()
 		return
+	_update_puncher_motion(delta)
 	punch_clock -= delta
-	if punch_clock > 0.0:
+	if punch_clock > 0.0 or not _punchers_idle():
 		return
 	punch_clock = _punch_interval()
 	_perform_punch_round(false)
 
 func _perform_punch_round(debut: bool) -> void:
-	var total_output := 0
 	for node in punchers.get_children():
 		var puncher := node as Sprite2D
 		if not puncher:
@@ -1052,22 +1135,64 @@ func _perform_punch_round(debut: bool) -> void:
 		if side != active_side and not septum_open:
 			side = active_side
 			puncher.set_meta("side", side)
-		_place_puncher(puncher)
-		puncher.rotation = 0.0
-		var output := 12 if debut and int(puncher.get_meta("index", 0)) == 0 else _punch_output()
-		total_output += output
-		_damage_wall(float(output), side)
-		total_clicks += output
-		for grain in range(output):
-			_spawn_chunk(Vector2(_mine_x(side) + randf_range(-18.0, 18.0), _ground_y() - randf_range(185.0, 300.0)), 1.0, side)
-		var origin_x := puncher.position.x
-		var direction := -7.0 if side == "right" else 7.0
-		var tween := create_tween()
-		tween.tween_property(puncher, "position:x", origin_x + direction, 0.07)
-		tween.tween_property(puncher, "position:x", origin_x, 0.12).set_trans(Tween.TRANS_BACK)
-	_float_text("¡¡PUM!!  +%d" % total_output if debut else "¡PUM!  +%d" % total_output, Vector2(_mine_x(active_side), _ground_y() - 95.0))
+			_place_puncher(puncher)
+		puncher.set_meta("debut", debut and int(puncher.get_meta("index", 0)) == 0)
+		puncher.set_meta("state", "to_wall")
+
+func _punchers_idle() -> bool:
+	for node in punchers.get_children():
+		if node.get_meta("state", "idle") != "idle":
+			return false
+	return true
+
+func _update_puncher_motion(delta: float) -> void:
+	for node in punchers.get_children():
+		var puncher := node as Sprite2D
+		if not puncher:
+			continue
+		var state: String = puncher.get_meta("state", "idle")
+		var speed := PUNCHER_WALK_SPEED * (1.0 + float(levels.punch_speed) * 0.1)
+		puncher.position.y = _ground_y() - 14.0
+		if state == "idle":
+			puncher.position = puncher.position.move_toward(_puncher_home_position(puncher), speed * delta)
+			puncher.rotation = move_toward(puncher.rotation, 0.0, delta * 0.8)
+		elif state == "to_wall":
+			var strike := _puncher_strike_position(puncher)
+			puncher.position = puncher.position.move_toward(strike, speed * delta)
+			if puncher.position.distance_to(strike) < 0.5:
+				puncher.position = strike
+				puncher.set_meta("state", "striking")
+				puncher.set_meta("timer", PUNCHER_STRIKE_TIME)
+				_resolve_punch(puncher)
+		elif state == "striking":
+			var timer := float(puncher.get_meta("timer", 0.0)) - delta
+			puncher.set_meta("timer", timer)
+			var direction := -1.0 if puncher.get_meta("side", "right") == "left" else 1.0
+			puncher.rotation = -direction * sin(clampf(timer / PUNCHER_STRIKE_TIME, 0.0, 1.0) * PI) * 0.11
+			if timer <= 0.0:
+				puncher.rotation = 0.0
+				puncher.set_meta("state", "returning")
+		elif state == "returning":
+			var home := _puncher_home_position(puncher)
+			puncher.position = puncher.position.move_toward(home, speed * delta)
+			if puncher.position.distance_to(home) < 0.5:
+				puncher.position = home
+				puncher.set_meta("state", "idle")
+
+func _resolve_punch(puncher: Sprite2D) -> void:
+	var side: String = puncher.get_meta("side", active_side)
+	var debut := bool(puncher.get_meta("debut", false))
+	var output := 12 if debut else _punch_output()
+	_damage_wall(float(output), side)
+	total_clicks += output
+	var direction := -1.0 if side == "left" else 1.0
+	var impact_x := _wall_free_x(side) + direction * 4.0
+	for grain in range(output):
+		_spawn_chunk(Vector2(impact_x + randf_range(-7.0, 7.0), _ground_y() - randf_range(185.0, 300.0)), 1.0, side)
+	_float_text("¡¡PUM!!  +%d" % output if debut else "¡PUM!  +%d" % output, Vector2(impact_x, _ground_y() - 95.0))
 	if debut:
 		_show_toast("DEBUT DEL PÚGIL  ·  ESO SÍ HA SIDO UN PUÑETAZO")
+	puncher.set_meta("debut", false)
 	_update_world()
 
 func _click_power() -> float:
@@ -1111,6 +1236,8 @@ func _debug_set_phase(next_phase: int) -> void:
 	playing = true
 	current_phase = clampi(next_phase, 1, PHASES.size())
 	phase_work = 0.0
+	joe_health = clampf(JOE_STARTING_HEALTH + float(current_phase - 1) * 7.0, 0.0, 100.0)
+	joe_health_display = joe_health
 	contamination = 0.0 if current_phase < 3 else 42.0
 	contamination_band = int(contamination / 25.0)
 	joe_clock = 0.0
@@ -1216,6 +1343,7 @@ func _update_another_line(delta: float) -> void:
 		another_line_drop_clock = 0.0
 		another_line_spawn_index = 0
 		another_line_events += 1
+		_change_joe_health(-1.2 - float(current_phase) * 0.25, true)
 		_show_toast("OTRA RAYITA  ·  JOE ACABA DE INUNDAR LA FOSA")
 
 func _finish_another_line() -> void:
@@ -1263,6 +1391,25 @@ func _update_crisis(delta: float) -> void:
 		infection = clampf(infection + (0.07 + bacterial_load * 0.008 - containment) * delta, 0.0, 100.0)
 	_update_crisis_visuals()
 	_check_phase_progress()
+
+func _improve_joe(clean_units: float) -> void:
+	_change_joe_health(clean_units * JOE_RECOVERY_PER_CLEAN_UNIT)
+
+func _change_joe_health(amount: float, pulse: bool = false) -> void:
+	joe_health = clampf(joe_health + amount, 0.0, 100.0)
+	if not pulse or not is_instance_valid(joe_portrait):
+		return
+	joe_portrait.modulate = Color("8be2ae") if amount > 0.0 else Color("f06470")
+	create_tween().tween_property(joe_portrait, "modulate", Color.WHITE, 0.48)
+
+func _update_joe_prognosis(delta: float) -> void:
+	var pile_burden := _pile_load("left") + _pile_load("right")
+	var pile_drain := clampf((pile_burden - 90.0) / 900.0, 0.0, 1.0) * 0.025
+	var contamination_drain := contamination / 100.0 * 0.012 if current_phase >= 3 else 0.0
+	var tissue_drain := tissue_damage / 100.0 * 0.018 if current_phase >= 4 else 0.0
+	var infection_drain := infection / 100.0 * 0.022 if current_phase >= 5 else 0.0
+	joe_health = clampf(joe_health - (pile_drain + contamination_drain + tissue_drain + infection_drain) * delta, 0.0, 100.0)
+	joe_health_display = move_toward(joe_health_display, joe_health, delta * 9.0)
 
 func _spawn_blood_drop() -> void:
 	if blood_drops.get_child_count() >= 24:
@@ -1431,6 +1578,9 @@ func _update_ui() -> void:
 	phase_progress.max_value = _phase_target()
 	phase_progress.value = minf(phase_work, _phase_target())
 	phase_hint.text = "ESTABILIDAD  %s / %s  ·  %s" % [_number(phase_work), _number(_phase_target()), _phase_requirement()]
+	joe_health_progress.value = joe_health_display
+	joe_health_progress.modulate = Color("e15b67").lerp(Color("72d39c"), joe_health_display / 100.0)
+	joe_health_label.text = "PRONÓSTICO DE JOE  %d%%" % roundi(joe_health_display)
 	cells_label.text = "CÉLULAS  %s" % _number(cells)
 	rate_label.text = "+%s/s  ·  %s/clic  ·  AUTO %s/s" % [_number(_rate()), _number(_click_power()), _number(_auto_hit_rate())]
 	click_counter.text = "CLICS  %s / 40K" % _number(total_clicks)
@@ -1609,7 +1759,7 @@ func _save() -> void:
 			"septum_open":septum_open, "active_side":active_side, "levels":levels,
 			"total_clicks":total_clicks, "pile":_serialize_pile(),
 			"compaction_steps":compaction_steps, "compaction_announced":compaction_announced,
-			"current_phase":current_phase, "phase_work":phase_work,
+			"current_phase":current_phase, "phase_work":phase_work, "joe_health":joe_health,
 			"contamination":contamination, "tissue_damage":tissue_damage, "infection":infection,
 			"impurities_handled":impurities_handled, "bacteria_handled":bacteria_handled,
 			"rocks_opened":rocks_opened, "impurities_cleaned":impurities_cleaned, "tissue_repaired":tissue_repaired,
@@ -1652,6 +1802,8 @@ func _load() -> void:
 	if current_phase == 0:
 		current_phase = 2 if compaction_announced or int(levels.breaker) > 0 else 1
 	phase_work = float(data.get("phase_work", cells))
+	joe_health = clampf(float(data.get("joe_health", JOE_STARTING_HEALTH + float(current_phase - 1) * 5.0)), 0.0, 100.0)
+	joe_health_display = joe_health
 	contamination = clampf(float(data.get("contamination", 0.0)), 0.0, 100.0)
 	contamination_band = int(contamination / 25.0)
 	tissue_damage = clampf(float(data.get("tissue_damage", 0.0)), 0.0, 100.0)
@@ -1707,6 +1859,8 @@ func _new_game() -> void:
 	compaction_announced = false
 	current_phase = 1
 	phase_work = 0.0
+	joe_health = JOE_STARTING_HEALTH
+	joe_health_display = joe_health
 	contamination = 0.0
 	contamination_band = 0
 	tissue_damage = 0.0

@@ -27,13 +27,17 @@ func _capture() -> void:
 		game._update_another_line(0.20)
 	await create_timer(1.35).timeout
 
+	var pile_before_punch: int = game.loose_chunks.size()
 	game._buy("puncher")
 	game._update_punchers(1.40)
+	var punch_safety := 100
+	while game.loose_chunks.size() < pile_before_punch + 12 and punch_safety > 0:
+		game._update_punchers(0.06)
+		punch_safety -= 1
 	game._update_ui()
 	var puncher_button := game.buttons.puncher as Button
 	if puncher_button:
 		game._scroll_to_required_upgrade(puncher_button)
-	await create_timer(0.36).timeout
 	await process_frame
 	await process_frame
 	await process_frame
