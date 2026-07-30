@@ -1,7 +1,7 @@
 extends Control
 
 const SAVE := "user://big_nose_joe.save"
-const SAVE_VERSION := 5
+const SAVE_VERSION := 6
 const ProgressionData = preload("res://scripts/progression_data.gd")
 const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
@@ -19,6 +19,11 @@ const GRAIN_SPACING := 10.0
 const GRAIN_HEIGHT := 7.4
 const ROCK_HEIGHT := 18.0
 const MAX_PILE_RADIUS := 46
+const MAX_SURFACE_STEP := 1.7
+const TERRAIN_BAND_SIZE := 30
+const TERRAIN_ANCHORS := [0.16, 0.68, 0.38, 0.84, 0.53]
+const ANOTHER_LINE_ANCHORS := [0.10, 0.52, 0.90]
+const ANOTHER_LINE_SHIFTS := [0.0, 0.08, -0.05, 0.13, -0.10]
 const COMPACTION_THRESHOLD := 24.0
 const COMPACTION_INTERVAL := 3
 const COMPACTION_GRAINS := 6
@@ -28,7 +33,9 @@ const BASE_PAWN_SPEED := 70.0
 const BASE_CAPACITY := 3
 const PAWN_FOOT_DEPTH := 14.0
 const PUNCH_BASE_INTERVAL := 3.4
-const JOE_DROP_INTERVALS := [0.0, 0.0, 1.15, 1.0, 0.9, 0.82]
+const ANOTHER_LINE_INTERVAL := 180.0
+const ANOTHER_LINE_WARNING := 8.0
+const JOE_DROP_INTERVALS := [0.0, 0.0, 4.5, 4.0, 3.5, 3.0]
 
 const PAWN_EMPTY := preload("res://assets/art/gameplay/sprites/pawn_empty.png")
 const PAWN_CARRY := preload("res://assets/art/gameplay/sprites/pawn_carry.png")
@@ -115,6 +122,19 @@ var bacteria_clock := 0.0
 var blood_drop_clock := 0.0
 var punch_clock := 0.0
 var contamination_band := 0
+var another_line_clock := ANOTHER_LINE_INTERVAL
+var another_line_wave := 0
+var another_line_drop_clock := 0.0
+var another_line_spawn_index := 0
+var another_line_events := 0
+var another_line_warned := false
+var puncher_unlocked := false
+var puncher_debut_pending := false
+var puncher_debut_clock := 0.0
+var manual_clicks_since_burst := 0
+var rocks_opened := 0
+var impurities_cleaned := 0
+var tissue_repaired := 0.0
 var phase_event_pending := false
 var camera_x := 0.0
 var camera_goal := -1.0
@@ -174,6 +194,7 @@ func _process(delta: float) -> void:
 	if not playing:
 		return
 	_update_camera(delta)
+	_update_another_line(delta)
 	_update_crisis(delta)
 	_update_punchers(delta)
 	_update_pawns(delta)
@@ -356,8 +377,8 @@ func _choose_work_side(index: int) -> String:
 		return "left" if index % 2 == 0 else "right"
 	return "left" if left_score > right_score else "right"
 
-func _spawn_chunk(origin: Vector2, value: float, side: String = active_side) -> void:
-	var column := _choose_landing_column(side)
+func _spawn_chunk(origin: Vector2, value: float, side: String = active_side, preferred_column: int = 999) -> void:
+	var column := _choose_landing_column(side, preferred_column)
 	var piece := _create_piece("grain", side, value, 0, column, randf_range(0.068, 0.078))
 	_drop_piece(piece, origin)
 
@@ -415,10 +436,12 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 	piece.position = _landing_position(piece)
 	return piece
 
-func _mark_landed(piece: Sprite2D) -> void:
+func _mark_landed(piece: Variant) -> void:
 	if not is_instance_valid(piece): return
-	piece.set_meta("landed", true)
-	var side: String = piece.get_meta("side", "right")
+	var sprite := piece as Sprite2D
+	if not sprite: return
+	sprite.set_meta("landed", true)
+	var side: String = sprite.get_meta("side", "right")
 	_restack_pile(side)
 	compaction_steps[side] = int(compaction_steps.get(side, 0)) + 1
 	_maybe_compact(side)
@@ -432,6 +455,16 @@ func _column_height(side: String, column: int, ignore: Sprite2D = null) -> float
 		if _piece_is_in_pile(piece, side) and bool(piece.get_meta("landed", false)) and piece != ignore and int(piece.get_meta("column", 0)) == column:
 			height += float(piece.get_meta("height", GRAIN_HEIGHT))
 	return height
+
+func _reserved_column_height(side: String, column: int, ignore: Sprite2D = null) -> float:
+	var height := 0.0
+	for piece in loose_chunks:
+		if _piece_is_in_pile(piece, side) and not bool(piece.get_meta("landed", false)) and piece != ignore and int(piece.get_meta("column", 0)) == column:
+			height += float(piece.get_meta("height", GRAIN_HEIGHT))
+	return height
+
+func _terrain_height(side: String, column: int) -> float:
+	return _column_height(side, column) + _reserved_column_height(side, column)
 
 func _constrain_column(side: String, column: int) -> int:
 	if side == "right" and column < RIGHT_WALL_COLUMN:
@@ -450,19 +483,60 @@ func _landing_position(piece: Sprite2D) -> Vector2:
 	var stack_height := _column_height(side, column, piece)
 	return Vector2(_pile_center(side) + float(column) * GRAIN_SPACING + float(piece.get_meta("x_jitter", 0.0)), _ground_y() - 5.0 - stack_height - piece_height * 0.5)
 
-func _choose_landing_column(side: String) -> int:
+func _natural_drop_center(side: String, bounds: Vector2i) -> int:
+	var band := int(_pile_load(side) / float(TERRAIN_BAND_SIZE)) % TERRAIN_ANCHORS.size()
+	return roundi(lerpf(float(bounds.x), float(bounds.y), float(TERRAIN_ANCHORS[band])))
+
+func _choose_landing_column(side: String, preferred_column: int = 999) -> int:
 	var radius := mini(MAX_PILE_RADIUS, 2 + int(sqrt(_pile_load(side) / 2.8)))
 	var bounds := _column_bounds(side, radius)
-	var column := randi_range(maxi(bounds.x, -1), mini(bounds.y, 1))
+	var center := _natural_drop_center(side, bounds) if preferred_column == 999 else clampi(_constrain_column(side, preferred_column), bounds.x, bounds.y)
+	var column := clampi(center + randi_range(-1, 1), bounds.x, bounds.y)
 	for step in range(radius * 2 + 4):
-		var here := _column_height(side, column)
-		var left := _column_height(side, column - 1)
-		var right := _column_height(side, column + 1)
-		if here <= minf(left, right) + GRAIN_HEIGHT * randf_range(0.55, 2.35): break
+		var here := _terrain_height(side, column)
+		var left := INF if column <= bounds.x else _terrain_height(side, column - 1)
+		var right := INF if column >= bounds.y else _terrain_height(side, column + 1)
+		if here <= minf(left, right) + GRAIN_HEIGHT * randf_range(0.85, MAX_SURFACE_STEP): break
 		if is_equal_approx(left, right): column += -1 if randf() < 0.5 else 1
 		else: column += -1 if left < right else 1
 		column = clampi(column, bounds.x, bounds.y)
 	return column
+
+func _movable_top_piece(side: String, column: int) -> Sprite2D:
+	var top: Sprite2D = null
+	for piece in loose_chunks:
+		if not _piece_is_in_pile(piece, side) or not bool(piece.get_meta("landed", false)) or int(piece.get_meta("column", 0)) != column:
+			continue
+		if not top or piece.position.y < top.position.y:
+			top = piece
+	if top and top.get_meta("kind", "grain") in ["rock", "smart_clump"]:
+		return null
+	return top
+
+func _settle_surface(side: String, max_moves: int) -> void:
+	var bounds := _column_bounds(side, MAX_PILE_RADIUS)
+	for move in range(max_moves):
+		var source_column := 999
+		var target_column := 999
+		var steepest := GRAIN_HEIGHT * MAX_SURFACE_STEP
+		for column in range(bounds.x, bounds.y):
+			var left := _column_height(side, column)
+			var right := _column_height(side, column + 1)
+			var difference := absf(left - right)
+			if difference <= steepest:
+				continue
+			var high_column := column if left > right else column + 1
+			if not _movable_top_piece(side, high_column):
+				continue
+			steepest = difference
+			source_column = high_column
+			target_column = column + 1 if left > right else column
+		if source_column == 999:
+			break
+		var grain := _movable_top_piece(side, source_column)
+		if not grain:
+			break
+		grain.set_meta("column", target_column)
 
 func _top_pieces(side: String) -> Array[Sprite2D]:
 	var by_column := {}
@@ -496,7 +570,7 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 		elif bool(pawn.get_meta("specialist", false)):
 			preferred = collectable.filter(func(item: Sprite2D) -> bool: return item.get_meta("kind", "grain") == "rock")
 		var source := preferred if not preferred.is_empty() else collectable
-		var piece := source[randi_range(0, mini(2, source.size() - 1))]
+		var piece := source[randi_range(0, mini(6, source.size() - 1))]
 		piece.set_meta("carried", true)
 		piece.z_index = 20
 		if handler and piece.get_meta("kind", "grain") == "bacteria":
@@ -505,6 +579,7 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 		var tween := create_tween().set_parallel()
 		tween.tween_property(piece, "position", _cargo_position(pawn, cargo.size() - 1, capacity), 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		tween.tween_property(piece, "rotation", randf_range(-0.12, 0.12), 0.22)
+	_settle_surface(side, maxi(2, capacity))
 	_restack_pile(side)
 	return _consolidate_cargo(cargo, side, pawn)
 
@@ -567,7 +642,6 @@ func _update_deposit(pawn: Sprite2D, progress: float) -> void:
 
 func _finish_delivery(pawn: Sprite2D) -> void:
 	var delivered := 0.0
-	var lost_to_contamination := 0.0
 	var contamination_delta := 0.0
 	var previous_contamination := contamination
 	var cargo: Array = pawn.get_meta("cargo", [])
@@ -582,6 +656,7 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 				delivered += value * 0.15 * float(levels.detector)
 				phase_work += 1.25 * float(levels.detector)
 				contamination_delta -= 0.45 + float(levels.detector) * 0.15
+				impurities_cleaned += 1
 			else:
 				contamination_delta += _impurity_contamination(str(piece.get_meta("material", "")))
 		elif kind == "bacteria":
@@ -598,18 +673,17 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 				continue
 		else:
 			delivered += value * _box_yield_multiplier()
-			lost_to_contamination += value * (1.0 - _box_yield_multiplier())
 			phase_work += value
 		loose_chunks.erase(piece)
 		piece.queue_free()
 	contamination = clampf(contamination + contamination_delta, 0.0, 100.0)
 	cells += delivered
 	if contamination_delta > 0.0:
-		_float_text("SUCIEDAD +%.1f%%" % contamination_delta, pawn.position - Vector2(0.0, 22.0))
+		_float_text("LA CAJA SE ENSUCIA", pawn.position - Vector2(0.0, 22.0))
 	elif contamination_delta < 0.0:
-		_float_text("LIMPIA %.1f%%" % absf(contamination_delta), pawn.position - Vector2(0.0, 22.0))
-	elif lost_to_contamination >= 0.25:
-		_float_text("CAJA PIERDE %s" % _number(lost_to_contamination), pawn.position - Vector2(0.0, 22.0))
+		_float_text("LIMPIANDO", pawn.position - Vector2(0.0, 22.0))
+	elif delivered > 0.0:
+		_float_text("+%s" % _number(delivered), pawn.position - Vector2(0.0, 22.0))
 	_update_contamination_warning(previous_contamination)
 	pawn.set_meta("cargo", [])
 	pawn.set_meta("state", "to_pile")
@@ -631,13 +705,13 @@ func _update_contamination_warning(previous: float) -> void:
 	if contamination_band <= previous_band:
 		return
 	if contamination_band >= 4:
-		_show_toast("CAJA BLOQUEADA  ·  DESCARGA -65%  ·  CÉLULAS -60%")
+		_show_toast("LA CAJA ESTÁ HECHA UN ASCO")
 	elif contamination_band == 3:
-		_show_toast("CONTAMINACIÓN CRÍTICA  ·  LA CAJA PIERDE CASI LA MITAD")
+		_show_toast("ESO NO PARECE COCAÍNA")
 	elif contamination_band == 2:
-		_show_toast("CAJA MUY SUCIA  ·  DESCARGAS LENTAS Y MENOS CÉLULAS")
+		_show_toast("LA CAJA HACE UN RUIDO MUY RARO")
 	else:
-		_show_toast("CAJA CONTAMINADA  ·  EMPIEZA A FRENAR LA PRODUCCIÓN")
+		_show_toast("LA CAJA EMPIEZA A ESTAR PEGAJOSA")
 
 func _top_untreated_rock(side: String) -> Sprite2D:
 	for piece in _top_pieces(side):
@@ -646,8 +720,11 @@ func _top_untreated_rock(side: String) -> Sprite2D:
 
 func _chip_rock(rock: Sprite2D) -> void:
 	if not is_instance_valid(rock): return
-	var hardness := maxi(0, int(rock.get_meta("hardness", 0)) - 1)
+	var previous_hardness := int(rock.get_meta("hardness", 0))
+	var hardness := maxi(0, previous_hardness - 1)
 	rock.set_meta("hardness", hardness)
+	if previous_hardness > 0 and hardness == 0:
+		rocks_opened += 1
 	var crack := rock.get_node_or_null("Crack") as Line2D
 	if crack:
 		crack.visible = true
@@ -727,6 +804,16 @@ func _click_wall(side: String) -> void:
 	_damage_wall(hit, side)
 	_spawn_chunk(Vector2(_mine_x(side), _ground_y() - randf_range(160.0, 310.0)), hit, side)
 	_float_text("-%s" % _number(hit), Vector2(_mine_x(side), _ground_y() - 280.0))
+	if int(levels.click_burst) > 0:
+		manual_clicks_since_burst += 1
+		var threshold := maxi(6, 10 - int(levels.click_rhythm))
+		if manual_clicks_since_burst >= threshold:
+			manual_clicks_since_burst = 0
+			var burst := int(levels.click_burst) * 3
+			_damage_wall(float(burst), side)
+			for grain in range(burst):
+				_spawn_chunk(Vector2(_mine_x(side) + randf_range(-18.0, 18.0), _ground_y() - randf_range(190.0, 330.0)), 1.0, side)
+			_float_text("¡RÁFAGA!  +%d" % burst, Vector2(_mine_x(side), _ground_y() - 245.0))
 
 func _damage_wall(amount: float, side: String = active_side) -> void:
 	if side == "left":
@@ -856,10 +943,25 @@ func _auto_hit_rate() -> float:
 func _update_punchers(delta: float) -> void:
 	if int(levels.puncher) == 0:
 		return
+	if puncher_debut_pending:
+		puncher_debut_clock -= delta
+		for node in punchers.get_children():
+			var warmup := node as Sprite2D
+			if warmup:
+				warmup.rotation = sin(Time.get_ticks_msec() * 0.028) * 0.04
+		if puncher_debut_clock <= 0.0:
+			puncher_debut_pending = false
+			_perform_punch_round(true)
+			punch_clock = _punch_interval()
+		return
 	punch_clock -= delta
 	if punch_clock > 0.0:
 		return
 	punch_clock = _punch_interval()
+	_perform_punch_round(false)
+
+func _perform_punch_round(debut: bool) -> void:
+	var total_output := 0
 	for node in punchers.get_children():
 		var puncher := node as Sprite2D
 		if not puncher:
@@ -869,7 +971,9 @@ func _update_punchers(delta: float) -> void:
 			side = active_side
 			puncher.set_meta("side", side)
 		_place_puncher(puncher)
-		var output := _punch_output()
+		puncher.rotation = 0.0
+		var output := 12 if debut and int(puncher.get_meta("index", 0)) == 0 else _punch_output()
+		total_output += output
 		_damage_wall(float(output), side)
 		total_clicks += output
 		for grain in range(output):
@@ -879,7 +983,9 @@ func _update_punchers(delta: float) -> void:
 		var tween := create_tween()
 		tween.tween_property(puncher, "position:x", origin_x + direction, 0.07)
 		tween.tween_property(puncher, "position:x", origin_x, 0.12).set_trans(Tween.TRANS_BACK)
-	_float_text("¡PUM!  +%d" % (int(levels.puncher) * _punch_output()), Vector2(_mine_x(active_side), _ground_y() - 95.0))
+	_float_text("¡¡PUM!!  +%d" % total_output if debut else "¡PUM!  +%d" % total_output, Vector2(_mine_x(active_side), _ground_y() - 95.0))
+	if debut:
+		_show_toast("DEBUT DEL PÚGIL  ·  ESO SÍ HA SIDO UN PUÑETAZO")
 	_update_world()
 
 func _click_power() -> float:
@@ -898,7 +1004,13 @@ func _buy(id: String) -> void:
 	cells -= cost
 	levels[id] = level + 1
 	if upgrade.kind in ["pawn", "speed", "coordination", "specialist", "detector", "handler"]: _rebuild_pawns()
-	elif upgrade.kind == "autoclicker": _rebuild_punchers()
+	elif upgrade.kind == "autoclicker":
+		_rebuild_punchers()
+		if level == 0:
+			puncher_debut_pending = true
+			puncher_debut_clock = 1.35
+			punch_clock = _punch_interval()
+			_show_toast("EL NUEVO PÚGIL ESTÁ CALENTANDO EL BRAZO...")
 	elif upgrade.kind == "capacity": _update_box()
 	elif upgrade.kind == "platelet": _rebuild_platelets()
 	_update_ui()
@@ -923,6 +1035,19 @@ func _debug_set_phase(next_phase: int) -> void:
 	bacteria_clock = 0.0
 	blood_drop_clock = 0.0
 	punch_clock = 0.0
+	another_line_clock = ANOTHER_LINE_INTERVAL
+	another_line_wave = 0
+	another_line_drop_clock = 0.0
+	another_line_spawn_index = 0
+	another_line_events = 0
+	another_line_warned = false
+	puncher_unlocked = current_phase >= 2 or int(levels.puncher) > 0
+	puncher_debut_pending = false
+	puncher_debut_clock = 0.0
+	manual_clicks_since_burst = 0
+	rocks_opened = 0
+	impurities_cleaned = 0
+	tissue_repaired = 0.0
 	compaction_steps = {"left":0, "right":0}
 	if current_phase < 2:
 		compaction_announced = false
@@ -973,6 +1098,55 @@ func _restack_pile(side_filter: String = "") -> void:
 			piece.position = Vector2(_pile_center(side) + float(column) * GRAIN_SPACING + float(piece.get_meta("x_jitter", 0.0)), _ground_y() - 5.0 - accumulated - height * 0.5)
 			accumulated += height
 
+func _update_another_line(delta: float) -> void:
+	if another_line_wave > 0:
+		another_line_clock = maxf(0.0, another_line_clock - delta)
+		another_line_drop_clock -= delta
+		if another_line_drop_clock <= 0.0:
+			another_line_drop_clock = 0.18
+			var batch := mini(5, another_line_wave)
+			another_line_wave -= batch
+			for grain in range(batch):
+				var wave_total := 120 + current_phase * 20
+				var projected_load := _pile_load(active_side) + float(another_line_wave)
+				var previous_load := maxf(0.0, projected_load - float(wave_total))
+				var reach := mini(MAX_PILE_RADIUS, 18 + current_phase * 2 + int(sqrt(previous_load / 12.0)))
+				var bounds := _column_bounds(active_side, reach)
+				var band_size := ceili(float(wave_total) / float(ANOTHER_LINE_ANCHORS.size()))
+				var band := mini(ANOTHER_LINE_ANCHORS.size() - 1, int(another_line_spawn_index / band_size))
+				var event_index := maxi(0, another_line_events - 1) % ANOTHER_LINE_SHIFTS.size()
+				var anchor := clampf(float(ANOTHER_LINE_ANCHORS[band]) + float(ANOTHER_LINE_SHIFTS[event_index]), 0.05, 0.95)
+				var center := roundi(lerpf(float(bounds.x), float(bounds.y), anchor))
+				another_line_spawn_index += 1
+				var rain_x := _pile_center(active_side) + float(center) * GRAIN_SPACING
+				_spawn_chunk(Vector2(rain_x + randf_range(-7.0, 7.0), _ground_y() - randf_range(300.0, 430.0)), 1.0, active_side, center)
+			if another_line_wave == 0:
+				_finish_another_line()
+		return
+	another_line_clock -= delta
+	if another_line_clock <= ANOTHER_LINE_WARNING and not another_line_warned:
+		another_line_warned = true
+		_show_toast("JOE ESTÁ PREPARANDO OTRA RAYITA...")
+	if another_line_clock <= 0.0:
+		another_line_clock = ANOTHER_LINE_INTERVAL
+		another_line_warned = false
+		another_line_wave = 120 + current_phase * 20
+		another_line_drop_clock = 0.0
+		another_line_spawn_index = 0
+		another_line_events += 1
+		_show_toast("OTRA RAYITA  ·  JOE ACABA DE INUNDAR LA FOSA")
+
+func _finish_another_line() -> void:
+	if puncher_unlocked:
+		return
+	puncher_unlocked = true
+	_update_ui()
+	var button := buttons.get("puncher") as Button
+	if button:
+		_scroll_to_required_upgrade(button)
+	_show_toast("NUEVA ADAPTACIÓN  ·  CÉLULA PÚGIL EN PRÁCTICAS")
+	_save()
+
 func _update_crisis(delta: float) -> void:
 	if current_phase >= 2:
 		joe_clock -= delta
@@ -990,6 +1164,7 @@ func _update_crisis(delta: float) -> void:
 	if current_phase >= 4:
 		var bleed_rate := 0.72 + float(current_phase - 4) * 0.16
 		var repair_rate := float(levels.platelets) * (0.42 + float(levels.repair) * 0.16) * (1.0 + float(levels.signals) * 0.1)
+		tissue_repaired += maxf(0.0, repair_rate - bleed_rate) * delta
 		tissue_damage = clampf(tissue_damage + (bleed_rate - repair_rate) * delta, 0.0, 100.0)
 		phase_work += repair_rate * delta * 0.35
 		blood_drop_clock -= delta
@@ -1035,9 +1210,14 @@ func _check_phase_progress() -> void:
 	if phase_event_pending or current_phase >= PHASES.size() or phase_work < _phase_target():
 		return
 	var adapted := true
-	if current_phase == 2: adapted = int(levels.breaker) > 0
-	elif current_phase == 3: adapted = int(levels.detector) > 0 and contamination < 30.0
-	elif current_phase == 4: adapted = int(levels.platelets) > 0 and tissue_damage < 45.0
+	if current_phase == 1:
+		adapted = puncher_unlocked and int(levels.puncher) > 0 and int(levels.pawn) + int(levels.shift) + int(levels.box) >= 3
+	elif current_phase == 2:
+		adapted = int(levels.breaker) > 0 and rocks_opened >= 6
+	elif current_phase == 3:
+		adapted = int(levels.detector) > 0 and contamination < 30.0 and impurities_cleaned >= 10
+	elif current_phase == 4:
+		adapted = int(levels.platelets) > 0 and tissue_damage < 45.0 and tissue_repaired >= 18.0
 	if adapted:
 		_advance_phase()
 
@@ -1047,6 +1227,9 @@ func _advance_phase() -> void:
 	joe_clock = 0.0
 	bacteria_clock = 0.0
 	blood_drop_clock = 0.0
+	if current_phase == 2: rocks_opened = 0
+	if current_phase == 3: impurities_cleaned = 0
+	if current_phase == 4: tissue_repaired = 0.0
 	if current_phase == 4: tissue_damage = maxf(tissue_damage, 28.0)
 	if current_phase == 5: infection = maxf(infection, 24.0)
 	phase_event_pending = true
@@ -1106,11 +1289,9 @@ func _update_platelets(_delta: float) -> void:
 
 func _update_crisis_visuals() -> void:
 	var bleeding := current_phase >= 4
-	var contaminated_phase := current_phase >= 3
-	contamination_meter.visible = contaminated_phase
+	contamination_meter.visible = false
 	contamination_progress.value = contamination
-	var yield_loss := roundi((1.0 - _box_yield_multiplier()) * 100.0)
-	contamination_label.text = "CAJA SUCIA %d%%  ·  CÉLULAS -%d%%" % [roundi(contamination), yield_loss]
+	contamination_label.text = "LECTURA INTERNA"
 	contamination_progress.modulate = Color("91c787").lerp(Color("ef5b57"), contamination / 100.0)
 	damage_meter.visible = bleeding
 	damage_progress.value = tissue_damage
@@ -1122,9 +1303,6 @@ func _update_crisis_visuals() -> void:
 	_update_box()
 
 func _update_pressure_visuals() -> void:
-	var left_load := _pile_load("left")
-	var right_load := _pile_load("right")
-	var total_load := left_load + right_load
 	var rocks := _untreated_rock_count("left") + _untreated_rock_count("right")
 	if current_phase >= 5:
 		pressure_label.text = "INFECCIÓN %d%%  ·  BACTERIAS %d" % [roundi(infection), _kind_count("bacteria")]
@@ -1133,20 +1311,29 @@ func _update_pressure_visuals() -> void:
 		pressure_label.text = "HEMORRAGIA ACTIVA  ·  PLAQUETAS %d" % platelets.get_child_count()
 		pressure_label.modulate = Color("82b9ad") if tissue_damage < 35.0 else Color("e9a1a0")
 	elif current_phase >= 3:
-		pressure_label.text = "DESCARGA %d%%  ·  CÉLULAS %d%%" % [roundi(_deposit_speed_multiplier() * 100.0), roundi(_box_yield_multiplier() * 100.0)]
-		pressure_label.modulate = Color("82b9ad") if contamination < 30.0 else Color("e8c694")
-	elif rocks > 0:
-		pressure_label.text = "APELMAZADO  %d" % rocks
-		pressure_label.modulate = Color("e9a1a0")
-	elif total_load >= COMPACTION_THRESHOLD:
-		pressure_label.text = "ATASCO  %s" % _number(total_load)
-		pressure_label.modulate = Color("e9a1a0")
-	elif total_load >= COMPACTION_THRESHOLD * 0.45:
-		pressure_label.text = "PRESIÓN  %s" % _number(total_load)
+		pressure_label.text = "JOE JURA QUE ERA PURA"
 		pressure_label.modulate = Color("e8c694")
+	elif rocks > 0:
+		pressure_label.text = "ALGO SE HA PUESTO DURO"
+		pressure_label.modulate = Color("e9a1a0")
 	else:
-		pressure_label.text = "FLUJO ESTABLE"
+		pressure_label.text = "JOE SIGUE RESPIRANDO"
 		pressure_label.modulate = Color("82b9ad")
+
+func _upgrade_available(upgrade: Dictionary) -> bool:
+	var phase := int(upgrade.phase)
+	if current_phase < phase:
+		return false
+	if bool(upgrade.get("requires_septum", false)) and not septum_open:
+		return false
+	if bool(upgrade.get("requires_puncher_unlock", false)) and not puncher_unlocked and current_phase == 1:
+		return false
+	var dependency := str(upgrade.get("requires_upgrade", ""))
+	if not dependency.is_empty() and int(levels.get(dependency, 0)) == 0:
+		return false
+	if current_phase == phase and phase_work < float(upgrade.get("unlock_at", 0.0)) and int(levels[upgrade.id]) == 0:
+		return false
+	return true
 
 func _update_ui() -> void:
 	var phase := _phase()
@@ -1169,7 +1356,7 @@ func _update_ui() -> void:
 	wall_label.text = "PARED %s  ·  FALTAN %s" % ["IZQUIERDA" if active_side == "left" else "DERECHA", _number(maxf(0.0, hp))]
 	for upgrade in UPGRADES:
 		var button := buttons[upgrade.id] as Button
-		button.visible = current_phase >= int(upgrade.phase) and (not bool(upgrade.get("requires_septum", false)) or septum_open)
+		button.visible = _upgrade_available(upgrade)
 		var level: int = int(levels[upgrade.id])
 		var required: bool = str(upgrade.id) == _required_upgrade_id() and level == 0
 		button.custom_minimum_size.y = 82.0 if required else 64.0
@@ -1193,11 +1380,14 @@ func _update_ui() -> void:
 		elif upgrade.kind == "autoclicker": effect = "+1 púgil automático"
 		elif upgrade.kind == "auto_power": effect = "+1 grano por puñetazo"
 		elif upgrade.kind == "auto_speed": effect = "-16% intervalo automático"
+		elif upgrade.kind == "click_burst": effect = "+3 granos en cada ráfaga"
+		elif upgrade.kind == "click_rhythm": effect = "-1 clic para provocar la ráfaga"
 		var required_line := "★ NECESARIA PARA SUPERAR ESTA FASE\n" if required else ""
 		button.text = "%s%s  [NV. %d]\n%s\n%s  ·  %s células" % [required_line, upgrade.name, level, upgrade.desc, effect, _number(cost)]
 		button.disabled = cells < cost or maxed
 
 func _required_upgrade_id() -> String:
+	if current_phase == 1 and puncher_unlocked: return "puncher"
 	if current_phase == 2: return "breaker"
 	if current_phase == 3: return "detector"
 	if current_phase == 4: return "platelets"
@@ -1237,12 +1427,19 @@ func _scroll_to_required_upgrade(button: Button) -> void:
 	upgrade_scroll.scroll_vertical = maxi(0, roundi(target))
 
 func _phase_requirement() -> String:
+	if current_phase == 1:
+		if not puncher_unlocked: return "JOE TODAVÍA NO HA TRAÍDO REFUERZOS"
+		if int(levels.puncher) == 0: return "FALTA ESTRENAR AL PÚGIL"
+		if int(levels.pawn) + int(levels.shift) + int(levels.box) < 3: return "SIGUE MEJORANDO LA LOGÍSTICA"
 	if current_phase == 2 and int(levels.breaker) == 0: return "FALTA UN CASCO AZUL"
+	if current_phase == 2 and rocks_opened < 6: return "PEDRUSCOS ABIERTOS  %d / 6" % rocks_opened
 	if current_phase == 3:
 		if int(levels.detector) == 0: return "FALTAN QUIMIORRECEPTORES"
+		if impurities_cleaned < 10: return "MUESTRAS FILTRADAS  %d / 10" % impurities_cleaned
 		if contamination >= 30.0: return "CAJA AÚN CONTAMINADA"
 	if current_phase == 4:
 		if int(levels.platelets) == 0: return "FALTAN PLAQUETAS"
+		if tissue_repaired < 18.0: return "TEJIDO REPARADO  %d / 18" % floori(tissue_repaired)
 		if tissue_damage >= 45.0: return "TEJIDO AÚN INESTABLE"
 	if current_phase == 5:
 		if int(levels.handlers) == 0: return "FALTAN CUIDADORES"
@@ -1333,6 +1530,10 @@ func _save() -> void:
 			"current_phase":current_phase, "phase_work":phase_work,
 			"contamination":contamination, "tissue_damage":tissue_damage, "infection":infection,
 			"impurities_handled":impurities_handled, "bacteria_handled":bacteria_handled,
+			"rocks_opened":rocks_opened, "impurities_cleaned":impurities_cleaned, "tissue_repaired":tissue_repaired,
+			"another_line_clock":another_line_clock, "another_line_wave":another_line_wave, "another_line_spawn_index":another_line_spawn_index, "another_line_events":another_line_events,
+			"puncher_unlocked":puncher_unlocked, "puncher_debut_pending":puncher_debut_pending,
+			"puncher_debut_clock":puncher_debut_clock, "manual_clicks_since_burst":manual_clicks_since_burst,
 			"phase_event_pending":phase_event_pending
 		}))
 
@@ -1375,6 +1576,19 @@ func _load() -> void:
 	infection = clampf(float(data.get("infection", 0.0)), 0.0, 100.0)
 	impurities_handled = int(data.get("impurities_handled", 0))
 	bacteria_handled = int(data.get("bacteria_handled", 0))
+	rocks_opened = int(data.get("rocks_opened", 0))
+	impurities_cleaned = int(data.get("impurities_cleaned", 0))
+	tissue_repaired = float(data.get("tissue_repaired", 0.0))
+	another_line_clock = clampf(float(data.get("another_line_clock", ANOTHER_LINE_INTERVAL)), 0.0, ANOTHER_LINE_INTERVAL)
+	another_line_wave = maxi(0, int(data.get("another_line_wave", 0)))
+	another_line_spawn_index = maxi(0, int(data.get("another_line_spawn_index", 0)))
+	another_line_events = maxi(0, int(data.get("another_line_events", 0)))
+	puncher_unlocked = bool(data.get("puncher_unlocked", current_phase >= 2 or int(levels.puncher) > 0))
+	puncher_debut_pending = bool(data.get("puncher_debut_pending", false))
+	puncher_debut_clock = maxf(0.0, float(data.get("puncher_debut_clock", 0.0)))
+	manual_clicks_since_burst = maxi(0, int(data.get("manual_clicks_since_burst", 0)))
+	another_line_warned = another_line_clock <= ANOTHER_LINE_WARNING
+	another_line_drop_clock = 0.0
 	joe_clock = 0.0
 	bacteria_clock = 0.0
 	blood_drop_clock = 0.0
@@ -1417,10 +1631,23 @@ func _new_game() -> void:
 	infection = 0.0
 	impurities_handled = 0
 	bacteria_handled = 0
+	rocks_opened = 0
+	impurities_cleaned = 0
+	tissue_repaired = 0.0
 	joe_clock = 0.0
 	bacteria_clock = 0.0
 	blood_drop_clock = 0.0
 	punch_clock = 0.0
+	another_line_clock = ANOTHER_LINE_INTERVAL
+	another_line_wave = 0
+	another_line_drop_clock = 0.0
+	another_line_spawn_index = 0
+	another_line_events = 0
+	another_line_warned = false
+	puncher_unlocked = false
+	puncher_debut_pending = false
+	puncher_debut_clock = 0.0
+	manual_clicks_since_burst = 0
 	phase_event_pending = true
 	_clear_pile()
 	if FileAccess.file_exists(save_path): DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))

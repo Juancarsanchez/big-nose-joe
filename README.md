@@ -17,31 +17,35 @@ Al abrir el juego aparece una portada desde la que se puede continuar, empezar d
 
 Cada cambio de fase abre un diálogo que explica el nuevo problema. La adaptación imprescindible se busca automáticamente en el laboratorio, aparece con el texto `NECESARIA PARA SUPERAR ESTA FASE` y queda rodeada por un halo azul hasta que se compra.
 
-1. `UNA RAYITA PARA DESAYUNAR`: tutorial de clic, caída, recogida y entrega. No exige una adaptación especial.
-2. `¿QUIÉN HA VACIADO EL CÁRTEL?`: los grupos densos se apelmazan en pedruscos. Solo los especialistas de `CASCO AZUL REGLAMENTARIO` pueden abrirlos y transportarlos.
-3. `OFERTA DEL SUPERMERCADO`: serrín, yeso y tiza contaminan la caja lentamente. La interfaz muestra cuánto baja la velocidad de descarga y qué porcentaje de células se pierde; la caja también cambia de color. Los `QUIMIORRECEPTORES` separan las impurezas y reducen la contaminación poco a poco.
+1. `UNA RAYITA PARA DESAYUNAR`: tutorial de clic, caída, recogida y entrega. La primera gran oleada desbloquea la adaptación `CÉLULA PÚGIL EN PRÁCTICAS`.
+2. `¿QUIÉN HA VACIADO EL CÁRTEL?`: los grupos densos se apelmazan en pedruscos. Solo los especialistas de `CASCO AZUL REGLAMENTARIO` pueden abrirlos y transportarlos; hay que abrir seis para dominar la fase.
+3. `OFERTA DEL SUPERMERCADO`: serrín, yeso y tiza ensucian la caja lentamente. El perjuicio no se traduce a porcentajes: se descubre observando su color, la animación de descarga y las recompensas. Los `QUIMIORRECEPTORES` deben filtrar diez muestras.
 4. `NARIZ EN MODO VOLCÁN`: el fondo se enrojece, caen gotas desde el techo y comienza el medidor de daño tisular. Las `PLAQUETAS TURBO` reparan el tejido mientras continúa la limpieza.
 5. `BIENVENIDOS AL ZOO`: aparecen bacterias que los peones normales ignoran por completo. Solo los cuidadores de `GUANTES DE PROTECTORA` pueden retirarlas y contener la infección.
 
-Las fases ahora necesitan 800, 4.500, 14.000, 32.000 y 75.000 puntos de trabajo respectivamente. La barra de estabilidad muestra el progreso y la condición pendiente. La versión 5 del guardado conserva fase, contaminación, daño, infección, automatización, roles, recursos y estado del montón; las partidas anteriores se migran al cargar.
+Las fases necesitan 800, 4.500, 14.000, 32.000 y 75.000 puntos de trabajo, además de usar realmente su mecánica. La barra de estabilidad muestra el progreso y la condición pendiente. La versión 6 del guardado conserva fase, acontecimientos de Joe, objetivos, contaminación, daño, infección, automatización, roles, recursos y estado del montón; las partidas anteriores se migran al cargar.
 
 El panel `PRUEBA DE FASES`, fijado al extremo derecho, permite saltar inmediatamente a cualquiera de las cinco fases. Conserva células, mejoras y paredes, reinicia los indicadores de esa crisis y elimina los recursos futuros al volver hacia atrás.
 
 ## Cocaína, apelmazado y transporte
 
-Cada clic crea una bolita individual que cae con suavidad y queda apoyada sobre el suelo o sobre otra pieza. El montón se recalcula por columnas después de cada caída o recogida, por lo que no quedan huecos flotantes. El tabique actúa como un límite duro: ningún grano ni pedrusco puede atravesarlo o dibujarse por encima de la pared compacta.
+Cada clic crea una bolita individual que cae con suavidad y queda apoyada sobre el suelo o sobre otra pieza. El montón se recalcula por columnas después de cada caída o recogida, por lo que no quedan huecos flotantes. Las tandas van cambiando de zona de vertido y forman montañas conectadas; las pendientes demasiado bruscas producen pequeños corrimientos y la recogida abre valles visibles. Los pedruscos pueden sostener pendientes como muros de contención. El tabique actúa como un límite duro: ningún grano ni pedrusco puede atravesarlo o dibujarse por encima de la pared compacta.
 
 En la fase 2, un grano con al menos cinco vecinos cercanos forma un pedrusco de seis unidades. Los pedruscos conservan su valor, bloquean la recogida y solo los cascos azules pueden tratarlos y llevarlos.
 
 `APELMAZADO INTELIGENTE` resuelve otro problema: cuando un peón carga seis granos normales, estos se convierten en una sola bola segura de valor seis. Esa bola de transporte no es un pedrusco y cualquier peón puede llevarla.
 
-Los peones recorren un ciclo físico completo: salen vacíos de la caja, minan la pared, esperan la caída, levantan piezas expuestas, muestran la carga junto al cuerpo y la depositan dentro de la caja. `TRABAJO EN CADENA` solo aparece después de perforar el tabique, cuando existen dos fosas entre las que repartir el trabajo.
+Los peones recorren un ciclo físico completo: salen vacíos de la caja, rascan exactamente un grano de la pared, esperan la caída, levantan piezas expuestas, muestran la carga junto al cuerpo y la depositan dentro de la caja. Ese raspado mantiene una producción basal sin competir con los púgiles. `TRABAJO EN CADENA` solo aparece después de perforar el tabique.
 
 ## Automatización de los golpes
 
-La producción automática no depende de los peones recolectores. `CÉLULA PÚGIL EN PRÁCTICAS` añade pequeños púgiles con guante rojo y cinta azul que golpean la pared por su cuenta. Cada ronda daña la pared, cuenta para desbloquear el tabique y lanza granos físicos al montón.
+La producción automática especializada no está disponible al comenzar. Cada 180 segundos Joe se mete `OTRA RAYITA`: aparece un aviso y una oleada de cocaína pura levanta varias lomas sobre el montón existente. Tras la primera avalancha se desbloquea `CÉLULA PÚGIL EN PRÁCTICAS`.
+
+El primer púgil entra con guante rojo y cinta azul, calienta el brazo y estrena su contrato con un golpe especial de doce granos. Después trabaja con su cadencia normal. Cada ronda daña la pared, cuenta para desbloquear el tabique y lanza granos físicos al montón.
 
 `GUANTES EMPAPADOS EN COCAÍNA` aumenta los granos desprendidos por golpe y `CAMPANA SIN DESCANSO` reduce el intervalo entre rondas. Los recolectores siguen siendo necesarios para convertir el polvo del suelo en células, por lo que producción y logística pueden mejorarse por separado.
+
+Las compras de la fase 1 aparecen de forma escalonada según el trabajo entregado. `NUDILLOS DE QUERATINA` crea una ráfaga cada diez clics y `RITMO DE BAÑO` reduce más adelante los clics necesarios. La interfaz nunca identifica un cuello de botella: el jugador lo deduce viendo crecer el montón, observando cargas pequeñas o notando cómo se comporta la caja.
 
 ## Paso a la fosa izquierda
 

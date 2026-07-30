@@ -38,7 +38,7 @@ La cámara se mueve con `A`, `D`, las flechas o acercando el cursor a los bordes
 9. `Layer58_Punchers`: autoclickers con guantes de boxeo, separados de la logística.
 10. `Layer60_Pawns`: peones básicos y variantes funcionales.
 11. `Layer70_Effects`: números y confirmaciones visuales.
-12. Interfaz fija: laboratorio, contaminación, daño, cabecera y prueba de fases.
+12. Interfaz fija: laboratorio, daño, cabecera y prueba de fases. La contaminación exacta permanece oculta.
 
 No existe una silueta dinámica de presión detrás del montón: era la sombra roja que cambiaba con su altura y se eliminó por completo.
 
@@ -67,10 +67,14 @@ Los originales con croma están en `assets/art/gameplay/source`. Cada elemento s
 
 ## Reglas visuales de las mecánicas
 
-Cada clic conserva su bolita visible. La caída dura entre 0,82 y 1,18 segundos, tiene poco giro y no rebota. Al aterrizar, el montón se compacta verticalmente por columnas; al retirar una pieza, todas las piezas superiores vuelven a apoyarse. El límite junto al tabique impide que la pirámide invada la pared.
+Cada clic conserva su bolita visible. La caída dura entre 0,82 y 1,18 segundos, tiene poco giro y no rebota. Al aterrizar, el montón se compacta verticalmente por columnas; al retirar una pieza, todas las piezas superiores vuelven a apoyarse. El límite junto al tabique impide que el relieve invada la pared.
+
+El polvo se comporta como un pequeño vertedero. Las partículas que aún están cayendo reservan altura, diferentes tandas escogen zonas de vertido distintas y cada zona levanta su propia loma. Una pendiente excesiva provoca corrimientos laterales cortos, pero nunca una expansión plana por todo el suelo. La recogida abre valles y mordiscos; los pedruscos y bolas apelmazadas no ruedan y pueden sostener pendientes. `OTRA RAYITA` produce así varias montañas conectadas, no una aguja ni una inundación uniforme. Las oleadas sucesivas desplazan ligeramente sus puntos de caída, por lo que el perfil evoluciona en vez de reforzar siempre las mismas tres cumbres.
 
 Una bola apelmazada natural representa seis granos vecinos y solo la transporta un casco azul después de tratarla. La bola creada por `APELMAZADO INTELIGENTE` también vale seis, pero es más clara, segura y transportable por cualquier peón.
 
-Las impurezas usan colores deliberadamente distintos —naranja, azul grisáceo y amarillo—. Al entrar en la caja elevan lentamente el medidor y tiñen la caja de marrón. El panel indica la pérdida de células y la cabecera muestra la velocidad de descarga restante. Los avisos del 25 %, 50 %, 75 % y 100 % explican el empeoramiento. En la hemorragia no hay cúpulas: el peligro se representa mediante fondo rojo, gotas superiores y medidor de daño.
+Las impurezas usan colores deliberadamente distintos —naranja, azul grisáceo y amarillo—. Al entrar en la caja la tiñen de marrón, alargan físicamente la descarga y reducen los números de entrega. No se muestran porcentajes, penalizaciones ni diagnósticos de equilibrio. Los avisos son comentarios sensoriales sobre la caja, no explicaciones de la fórmula. En la hemorragia no hay cúpulas: el peligro se representa mediante fondo rojo, gotas superiores y medidor de daño.
+
+El debut del primer púgil debe leerse como un salto de escala: calentamiento visible, texto `¡¡PUM!!`, doce partículas y un montón alterado de inmediato. Sus guantes y cinta continúan siendo capas hijas independientes del cuerpo básico.
 
 Cuando una fase exige tecnología, el botón correspondiente aumenta ligeramente de alto, recibe borde y resplandor cian, añade una línea explicativa y se desplaza automáticamente dentro del laboratorio para quedar completamente visible.
