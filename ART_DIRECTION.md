@@ -33,13 +33,14 @@ La cámara se mueve con `A`, `D`, las flechas o acercando el cursor a los bordes
 4. `Layer30_Props`: caja de entrega.
 5. `Layer40_Resources`: paredes de cocaína de ambos lados.
 6. `Layer46_Crisis`: lavado rojo progresivo y gotas de la hemorragia, sin masas sólidas sobre el suelo.
-7. `Layer50_Chunks`: cocaína, impurezas, pedruscos y bacterias apiladas.
-8. `Layer55_Platelets`: refuerzos de reparación independientes.
-9. `Layer58_Punchers`: autoclickers con guantes de boxeo, separados de la logística.
-10. `Layer60_Pawns`: peones básicos y variantes funcionales.
-11. `Layer70_Effects`: números y confirmaciones visuales.
-12. Interfaz fija: laboratorio, daño, cabecera y prueba de fases. La contaminación exacta permanece oculta.
-13. `JoePrognosis`: retrato, etiqueta y barra global independientes de los medidores de crisis.
+7. `Layer48_WallChunks`: grandes trozos desprendidos de la pared, minables y persistentes.
+8. `Layer50_Chunks`: cocaína, impurezas, pedruscos y bacterias apiladas.
+9. `Layer55_Platelets`: refuerzos de reparación independientes.
+10. `Layer58_Punchers`: autoclickers con guantes de boxeo, separados de la logística.
+11. `Layer60_Pawns`: peones básicos y variantes funcionales.
+12. `Layer70_Effects`: números y confirmaciones visuales.
+13. Interfaz fija: laboratorio, daño, cabecera y prueba de fases. La contaminación exacta permanece oculta.
+14. `JoePrognosis`: retrato, etiqueta y barra global independientes de los medidores de crisis.
 
 No existe una silueta dinámica de presión detrás del montón: era la sombra roja que cambiaba con su altura y se eliminó por completo.
 
@@ -56,6 +57,7 @@ Los elementos jugables móviles usan sprites separados:
 - `bacteria.png`: bacteria verde;
 - `collection_box.png`: caja de entrega;
 - `cocaine_wall.png`: pared compacta adherida al tabique;
+- `cocaine_wall_chunks.png`: atlas de cuatro bloques desprendidos; su fuente con croma permanece en `source/`;
 - `cocaine_grain.png`: grano, impureza, bola segura y base visual de los pedruscos.
 - `ui/joe_prognosis.png`: retrato de estado de Joe generado como pixel art y recortado con transparencia.
 - `effects/cocaine_wall_damage.gdshader`: máscara escalonada que muerde el borde de la pared sin alterar su textura.
@@ -76,7 +78,7 @@ El polvo se comporta como un pequeño vertedero. Las partículas que aún están
 
 El clic manual sobre el relieve toma la pieza superior de la columna más cercana. Durante el vuelo aumenta ligeramente de tamaño, gira y describe un arco limpio hasta la caja; permanece en `Layer50_Chunks` y no necesita un asset compuesto nuevo. Al salir deja de sostener su columna, de modo que el valle y los corrimientos resultantes se ven desde el primer instante.
 
-La pared se estrecha de forma proporcional hasta el 5%. El shader redondea y profundiza mordiscos en el borde libre cada vez que se cruza otro 1% de resistencia; el borde unido al tabique permanece intacto. Cada hito reutiliza `cocaine_grain.png` a escala pequeña para lanzar tres fragmentos desde `Layer70_Effects`. El retrato de Joe no cambia de asset: la barra y un breve tinte verde o rojo comunican mejoría o retroceso.
+La pared se estrecha de forma proporcional hasta el 5%. Cada 1% activa o profundiza una muesca escalonada de varios píxeles y la perfila en azul frío para que el cambio se lea incluso con el zoom alejado; el borde unido al tabique permanece intacto. Cada 10% la misma familia de fracturas crea un hueco mayor y suelta una de las cuatro variantes de `cocaine_wall_chunks.png`. El bloque cae hasta apoyar su base en el suelo, guarda masa retirada de la pared y se mina como un obstáculo antes de volver a ser polvo. Los fragmentos pequeños siguen viviendo en `Layer70_Effects`; los bloques persistentes, en `Layer48_WallChunks`. El retrato de Joe no cambia de asset: la barra y un breve tinte verde o rojo comunican mejoría o retroceso.
 
 Una bola apelmazada natural representa seis granos vecinos y solo la transporta un casco azul después de tratarla. La bola creada por `APELMAZADO INTELIGENTE` también vale seis, pero es más clara, segura y transportable por cualquier peón.
 

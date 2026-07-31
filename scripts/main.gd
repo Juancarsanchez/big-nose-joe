@@ -1,7 +1,7 @@
 extends Control
 
 const SAVE := "user://big_nose_joe.save"
-const SAVE_VERSION := 7
+const SAVE_VERSION := 8
 const ProgressionData = preload("res://scripts/progression_data.gd")
 const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
@@ -41,6 +41,10 @@ const JOE_RECOVERY_PER_CLEAN_UNIT := 0.01
 const ANOTHER_LINE_INTERVAL := 180.0
 const ANOTHER_LINE_WARNING := 8.0
 const JOE_DROP_INTERVALS := [0.0, 0.0, 4.5, 4.0, 3.5, 3.0]
+const WALL_CHUNK_HP := 25
+const WALL_CHUNK_SCALE := 0.23
+const WALL_CHUNK_CELL := 512
+const MAX_FALLEN_WALL_CHUNKS := 4
 
 const PAWN_EMPTY := preload("res://assets/art/gameplay/sprites/pawn_empty.png")
 const PAWN_CARRY := preload("res://assets/art/gameplay/sprites/pawn_carry.png")
@@ -53,12 +57,14 @@ const HANDLER_CARRY := preload("res://assets/art/gameplay/sprites/pawn_handler_c
 const PLATELET_TEXTURE := preload("res://assets/art/gameplay/sprites/platelet.png")
 const BACTERIA_TEXTURE := preload("res://assets/art/gameplay/sprites/bacteria.png")
 const GRAIN_TEXTURE := preload("res://assets/art/gameplay/sprites/cocaine_grain.png")
+const WALL_CHUNK_SHEET := preload("res://assets/art/gameplay/sprites/cocaine_wall_chunks.png")
 
 @onready var stage_view: Control = $World/StageViewport
 @onready var stage: Control = $World/StageViewport/Stage
 @onready var pawns: Control = $World/StageViewport/Stage/Layer60_Pawns
 @onready var punchers: Control = $World/StageViewport/Stage/Layer58_Punchers
 @onready var chunks: Control = $World/StageViewport/Stage/Layer50_Chunks
+@onready var wall_chunks_layer: Control = $World/StageViewport/Stage/Layer48_WallChunks
 @onready var platelets: Control = $World/StageViewport/Stage/Layer55_Platelets
 @onready var effects: Control = $World/StageViewport/Stage/Layer70_Effects
 @onready var blood_wash: ColorRect = $World/StageViewport/Stage/Layer46_Crisis/BloodWash
@@ -116,6 +122,7 @@ var levels := _empty_levels()
 var buttons := {}
 var phase_debug_buttons := {}
 var loose_chunks: Array[Sprite2D] = []
+var fallen_wall_chunks: Array[Sprite2D] = []
 var compaction_steps := {"left":0, "right":0}
 var compaction_announced := false
 var current_phase := 1
@@ -274,6 +281,10 @@ func _box_yield_multiplier() -> float:
 	return lerpf(1.0, 0.40, contamination / 100.0) if current_phase >= 3 else 1.0
 
 func _pile_access_point(side: String) -> Vector2:
+	var fallen := _nearest_fallen_wall_chunk(side)
+	if fallen:
+		var direction := -1.0 if side == "left" else 1.0
+		return Vector2(fallen.position.x + direction * 68.0, _ground_y() - 14.0)
 	var rightmost_column := 2
 	for piece in loose_chunks:
 		if _piece_is_in_pile(piece, side):
@@ -330,8 +341,12 @@ func _update_pawns(delta: float) -> void:
 			pawn.position.x = work_point.x + sin(Time.get_ticks_msec() * 0.018 + int(pawn.get_meta("index", 0))) * 1.8
 			if timer <= 0.0:
 				if not bool(pawn.get_meta("did_mine", false)):
-					_damage_wall(1.0, side)
-					_spawn_chunk(Vector2(_mine_x(side) + lane_x * 0.35, _ground_y() - 245.0), 1.0, side)
+					var fallen := _nearest_fallen_wall_chunk(side)
+					if fallen:
+						_mine_fallen_wall_chunk(fallen, 1.0)
+					else:
+						_damage_wall(1.0, side)
+						_spawn_chunk(Vector2(_mine_x(side) + lane_x * 0.35, _ground_y() - 245.0), 1.0, side)
 					pawn.set_meta("did_mine", true)
 					pawn.set_meta("timer", 0.86 / (1.0 + float(levels.shift) * 0.12))
 				else:
@@ -608,6 +623,60 @@ func _surface_piece_at(world_pos: Vector2) -> Sprite2D:
 			nearest = piece
 			nearest_x = distance_x
 	return nearest
+
+func _nearest_fallen_wall_chunk(side: String, from := Vector2.ZERO) -> Sprite2D:
+	var nearest: Sprite2D = null
+	var nearest_distance := INF
+	var origin := from if from != Vector2.ZERO else Vector2(_mine_x(side), _ground_y())
+	for chunk in fallen_wall_chunks:
+		if not is_instance_valid(chunk) or chunk.get_meta("side", "right") != side or not bool(chunk.get_meta("landed", false)):
+			continue
+		var distance := origin.distance_squared_to(chunk.position)
+		if distance < nearest_distance:
+			nearest = chunk
+			nearest_distance = distance
+	return nearest
+
+func _fallen_wall_chunk_at(world_pos: Vector2) -> Sprite2D:
+	for chunk in fallen_wall_chunks:
+		if is_instance_valid(chunk) and bool(chunk.get_meta("landed", false)) and Rect2(chunk.position - Vector2(68.0, 70.0), Vector2(136.0, 140.0)).has_point(world_pos):
+			return chunk
+	return null
+
+func _manual_mine_fallen_wall_chunk(world_pos: Vector2) -> bool:
+	var chunk := _fallen_wall_chunk_at(world_pos)
+	if not chunk:
+		return false
+	total_clicks += 1
+	var hit := minf(_click_power(), float(chunk.get_meta("hp", 0.0)))
+	_mine_fallen_wall_chunk(chunk, hit)
+	_float_text("BLOQUE  -%s" % _number(hit), world_pos - Vector2(0.0, 38.0))
+	return true
+
+func _mine_fallen_wall_chunk(chunk: Sprite2D, amount: float) -> void:
+	if not is_instance_valid(chunk) or amount <= 0.0:
+		return
+	var hp := maxf(0.0, float(chunk.get_meta("hp", 0.0)) - amount)
+	var side: String = chunk.get_meta("side", "right")
+	chunk.set_meta("hp", hp)
+	var column := roundi((chunk.position.x - _pile_center(side)) / GRAIN_SPACING)
+	_spawn_chunk(chunk.position - Vector2(0.0, 48.0), amount, side, column)
+	var crack := chunk.get_node_or_null("Crack") as Line2D
+	if crack:
+		crack.visible = true
+		crack.modulate.a = 0.25 + (1.0 - hp / maxf(1.0, float(chunk.get_meta("max_hp", WALL_CHUNK_HP)))) * 0.75
+	var bump := create_tween()
+	bump.tween_property(chunk, "rotation", chunk.rotation + randf_range(-0.08, 0.08), 0.05)
+	bump.tween_property(chunk, "rotation", 0.0, 0.09)
+	if hp > 0.0:
+		return
+	fallen_wall_chunks.erase(chunk)
+	chunk.set_meta("landed", false)
+	_float_text("¡BLOQUE DESHECHO!", chunk.position - Vector2(0.0, 58.0))
+	var collapse := create_tween().set_parallel()
+	collapse.tween_property(chunk, "scale", Vector2.ZERO, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	collapse.tween_property(chunk, "rotation", chunk.rotation + randf_range(-0.55, 0.55), 0.24)
+	collapse.chain().tween_callback(chunk.queue_free)
 
 func _manual_collect_at(world_pos: Vector2) -> bool:
 	var piece := _surface_piece_at(world_pos)
@@ -914,7 +983,8 @@ func _damage_wall(amount: float, side: String = active_side) -> void:
 	if side == "left":
 		var previous_ratio := clampf(left_hp / left_max, 0.0, 1.0)
 		left_hp -= amount
-		_wall_damage_feedback(side, previous_ratio, clampf(left_hp / left_max, 0.0, 1.0))
+		_update_world()
+		left_hp -= _wall_damage_feedback(side, previous_ratio, clampf(left_hp / left_max, 0.0, 1.0), maxf(0.0, left_hp))
 		if left_hp <= 0.0:
 			left_cleared += 1
 			left_max = FIRST_LEFT_WALL_HP * pow(1.18, left_cleared)
@@ -924,7 +994,8 @@ func _damage_wall(amount: float, side: String = active_side) -> void:
 	else:
 		var previous_ratio := clampf(right_hp / right_max, 0.0, 1.0)
 		right_hp -= amount
-		_wall_damage_feedback(side, previous_ratio, clampf(right_hp / right_max, 0.0, 1.0))
+		_update_world()
+		right_hp -= _wall_damage_feedback(side, previous_ratio, clampf(right_hp / right_max, 0.0, 1.0), maxf(0.0, right_hp))
 		if right_hp <= 0.0:
 			right_cleared += 1
 			right_max = FIRST_WALL_HP * pow(1.16, right_cleared)
@@ -933,13 +1004,21 @@ func _damage_wall(amount: float, side: String = active_side) -> void:
 			_show_toast("PARED DERECHA DESPEJADA")
 	_update_world()
 
-func _wall_damage_feedback(side: String, previous_ratio: float, current_ratio: float) -> void:
+func _wall_damage_feedback(side: String, previous_ratio: float, current_ratio: float, available_mass := INF) -> float:
 	var previous_step := floori((1.0 - previous_ratio) * 100.0 + 0.001)
 	var current_step := floori((1.0 - current_ratio) * 100.0 + 0.001)
 	var crossed := current_step - previous_step
 	if crossed <= 0:
-		return
+		return 0.0
 	_spawn_wall_chips(side, mini(4, crossed))
+	var previous_major := mini(9, floori(float(previous_step) / 10.0))
+	var current_major := mini(9, floori(float(current_step) / 10.0))
+	var reserved := 0.0
+	for fracture_number in range(previous_major + 1, current_major + 1):
+		var stored := minf(float(WALL_CHUNK_HP), maxf(0.0, available_mass - reserved))
+		if stored >= 1.0 and _spawn_fallen_wall_chunk(side, fracture_number, stored):
+			reserved += stored
+	return reserved
 
 func _spawn_wall_chips(side: String, milestones: int) -> void:
 	var free_x := _wall_free_x(side)
@@ -959,6 +1038,76 @@ func _spawn_wall_chips(side: String, milestones: int) -> void:
 			tween.tween_property(chip, "rotation", chip.rotation + direction * randf_range(1.4, 3.4), 0.56)
 			tween.tween_property(chip, "modulate:a", 0.0, 0.62).set_delay(0.18)
 			tween.chain().tween_callback(chip.queue_free)
+
+func _fracture_center(fracture_number: int) -> float:
+	return 0.25 + fmod(float(fracture_number - 1) * 0.337, 0.52)
+
+func _next_fallen_wall_chunk_slot(side: String) -> int:
+	var used := {}
+	for chunk in fallen_wall_chunks:
+		if is_instance_valid(chunk) and chunk.get_meta("side", "right") == side:
+			used[int(chunk.get_meta("slot", 0))] = true
+	for slot in range(MAX_FALLEN_WALL_CHUNKS):
+		if not used.has(slot):
+			return slot
+	return -1
+
+func _wall_chunk_texture(variant: int) -> AtlasTexture:
+	var texture := AtlasTexture.new()
+	texture.atlas = WALL_CHUNK_SHEET
+	texture.region = Rect2(variant * WALL_CHUNK_CELL, 0, WALL_CHUNK_CELL, WALL_CHUNK_CELL)
+	return texture
+
+func _spawn_fallen_wall_chunk(side: String, fracture_number: int, stored_mass: float, animate := true, preferred_slot := -1) -> bool:
+	var slot := preferred_slot if preferred_slot >= 0 else _next_fallen_wall_chunk_slot(side)
+	if slot < 0 or slot >= MAX_FALLEN_WALL_CHUNKS:
+		return false
+	var variant := posmod(fracture_number - 1, 4)
+	var direction := -1.0 if side == "left" else 1.0
+	var chunk := Sprite2D.new()
+	chunk.texture = _wall_chunk_texture(variant)
+	chunk.scale = Vector2.ONE * WALL_CHUNK_SCALE
+	chunk.flip_h = side == "left"
+	chunk.z_index = slot
+	chunk.set_meta("side", side)
+	chunk.set_meta("variant", variant)
+	chunk.set_meta("fracture_number", fracture_number)
+	chunk.set_meta("slot", slot)
+	chunk.set_meta("hp", stored_mass)
+	chunk.set_meta("max_hp", stored_mass)
+	chunk.set_meta("landed", not animate)
+	var crack := Line2D.new()
+	crack.name = "Crack"
+	crack.points = PackedVector2Array([Vector2(-92, -128), Vector2(-20, -54), Vector2(-66, 12), Vector2(46, 94)])
+	crack.width = 11.0
+	crack.default_color = Color(0.31, 0.26, 0.39, 0.88)
+	crack.visible = false
+	chunk.add_child(crack)
+	wall_chunks_layer.add_child(chunk)
+	fallen_wall_chunks.append(chunk)
+	var landing := Vector2(_mine_x(side) + direction * (42.0 + float(slot) * 112.0), _ground_y() - 51.0)
+	if not animate:
+		chunk.position = landing
+		return true
+	chunk.position = Vector2(_wall_free_x(side), _ground_y() - 360.0 + _fracture_center(fracture_number) * 360.0)
+	chunk.rotation = direction * randf_range(-0.18, 0.18)
+	var fall := create_tween().set_parallel()
+	fall.tween_property(chunk, "position", landing, 0.82).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	fall.tween_property(chunk, "rotation", direction * randf_range(0.16, 0.38), 0.82)
+	fall.chain().tween_callback(_land_fallen_wall_chunk.bind(chunk))
+	_show_toast("¡CRAC!  ·  UN TROZO DE PARED SE HA DESPRENDIDO")
+	return true
+
+func _land_fallen_wall_chunk(chunk: Variant) -> void:
+	if not is_instance_valid(chunk):
+		return
+	var sprite := chunk as Sprite2D
+	sprite.position.y = _ground_y() - 51.0
+	sprite.rotation = 0.0
+	sprite.set_meta("landed", true)
+	var impact := create_tween()
+	impact.tween_property(sprite, "scale", Vector2(WALL_CHUNK_SCALE * 1.1, WALL_CHUNK_SCALE * 0.9), 0.06)
+	impact.tween_property(sprite, "scale", Vector2.ONE * WALL_CHUNK_SCALE, 0.11).set_trans(Tween.TRANS_BACK)
 
 func _open_septum() -> void:
 	if septum_open or total_clicks < PERFORATE_CLICKS: return
@@ -1403,13 +1552,20 @@ func _change_joe_health(amount: float, pulse: bool = false) -> void:
 	create_tween().tween_property(joe_portrait, "modulate", Color.WHITE, 0.48)
 
 func _update_joe_prognosis(delta: float) -> void:
-	var pile_burden := _pile_load("left") + _pile_load("right")
+	var pile_burden := _pile_load("left") + _pile_load("right") + _fallen_wall_chunk_load()
 	var pile_drain := clampf((pile_burden - 90.0) / 900.0, 0.0, 1.0) * 0.025
 	var contamination_drain := contamination / 100.0 * 0.012 if current_phase >= 3 else 0.0
 	var tissue_drain := tissue_damage / 100.0 * 0.018 if current_phase >= 4 else 0.0
 	var infection_drain := infection / 100.0 * 0.022 if current_phase >= 5 else 0.0
 	joe_health = clampf(joe_health - (pile_drain + contamination_drain + tissue_drain + infection_drain) * delta, 0.0, 100.0)
 	joe_health_display = move_toward(joe_health_display, joe_health, delta * 9.0)
+
+func _fallen_wall_chunk_load() -> float:
+	var total := 0.0
+	for chunk in fallen_wall_chunks:
+		if is_instance_valid(chunk):
+			total += float(chunk.get_meta("hp", 0.0))
+	return total
 
 func _spawn_blood_drop() -> void:
 	if blood_drops.get_child_count() >= 24:
@@ -1725,10 +1881,37 @@ func _serialize_pile() -> Array:
 		data.append({"kind":piece.get_meta("kind", "grain"), "material":piece.get_meta("material", ""), "side":piece.get_meta("side", "right"), "value":float(piece.get_meta("value", 1.0)), "hardness":int(piece.get_meta("hardness", 0)), "max_hardness":int(piece.get_meta("max_hardness", 0)), "column":int(piece.get_meta("column", 0)), "scale":float(piece.get_meta("base_scale", 0.07)), "x_jitter":float(piece.get_meta("x_jitter", 0.0))})
 	return data
 
+func _serialize_fallen_wall_chunks() -> Array:
+	var data: Array = []
+	for chunk in fallen_wall_chunks:
+		if is_instance_valid(chunk):
+			data.append({"side":chunk.get_meta("side", "right"), "fracture":int(chunk.get_meta("fracture_number", 1)), "slot":int(chunk.get_meta("slot", 0)), "hp":float(chunk.get_meta("hp", WALL_CHUNK_HP)), "max_hp":float(chunk.get_meta("max_hp", WALL_CHUNK_HP))})
+	return data
+
 func _clear_pile() -> void:
 	for piece in loose_chunks:
 		if is_instance_valid(piece): piece.queue_free()
 	loose_chunks.clear()
+
+func _clear_fallen_wall_chunks() -> void:
+	for chunk in fallen_wall_chunks:
+		if is_instance_valid(chunk):
+			chunk.queue_free()
+	fallen_wall_chunks.clear()
+
+func _restore_fallen_wall_chunks(data: Variant) -> void:
+	_clear_fallen_wall_chunks()
+	if typeof(data) != TYPE_ARRAY:
+		return
+	for entry_value in data:
+		if typeof(entry_value) != TYPE_DICTIONARY:
+			continue
+		var entry: Dictionary = entry_value
+		var hp := maxf(1.0, float(entry.get("hp", WALL_CHUNK_HP)))
+		var side := str(entry.get("side", "right"))
+		if _spawn_fallen_wall_chunk(side, int(entry.get("fracture", 1)), hp, false, int(entry.get("slot", -1))):
+			var chunk: Sprite2D = fallen_wall_chunks.back()
+			chunk.set_meta("max_hp", maxf(hp, float(entry.get("max_hp", WALL_CHUNK_HP))))
 
 func _restore_pile(data: Variant) -> void:
 	_clear_pile()
@@ -1757,7 +1940,7 @@ func _save() -> void:
 			"right_hp":right_hp, "right_max":right_max, "left_hp":left_hp, "left_max":left_max,
 			"right_cleared":right_cleared, "left_cleared":left_cleared,
 			"septum_open":septum_open, "active_side":active_side, "levels":levels,
-			"total_clicks":total_clicks, "pile":_serialize_pile(),
+			"total_clicks":total_clicks, "pile":_serialize_pile(), "fallen_wall_chunks":_serialize_fallen_wall_chunks(),
 			"compaction_steps":compaction_steps, "compaction_announced":compaction_announced,
 			"current_phase":current_phase, "phase_work":phase_work, "joe_health":joe_health,
 			"contamination":contamination, "tissue_damage":tissue_damage, "infection":infection,
@@ -1793,6 +1976,7 @@ func _load() -> void:
 		left_max = FIRST_LEFT_WALL_HP * pow(1.18, left_cleared)
 		left_hp = left_max
 	_restore_pile(data.get("pile", []))
+	_restore_fallen_wall_chunks(data.get("fallen_wall_chunks", []))
 	var saved_steps = data.get("compaction_steps", {})
 	if typeof(saved_steps) == TYPE_DICTIONARY:
 		compaction_steps.left = int(saved_steps.get("left", 0))
@@ -1886,6 +2070,7 @@ func _new_game() -> void:
 	manual_clicks_since_burst = 0
 	phase_event_pending = true
 	_clear_pile()
+	_clear_fallen_wall_chunks()
 	if FileAccess.file_exists(save_path): DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
 	_begin_game()
 
@@ -1921,7 +2106,7 @@ func _input(event: InputEvent) -> void:
 	if click.button_index != MOUSE_BUTTON_LEFT or not click.pressed or not stage_view.get_global_rect().has_point(click.position):
 		return
 	var world_pos := stage.get_global_transform_with_canvas().affine_inverse() * click.position
-	if _manual_collect_at(world_pos):
+	if _manual_mine_fallen_wall_chunk(world_pos) or _manual_collect_at(world_pos):
 		get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:

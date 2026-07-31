@@ -24,7 +24,7 @@ Cada cambio de fase abre un diálogo que explica el nuevo problema. La adaptaci�
 4. `NARIZ EN MODO VOLCÁN`: el fondo se enrojece, caen gotas desde el techo y comienza el medidor de daño tisular. Las `PLAQUETAS TURBO` reparan el tejido mientras continúa la limpieza.
 5. `BIENVENIDOS AL ZOO`: aparecen bacterias que los peones normales ignoran por completo. Solo los cuidadores de `GUANTES DE PROTECTORA` pueden retirarlas y contener la infección.
 
-Las fases necesitan 800, 4.500, 14.000, 32.000 y 75.000 puntos de trabajo, además de usar realmente su mecánica. La barra de estabilidad muestra el progreso y la condición pendiente. La versión 7 del guardado conserva fase, acontecimientos de Joe, objetivos, pronóstico, contaminación, daño, infección, automatización, roles, recursos y estado del montón; las partidas anteriores se migran al cargar.
+Las fases necesitan 800, 4.500, 14.000, 32.000 y 75.000 puntos de trabajo, además de usar realmente su mecánica. La barra de estabilidad muestra el progreso y la condición pendiente. La versión 8 del guardado conserva fase, acontecimientos de Joe, objetivos, pronóstico, contaminación, daño, infección, automatización, roles, recursos, estado del montón y bloques desprendidos; las partidas anteriores se migran al cargar.
 
 El panel `PRUEBA DE FASES`, fijado al extremo derecho, permite saltar inmediatamente a cualquiera de las cinco fases. Conserva células, mejoras y paredes, reinicia los indicadores de esa crisis y elimina los recursos futuros al volver hacia atrás.
 
@@ -42,7 +42,7 @@ El jugador también puede intervenir directamente en la logística. Al pulsar so
 
 ## Pared y pronóstico de Joe
 
-La pared conserva su anchura completa al 100% y se reduce proporcionalmente hasta un mínimo visual del 5%. Cada punto porcentual de resistencia atravesado desprende fragmentos y añade un nuevo mordisco transparente al borde libre. Por debajo del 10% queda una tira muy fina y especialmente irregular, siempre pegada al tabique. La textura original no se modifica: el dentado vive en un shader independiente y los fragmentos en la capa de efectos.
+La pared conserva su anchura completa al 100% y se reduce proporcionalmente hasta un mínimo visual del 5%. Cada punto porcentual atravesado abre o profundiza una muesca azulada claramente acumulativa en el borde libre y desprende polvo visual. Cada 10% una de esas fracturas crece, arranca un bloque grande con la silueta inversa y lo deja caer al suelo en su propia capa. Ese bloque reserva 25 unidades reales de la pared: debe picarse, suelta polvo utilizable golpe a golpe y no duplica recursos. Los peones básicos lo priorizan y el jugador también puede minarlo directamente. Por debajo del 10% queda una tira muy fina y especialmente irregular, siempre pegada al tabique.
 
 `PRONÓSTICO DE JOE` resume la evolución global sin revelar el cuello de botella concreto. Retirar cocaína limpia de la nariz lo mejora; las nuevas rayas producen retrocesos y una montaña excesiva, la contaminación, el daño tisular o la infección lo erosionan lentamente. Llegar a cero todavía no causa una derrota: primero debe demostrar que aporta decisiones interesantes.
 

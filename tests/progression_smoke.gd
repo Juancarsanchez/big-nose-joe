@@ -34,6 +34,30 @@ func _run() -> void:
 	game._damage_wall(game.right_max * 0.01)
 	_check(game.effects.get_child_count() >= effects_before_dent + 3, "Crossing each resistance percentage must visibly shed wall fragments.")
 	game.right_hp = game.right_max
+	game._clear_fallen_wall_chunks()
+	game._damage_wall(game.right_max * 0.10)
+	_check(game.fallen_wall_chunks.size() == 1, "Every ten resistance points must detach one large, separately layered wall block.")
+	_check(is_equal_approx(game.right_hp, game.right_max * 0.90 - float(game.WALL_CHUNK_HP)), "A detached block must reserve real wall mass instead of duplicating cocaine.")
+	var fallen := game.fallen_wall_chunks[0] as Sprite2D
+	game._land_fallen_wall_chunk(fallen)
+	var detached_hp := float(fallen.get_meta("hp", 0.0))
+	var loose_before_block: int = game.loose_chunks.size()
+	game._mine_fallen_wall_chunk(fallen, 1.0)
+	_check(is_equal_approx(float(fallen.get_meta("hp", 0.0)), detached_hp - 1.0) and game.loose_chunks.size() == loose_before_block + 1, "Mining a fallen wall block must visibly release its stored powder.")
+	game._clear_fallen_wall_chunks()
+	game._clear_pile()
+	game._spawn_fallen_wall_chunk("right", 2, 2.0, false)
+	var basic_block_pawn := game.pawns.get_child(0) as Sprite2D
+	basic_block_pawn.set_meta("side", "right")
+	basic_block_pawn.set_meta("state", "working")
+	basic_block_pawn.set_meta("timer", 0.0)
+	basic_block_pawn.set_meta("did_mine", false)
+	var wall_before_block_scrape: float = game.right_hp
+	game._update_pawns(0.01)
+	_check(is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), 1.0) and is_equal_approx(game.right_hp, wall_before_block_scrape), "Basic pawns must scrape fallen blocks before returning to the main wall.")
+	game._clear_fallen_wall_chunks()
+	game._clear_pile()
+	game.right_hp = game.right_max
 	game._update_world()
 
 	# Every transport pawn contributes exactly one basal scrape before collecting.
@@ -251,6 +275,7 @@ func _run() -> void:
 	game.rocks_opened = 9
 	game.impurities_cleaned = 13
 	game.tissue_repaired = 21.0
+	game._spawn_fallen_wall_chunk("right", 3, 11.0, false)
 	game.playing = true
 	game._save()
 	game.current_phase = 1
@@ -259,10 +284,12 @@ func _run() -> void:
 	game.another_line_clock = 180.0
 	game.another_line_events = 0
 	game.joe_health = 0.0
+	game._clear_fallen_wall_chunks()
 	game._load()
-	_check(game.current_phase == 5 and is_equal_approx(game.phase_work, 321.0), "Save version 7 must preserve Joe's crisis progression.")
-	_check(is_equal_approx(game.contamination, 17.0) and is_equal_approx(game.another_line_clock, 77.0), "Save version 7 must preserve hidden contamination and Joe's event clock.")
-	_check(game.another_line_events == 4 and is_equal_approx(game.joe_health, 63.0), "Save version 7 must preserve both the evolving drop pattern and Joe's prognosis.")
+	_check(game.current_phase == 5 and is_equal_approx(game.phase_work, 321.0), "Save version 8 must preserve Joe's crisis progression.")
+	_check(is_equal_approx(game.contamination, 17.0) and is_equal_approx(game.another_line_clock, 77.0), "Save version 8 must preserve hidden contamination and Joe's event clock.")
+	_check(game.another_line_events == 4 and is_equal_approx(game.joe_health, 63.0), "Save version 8 must preserve both the evolving drop pattern and Joe's prognosis.")
+	_check(game.fallen_wall_chunks.size() == 1 and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), 11.0), "Save version 8 must preserve detached wall blocks without regenerating their mass.")
 	_check(game.rocks_opened == 9 and game.impurities_cleaned == 13 and is_equal_approx(game.tissue_repaired, 21.0), "Save version 6 must preserve mechanical phase objectives.")
 
 	var legacy := FileAccess.open(game.save_path, FileAccess.WRITE)
