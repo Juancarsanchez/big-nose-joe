@@ -42,7 +42,7 @@ const ANOTHER_LINE_INTERVAL := 180.0
 const ANOTHER_LINE_WARNING := 8.0
 const JOE_DROP_INTERVALS := [0.0, 0.0, 4.5, 4.0, 3.5, 3.0]
 const WALL_CHUNK_HP := 25
-const WALL_CHUNK_SCALE := 0.23
+const WALL_CHUNK_SCALE := 0.12
 const WALL_CHUNK_CELL := 512
 const MAX_FALLEN_WALL_CHUNKS := 4
 
@@ -284,7 +284,7 @@ func _pile_access_point(side: String) -> Vector2:
 	var fallen := _nearest_fallen_wall_chunk(side)
 	if fallen:
 		var direction := -1.0 if side == "left" else 1.0
-		return Vector2(fallen.position.x + direction * 68.0, _ground_y() - 14.0)
+		return Vector2(fallen.position.x + direction * 43.0, _ground_y() - 14.0)
 	var rightmost_column := 2
 	for piece in loose_chunks:
 		if _piece_is_in_pile(piece, side):
@@ -639,7 +639,7 @@ func _nearest_fallen_wall_chunk(side: String, from := Vector2.ZERO) -> Sprite2D:
 
 func _fallen_wall_chunk_at(world_pos: Vector2) -> Sprite2D:
 	for chunk in fallen_wall_chunks:
-		if is_instance_valid(chunk) and bool(chunk.get_meta("landed", false)) and Rect2(chunk.position - Vector2(68.0, 70.0), Vector2(136.0, 140.0)).has_point(world_pos):
+		if is_instance_valid(chunk) and bool(chunk.get_meta("landed", false)) and Rect2(chunk.position - Vector2(40.0, 42.0), Vector2(80.0, 84.0)).has_point(world_pos):
 			return chunk
 	return null
 
@@ -1085,7 +1085,7 @@ func _spawn_fallen_wall_chunk(side: String, fracture_number: int, stored_mass: f
 	chunk.add_child(crack)
 	wall_chunks_layer.add_child(chunk)
 	fallen_wall_chunks.append(chunk)
-	var landing := Vector2(_mine_x(side) + direction * (42.0 + float(slot) * 112.0), _ground_y() - 51.0)
+	var landing := Vector2(_mine_x(side) + direction * (25.0 + float(slot) * 64.0), _ground_y() - 27.0)
 	if not animate:
 		chunk.position = landing
 		return true
@@ -1102,7 +1102,7 @@ func _land_fallen_wall_chunk(chunk: Variant) -> void:
 	if not is_instance_valid(chunk):
 		return
 	var sprite := chunk as Sprite2D
-	sprite.position.y = _ground_y() - 51.0
+	sprite.position.y = _ground_y() - 27.0
 	sprite.rotation = 0.0
 	sprite.set_meta("landed", true)
 	var impact := create_tween()

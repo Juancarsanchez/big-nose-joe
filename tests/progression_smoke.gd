@@ -37,6 +37,7 @@ func _run() -> void:
 	game._clear_fallen_wall_chunks()
 	game._damage_wall(game.right_max * 0.10)
 	_check(game.fallen_wall_chunks.size() == 1, "Every ten resistance points must detach one large, separately layered wall block.")
+	_check(float(game.WALL_CHUNK_SCALE) <= 0.12, "Detached blocks must remain substantially smaller than the wall section they visibly remove.")
 	_check(is_equal_approx(game.right_hp, game.right_max * 0.90 - float(game.WALL_CHUNK_HP)), "A detached block must reserve real wall mass instead of duplicating cocaine.")
 	var fallen := game.fallen_wall_chunks[0] as Sprite2D
 	game._land_fallen_wall_chunk(fallen)
