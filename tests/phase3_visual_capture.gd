@@ -16,9 +16,10 @@ func _capture() -> void:
 	game.joe_dialog.hide()
 	game.current_phase = 3
 	game.levels = game._empty_levels()
-	game.levels.merge({"nails":3, "puncher":4, "punch_power":2, "punch_speed":2, "pawn":4, "shift":2, "box":1, "breaker":1, "smart_clump":1}, true)
+	game.levels.merge({"nails":3, "puncher":4, "punch_power":2, "punch_speed":2, "pawn":4, "shift":2, "box":1, "breaker":1}, true)
 	game.cells = 6200.0
-	game.contamination = 64.0
+	game.contamination = 100.0
+	game._update_box_jam(0.0)
 	game.phase_work = 860.0
 	game._rebuild_pawns()
 	game._rebuild_punchers()

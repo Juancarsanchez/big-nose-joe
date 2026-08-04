@@ -22,6 +22,9 @@ func _capture() -> void:
 	game.right_hp = game.right_max
 	game._damage_wall(game.right_max * 0.10)
 	await create_timer(1.0).timeout
+	game.levels.pawn = 4
+	game._rebuild_pawns()
+	game._update_pawns(30.0)
 	game._update_ui()
 	await process_frame
 	var args := OS.get_cmdline_user_args()

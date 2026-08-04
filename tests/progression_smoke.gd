@@ -23,7 +23,8 @@ func _run() -> void:
 	game.joe_dialog.hide()
 	game.playing = true
 
-	_check(float(game.PHASES[0].target) >= 800.0 and float(game.PHASES[3].target) >= 32000.0, "Phase targets must leave enough time for each mechanic to develop.")
+	_check(float(game.PHASES[0].target) >= 1500.0 and float(game.PHASES[3].target) >= 80000.0, "Phase targets must leave substantially more time for each mechanic to develop.")
+	_check(not game.levels.has("smart_clump"), "Normal-pawn smart clumping must be removed completely.")
 	game.right_hp = game.right_max * 0.01
 	game._update_world()
 	_check(is_equal_approx(game.right_visual.scale.x, 0.05), "A nearly exhausted cocaine wall must remain as a five-percent sliver.")
@@ -38,27 +39,71 @@ func _run() -> void:
 	game._damage_wall(game.right_max * 0.10)
 	_check(game.fallen_wall_chunks.size() == 1, "Every ten resistance points must detach one large, separately layered wall block.")
 	_check(float(game.WALL_CHUNK_SCALE) <= 0.12, "Detached blocks must remain substantially smaller than the wall section they visibly remove.")
-	_check(is_equal_approx(game.right_hp, game.right_max * 0.90 - float(game.WALL_CHUNK_HP)), "A detached block must reserve real wall mass instead of duplicating cocaine.")
+	_check(is_equal_approx(game.right_hp, game.right_max * 0.90 - game.WALL_CHUNK_MASS), "A detached block must reserve real wall mass instead of duplicating cocaine.")
 	var fallen := game.fallen_wall_chunks[0] as Sprite2D
 	game._land_fallen_wall_chunk(fallen)
 	var detached_hp := float(fallen.get_meta("hp", 0.0))
+	_check(detached_hp >= 20.0 and fallen.get_node_or_null("HealthFill") == null and fallen.get_node_or_null("HealthBack") == null, "A fallen wall block must keep substantial health without the stray horizontal bar.")
 	var loose_before_block: int = game.loose_chunks.size()
 	game._mine_fallen_wall_chunk(fallen, 1.0)
-	_check(is_equal_approx(float(fallen.get_meta("hp", 0.0)), detached_hp - 1.0) and game.loose_chunks.size() == loose_before_block + 1, "Mining a fallen wall block must visibly release its stored powder.")
+	_check(is_instance_valid(fallen) and is_equal_approx(float(fallen.get_meta("hp", 0.0)), detached_hp - 1.0) and game.loose_chunks.size() == loose_before_block + 1, "A wall block must survive one hit and visibly release part of its stored powder.")
+	game.levels.nails = 100
+	var hp_before_power_click := float(fallen.get_meta("hp", 0.0))
+	game._manual_mine_fallen_wall_chunk(fallen.position)
+	_check(is_instance_valid(fallen) and is_equal_approx(float(fallen.get_meta("hp", 0.0)), hp_before_power_click - game.WALL_CHUNK_MAX_CLICK_DAMAGE), "Even extreme click upgrades must require several hits to break a fallen wall block.")
+	game.levels.nails = 0
 	game._clear_fallen_wall_chunks()
 	game._clear_pile()
 	game._spawn_fallen_wall_chunk("right", 2, 2.0, false)
+	var blocking_chunk := game.fallen_wall_chunks[0] as Sprite2D
 	var basic_block_pawn := game.pawns.get_child(0) as Sprite2D
 	basic_block_pawn.set_meta("side", "right")
-	basic_block_pawn.set_meta("state", "working")
-	basic_block_pawn.set_meta("timer", 0.0)
-	basic_block_pawn.set_meta("did_mine", false)
+	basic_block_pawn.set_meta("state", "to_pile")
+	basic_block_pawn.position = Vector2(game._box_x(), game._ground_y() - 14.0)
 	var wall_before_block_scrape: float = game.right_hp
-	game._update_pawns(0.01)
-	_check(is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), 1.0) and is_equal_approx(game.right_hp, wall_before_block_scrape), "Basic pawns must scrape fallen blocks before returning to the main wall.")
+	var block_hp_before_pawn: float = float(blocking_chunk.get_meta("hp", 0.0))
+	game._update_pawns(30.0)
+	_check(is_equal_approx(float(blocking_chunk.get_meta("hp", 0.0)), block_hp_before_pawn) and is_equal_approx(game.right_hp, wall_before_block_scrape), "Only the player may damage a fallen wall block.")
+	_check(basic_block_pawn.position.x >= blocking_chunk.position.x + 42.0 and basic_block_pawn.get_meta("state", "") == "to_pile", "An empty pawn must wait on the box side of a fallen wall block.")
+	_check(blocking_chunk.get_parent() == game.wall_chunks_layer and game.wall_chunks_layer.get_index() > game.chunks.get_index(), "Fallen wall blocks must stay in a foreground layer above loose powder.")
+	game.levels.puncher = 1
+	game._rebuild_punchers()
+	game._update_punchers(30.0)
+	_check(is_equal_approx(float(blocking_chunk.get_meta("hp", 0.0)), block_hp_before_pawn) and is_zero_approx(game._auto_hit_rate()), "Pugilists must pause and leave the obstruction exclusively to the player.")
+	game.levels.puncher = 0
+	game._rebuild_punchers()
+	await process_frame
+	var block_click_position := blocking_chunk.position
+	var block_clicks := 0
+	while not game.fallen_wall_chunks.is_empty() and block_clicks < 30:
+		game._manual_mine_fallen_wall_chunk(block_click_position)
+		block_clicks += 1
+	_check(game.fallen_wall_chunks.is_empty() and block_clicks == int(game.WALL_CHUNK_HEALTH), "A fresh block must require its full resistance in manual clicks before the route opens.")
+	var blocked_x := basic_block_pawn.position.x
+	game._update_pawns(0.5)
+	_check(basic_block_pawn.position.x < blocked_x, "Workers must resume their route as soon as the player clears the block.")
 	game._clear_fallen_wall_chunks()
 	game._clear_pile()
 	game.right_hp = game.right_max
+	game._update_world()
+	game.right_hp = game.right_max * 0.501
+	game._update_world()
+	_check(not game.break_button.visible, "The nose tunneller must stay locked above fifty-percent wall health.")
+	game.right_hp = game.right_max * 0.50
+	game._update_world()
+	_check(game.break_button.visible, "The nose tunneller must unlock exactly at fifty-percent right-wall health.")
+	game._open_septum()
+	_check(game.septum_open and game.active_side == "left", "The nose tunneller must open the second fossa for active play.")
+	game.septum_open = false
+	game.active_side = "right"
+	game.right_hp = 1.0
+	game.right_cleared = 0
+	game._damage_wall(1.0, "right")
+	_check(is_equal_approx(game.right_hp, 0.0) and is_equal_approx(game.right_visual.scale.x, 0.0), "An exhausted wall must disappear instead of resetting visually.")
+	game._damage_wall(1.0, "right")
+	_check(is_equal_approx(game.right_hp, 0.0), "Further damage must never regenerate an exhausted wall.")
+	game.right_hp = game.right_max
+	game.right_cleared = 0
 	game._update_world()
 
 	# Every transport pawn contributes exactly one basal scrape before collecting.
@@ -201,8 +246,22 @@ func _run() -> void:
 	_check(not game.contamination_meter.visible, "Exact contamination metrics must stay hidden from the player.")
 	_check(game.box.modulate != Color.WHITE, "The box itself must visibly become dirty.")
 	_check(not game.pressure_label.text.contains("%") and not game.pressure_label.text.contains("CÉLULAS"), "The normal UI must describe the box qualitatively without exposing its formula.")
-
+	game.contamination = 100.0
+	game.box_jammed = false
+	game._update_box_jam(0.0)
+	var frozen_position := pawn.position
+	game._update_pawns(1.0)
+	_check(game.box_jammed and pawn.position == frozen_position and is_zero_approx(game._rate()) and is_zero_approx(game._auto_hit_rate()), "A fully contaminated box must visibly stop every worker and all automatic production.")
+	var blocked_grain: Sprite2D = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
+	_check(game._manual_collect_at(blocked_grain.position) and not bool(blocked_grain.get_meta("carried", false)), "A jammed box must reject manual deliveries too.")
 	game.levels.detector = 1
+	game._update_box_jam(4.0)
+	_check(game.box_jammed and game.contamination < 100.0, "Quimioreceptors must clean a jammed box slowly while visible workers remain stopped.")
+	game.contamination = 85.0
+	game._update_box_jam(0.0)
+	_check(not game.box_jammed, "Workers must resume only after the emergency cleaning threshold is reached.")
+	game._clear_pile()
+
 	game._rebuild_pawns()
 	for child in game.pawns.get_children():
 		var candidate := child as Sprite2D
@@ -232,6 +291,11 @@ func _run() -> void:
 	game._update_crisis(1.0)
 	_check(game.tissue_damage < 50.0, "Enough platelets must reduce tissue damage while cleaning continues.")
 	_check(game.platelets.get_child_count() == 4, "Platelet upgrades must create visible layered workers.")
+	game.box_jammed = true
+	var damage_before_jammed_repair: float = game.tissue_damage
+	game._update_crisis(1.0)
+	_check(game.tissue_damage > damage_before_jammed_repair, "A full-box jam must stop platelet repair as well as transport and punching.")
+	game.box_jammed = false
 	_check(game.damage_meter.visible and game.blood_drops.get_child_count() > 0, "Phase 4 must show a damage meter and falling blood drops.")
 	_check(game.get_node_or_null("World/StageViewport/Stage/Layer46_Crisis/LeftWound") == null, "The old red wound domes must be removed.")
 
@@ -287,10 +351,10 @@ func _run() -> void:
 	game.joe_health = 0.0
 	game._clear_fallen_wall_chunks()
 	game._load()
-	_check(game.current_phase == 5 and is_equal_approx(game.phase_work, 321.0), "Save version 8 must preserve Joe's crisis progression.")
-	_check(is_equal_approx(game.contamination, 17.0) and is_equal_approx(game.another_line_clock, 77.0), "Save version 8 must preserve hidden contamination and Joe's event clock.")
-	_check(game.another_line_events == 4 and is_equal_approx(game.joe_health, 63.0), "Save version 8 must preserve both the evolving drop pattern and Joe's prognosis.")
-	_check(game.fallen_wall_chunks.size() == 1 and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), 11.0), "Save version 8 must preserve detached wall blocks without regenerating their mass.")
+	_check(game.current_phase == 5 and is_equal_approx(game.phase_work, 321.0), "Save version 9 must preserve Joe's crisis progression.")
+	_check(is_equal_approx(game.contamination, 17.0) and is_equal_approx(game.another_line_clock, 77.0), "Save version 9 must preserve hidden contamination and Joe's event clock.")
+	_check(game.another_line_events == 4 and is_equal_approx(game.joe_health, 63.0), "Save version 9 must preserve both the evolving drop pattern and Joe's prognosis.")
+	_check(game.fallen_wall_chunks.size() == 1 and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), game.WALL_CHUNK_HEALTH) and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("mass", 0.0)), 11.0), "Save version 9 must preserve wall-block health and mass independently.")
 	_check(game.rocks_opened == 9 and game.impurities_cleaned == 13 and is_equal_approx(game.tissue_repaired, 21.0), "Save version 6 must preserve mechanical phase objectives.")
 
 	var legacy := FileAccess.open(game.save_path, FileAccess.WRITE)
@@ -299,7 +363,7 @@ func _run() -> void:
 	game._load()
 	_check(game.current_phase == 2, "Version 2 saves with compaction must migrate into the avalanche phase.")
 	_check(game.levels.has("handlers") and int(game.levels.handlers) == 0, "Legacy saves must receive every new adaptation key.")
-	_check(game.levels.has("smart_clump") and int(game.levels.smart_clump) == 0, "Legacy saves must receive the smart-clumping adaptation.")
+	_check(not game.levels.has("smart_clump"), "Legacy saves must discard the removed smart-clumping adaptation.")
 	_check(game.levels.has("click_burst") and game.levels.has("click_rhythm"), "Legacy saves must receive the new manual-click adaptations.")
 	_check(game.puncher_unlocked, "Legacy saves beyond phase 1 must keep the pugilist branch available.")
 

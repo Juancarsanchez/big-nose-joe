@@ -1,7 +1,7 @@
 extends Control
 
 const SAVE := "user://big_nose_joe.save"
-const SAVE_VERSION := 8
+const SAVE_VERSION := 9
 const ProgressionData = preload("res://scripts/progression_data.gd")
 const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
@@ -10,9 +10,9 @@ const STAGE_WIDTH := 5200.0
 const SEPTUM_X := 2600.0
 const WORLD_SCALE := 0.68
 const FLOOR_HEIGHT := 95.0
-const FIRST_WALL_HP := 20000.0
-const FIRST_LEFT_WALL_HP := 30000.0
-const PERFORATE_CLICKS := 40000
+const FIRST_WALL_HP := 120000.0
+const FIRST_LEFT_WALL_HP := 180000.0
+const TUNNEL_UNLOCK_RATIO := 0.50
 const EDGE_SIZE := 34.0
 const PAN_SPEED := 1050.0
 const GRAIN_SPACING := 10.0
@@ -41,7 +41,9 @@ const JOE_RECOVERY_PER_CLEAN_UNIT := 0.01
 const ANOTHER_LINE_INTERVAL := 180.0
 const ANOTHER_LINE_WARNING := 8.0
 const JOE_DROP_INTERVALS := [0.0, 0.0, 4.5, 4.0, 3.5, 3.0]
-const WALL_CHUNK_HP := 25
+const WALL_CHUNK_MASS := 25.0
+const WALL_CHUNK_HEALTH := 24.0
+const WALL_CHUNK_MAX_CLICK_DAMAGE := 3.0
 const WALL_CHUNK_SCALE := 0.12
 const WALL_CHUNK_CELL := 512
 const MAX_FALLEN_WALL_CHUNKS := 4
@@ -64,7 +66,7 @@ const WALL_CHUNK_SHEET := preload("res://assets/art/gameplay/sprites/cocaine_wal
 @onready var pawns: Control = $World/StageViewport/Stage/Layer60_Pawns
 @onready var punchers: Control = $World/StageViewport/Stage/Layer58_Punchers
 @onready var chunks: Control = $World/StageViewport/Stage/Layer50_Chunks
-@onready var wall_chunks_layer: Control = $World/StageViewport/Stage/Layer48_WallChunks
+@onready var wall_chunks_layer: Control = $World/StageViewport/Stage/Layer52_WallChunks
 @onready var platelets: Control = $World/StageViewport/Stage/Layer55_Platelets
 @onready var effects: Control = $World/StageViewport/Stage/Layer70_Effects
 @onready var blood_wash: ColorRect = $World/StageViewport/Stage/Layer46_Crisis/BloodWash
@@ -139,6 +141,7 @@ var bacteria_clock := 0.0
 var blood_drop_clock := 0.0
 var punch_clock := 0.0
 var contamination_band := 0
+var box_jammed := false
 var another_line_clock := ANOTHER_LINE_INTERVAL
 var another_line_wave := 0
 var another_line_drop_clock := 0.0
@@ -213,6 +216,7 @@ func _process(delta: float) -> void:
 	_update_camera(delta)
 	_update_another_line(delta)
 	_update_crisis(delta)
+	_update_box_jam(delta)
 	_update_joe_prognosis(delta)
 	_update_punchers(delta)
 	_update_pawns(delta)
@@ -253,6 +257,9 @@ func _ground_y() -> float:
 func _mine_x(side: String = active_side) -> float:
 	return 2418.0 if side == "left" else 2782.0
 
+func _wall_hp(side: String) -> float:
+	return left_hp if side == "left" else right_hp
+
 func _pile_center(side: String) -> float:
 	return _mine_x(side) + (-58.0 if side == "left" else 58.0)
 
@@ -268,8 +275,7 @@ func _pawn_speed() -> float:
 	return BASE_PAWN_SPEED * (1.0 + float(levels.shift) * 0.18) * crisis_factor
 
 func _transport_capacity() -> int:
-	var capacity := BASE_CAPACITY + int(levels.box)
-	return maxi(6, capacity) if int(levels.smart_clump) > 0 else capacity
+	return BASE_CAPACITY + int(levels.box)
 
 func _deposit_duration() -> float:
 	return 0.30 / _deposit_speed_multiplier()
@@ -280,11 +286,21 @@ func _deposit_speed_multiplier() -> float:
 func _box_yield_multiplier() -> float:
 	return lerpf(1.0, 0.40, contamination / 100.0) if current_phase >= 3 else 1.0
 
+func _update_box_jam(delta: float) -> void:
+	if current_phase < 3:
+		box_jammed = false
+		return
+	if not box_jammed and contamination >= 99.9:
+		box_jammed = true
+		_show_toast("CAJA ATASCADA  ·  TODOS PARADOS")
+	if box_jammed and int(levels.detector) > 0:
+		contamination = maxf(0.0, contamination - float(levels.detector) * 0.25 * delta)
+	if box_jammed and contamination <= 85.0:
+		box_jammed = false
+		_show_toast("LA CAJA VUELVE A TRAGAR")
+	_update_box()
+
 func _pile_access_point(side: String) -> Vector2:
-	var fallen := _nearest_fallen_wall_chunk(side)
-	if fallen:
-		var direction := -1.0 if side == "left" else 1.0
-		return Vector2(fallen.position.x + direction * 43.0, _ground_y() - 14.0)
 	var rightmost_column := 2
 	for piece in loose_chunks:
 		if _piece_is_in_pile(piece, side):
@@ -320,6 +336,9 @@ func _update_pawns(delta: float) -> void:
 	for node in pawns.get_children():
 		var pawn := node as Sprite2D
 		if not pawn: continue
+		if box_jammed:
+			pawn.rotation = 0.0
+			continue
 		var state: String = pawn.get_meta("state", "to_pile")
 		var side: String = pawn.get_meta("side", active_side)
 		var speed := _pawn_speed() * (1.0 + float(int(pawn.get_meta("index", 0)) % 3) * 0.025)
@@ -328,6 +347,13 @@ func _update_pawns(delta: float) -> void:
 		var depot := Vector2(_box_x() + lane_x, floor_y)
 		var work_point := _pile_access_point(side) + Vector2(lane_x, 0.0)
 		if state == "to_pile":
+			var obstruction := _nearest_fallen_wall_chunk(side, pawn.position)
+			if obstruction:
+				var queue_offset := float(int(pawn.get_meta("index", 0))) * 13.0
+				var stop := Vector2(obstruction.position.x + 43.0 + queue_offset, floor_y)
+				pawn.position = pawn.position.move_toward(stop, speed * delta)
+				_set_pawn_carrying(pawn, false)
+				continue
 			pawn.position = pawn.position.move_toward(work_point, speed * delta)
 			_set_pawn_carrying(pawn, false)
 			if pawn.position.distance_to(work_point) < 1.0:
@@ -341,10 +367,7 @@ func _update_pawns(delta: float) -> void:
 			pawn.position.x = work_point.x + sin(Time.get_ticks_msec() * 0.018 + int(pawn.get_meta("index", 0))) * 1.8
 			if timer <= 0.0:
 				if not bool(pawn.get_meta("did_mine", false)):
-					var fallen := _nearest_fallen_wall_chunk(side)
-					if fallen:
-						_mine_fallen_wall_chunk(fallen, 1.0)
-					else:
+					if _wall_hp(side) > 0.0:
 						_damage_wall(1.0, side)
 						_spawn_chunk(Vector2(_mine_x(side) + lane_x * 0.35, _ground_y() - 245.0), 1.0, side)
 					pawn.set_meta("did_mine", true)
@@ -436,7 +459,7 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 	piece.set_meta("side", side)
 	piece.set_meta("column", column)
 	piece.set_meta("x_jitter", randf_range(-3.8, 3.8))
-	piece.set_meta("height", ROCK_HEIGHT if kind == "rock" else (15.0 if kind == "smart_clump" else (10.0 if kind == "bacteria" else GRAIN_HEIGHT)))
+	piece.set_meta("height", ROCK_HEIGHT if kind == "rock" else (10.0 if kind == "bacteria" else GRAIN_HEIGHT))
 	piece.set_meta("material", material)
 	piece.set_meta("landed", true)
 	piece.set_meta("carried", false)
@@ -451,8 +474,6 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 		crack.default_color = Color(0.33, 0.3, 0.38, 0.82)
 		crack.visible = false
 		piece.add_child(crack)
-	elif kind == "smart_clump":
-		piece.modulate = Color("dcebf2")
 	elif kind == "impurity":
 		if material == "serrín": piece.modulate = Color("db8730")
 		elif material == "yeso": piece.modulate = Color("8ea8c4")
@@ -535,7 +556,7 @@ func _movable_top_piece(side: String, column: int) -> Sprite2D:
 			continue
 		if not top or piece.position.y < top.position.y:
 			top = piece
-	if top and top.get_meta("kind", "grain") in ["rock", "smart_clump"]:
+	if top and top.get_meta("kind", "grain") == "rock":
 		return null
 	return top
 
@@ -607,7 +628,7 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 		tween.tween_property(piece, "rotation", randf_range(-0.12, 0.12), 0.22)
 	_settle_surface(side, maxi(2, capacity))
 	_restack_pile(side)
-	return _consolidate_cargo(cargo, side, pawn)
+	return cargo
 
 func _surface_piece_at(world_pos: Vector2) -> Sprite2D:
 	var side := "left" if world_pos.x < SEPTUM_X else "right"
@@ -648,7 +669,7 @@ func _manual_mine_fallen_wall_chunk(world_pos: Vector2) -> bool:
 	if not chunk:
 		return false
 	total_clicks += 1
-	var hit := minf(_click_power(), float(chunk.get_meta("hp", 0.0)))
+	var hit := minf(minf(WALL_CHUNK_MAX_CLICK_DAMAGE, 1.0 + float(levels.nails) * 0.25), float(chunk.get_meta("hp", 0.0)))
 	_mine_fallen_wall_chunk(chunk, hit)
 	_float_text("BLOQUE  -%s" % _number(hit), world_pos - Vector2(0.0, 38.0))
 	return true
@@ -656,15 +677,23 @@ func _manual_mine_fallen_wall_chunk(world_pos: Vector2) -> bool:
 func _mine_fallen_wall_chunk(chunk: Sprite2D, amount: float) -> void:
 	if not is_instance_valid(chunk) or amount <= 0.0:
 		return
-	var hp := maxf(0.0, float(chunk.get_meta("hp", 0.0)) - amount)
+	var previous_hp := float(chunk.get_meta("hp", 0.0))
+	var max_hp := maxf(1.0, float(chunk.get_meta("max_hp", WALL_CHUNK_HEALTH)))
+	var damage := minf(amount, previous_hp)
+	var hp := maxf(0.0, previous_hp - damage)
+	var mass := float(chunk.get_meta("mass", WALL_CHUNK_MASS))
+	var max_mass := maxf(0.001, float(chunk.get_meta("max_mass", WALL_CHUNK_MASS)))
+	var released := mass if hp <= 0.0 else minf(mass, max_mass * damage / max_hp)
 	var side: String = chunk.get_meta("side", "right")
 	chunk.set_meta("hp", hp)
+	chunk.set_meta("mass", maxf(0.0, mass - released))
 	var column := roundi((chunk.position.x - _pile_center(side)) / GRAIN_SPACING)
-	_spawn_chunk(chunk.position - Vector2(0.0, 48.0), amount, side, column)
+	if released > 0.0:
+		_spawn_chunk(chunk.position - Vector2(0.0, 34.0), released, side, column)
 	var crack := chunk.get_node_or_null("Crack") as Line2D
 	if crack:
 		crack.visible = true
-		crack.modulate.a = 0.25 + (1.0 - hp / maxf(1.0, float(chunk.get_meta("max_hp", WALL_CHUNK_HP)))) * 0.75
+		crack.modulate.a = 0.25 + (1.0 - hp / max_hp) * 0.75
 	var bump := create_tween()
 	bump.tween_property(chunk, "rotation", chunk.rotation + randf_range(-0.08, 0.08), 0.05)
 	bump.tween_property(chunk, "rotation", 0.0, 0.09)
@@ -682,6 +711,9 @@ func _manual_collect_at(world_pos: Vector2) -> bool:
 	var piece := _surface_piece_at(world_pos)
 	if not piece:
 		return false
+	if box_jammed:
+		_float_text("LA CAJA ESTÁ ATASCADA", world_pos)
+		return true
 	var kind: String = piece.get_meta("kind", "grain")
 	if kind == "rock":
 		_float_text("DEMASIADO APELMAZADA", world_pos)
@@ -744,31 +776,6 @@ func _finish_manual_delivery(piece: Variant) -> void:
 	_box_bump()
 	_check_phase_progress()
 	_update_ui()
-
-func _consolidate_cargo(cargo: Array, side: String, pawn: Sprite2D) -> Array:
-	if int(levels.smart_clump) == 0:
-		return cargo
-	while true:
-		var grains: Array[Sprite2D] = []
-		for piece_value in cargo:
-			var piece := piece_value as Sprite2D
-			if is_instance_valid(piece) and piece.get_meta("kind", "grain") == "grain":
-				grains.append(piece)
-				if grains.size() == 6: break
-		if grains.size() < 6: break
-		var value := 0.0
-		for grain in grains:
-			value += float(grain.get_meta("value", 1.0))
-			cargo.erase(grain)
-			loose_chunks.erase(grain)
-			grain.queue_free()
-		var clump := _create_piece("smart_clump", side, value, 0, _constrain_column(side, 0), 0.145)
-		clump.set_meta("carried", true)
-		clump.z_index = 20
-		clump.position = _cargo_position(pawn, cargo.size(), _transport_capacity())
-		cargo.append(clump)
-		_float_text("6 → 1", pawn.position - Vector2(0.0, 24.0))
-	return cargo
 
 func _cargo_position(pawn: Sprite2D, index: int, capacity: int) -> Vector2:
 	var columns := mini(3, capacity)
@@ -958,22 +965,22 @@ func _rock_count(side: String) -> int:
 	return count
 
 func _click_wall(side: String) -> void:
-	if side == "left" and not septum_open: return
+	if (side == "left" and not septum_open) or _wall_hp(side) <= 0.0: return
 	active_side = side
 	for node in punchers.get_children():
 		node.set_meta("side", side)
 		_place_puncher(node as Sprite2D)
 	total_clicks += 1
-	var hit := _click_power()
+	var hit := minf(_click_power(), _wall_hp(side))
 	_damage_wall(hit, side)
 	_spawn_chunk(Vector2(_mine_x(side), _ground_y() - randf_range(160.0, 310.0)), hit, side)
 	_float_text("-%s" % _number(hit), Vector2(_mine_x(side), _ground_y() - 280.0))
-	if int(levels.click_burst) > 0:
+	if int(levels.click_burst) > 0 and _wall_hp(side) > 0.0:
 		manual_clicks_since_burst += 1
 		var threshold := maxi(6, 10 - int(levels.click_rhythm))
 		if manual_clicks_since_burst >= threshold:
 			manual_clicks_since_burst = 0
-			var burst := int(levels.click_burst) * 3
+			var burst := mini(int(levels.click_burst) * 3, ceili(_wall_hp(side)))
 			_damage_wall(float(burst), side)
 			for grain in range(burst):
 				_spawn_chunk(Vector2(_mine_x(side) + randf_range(-18.0, 18.0), _ground_y() - randf_range(190.0, 330.0)), 1.0, side)
@@ -981,27 +988,25 @@ func _click_wall(side: String) -> void:
 
 func _damage_wall(amount: float, side: String = active_side) -> void:
 	if side == "left":
+		if left_hp <= 0.0: return
 		var previous_ratio := clampf(left_hp / left_max, 0.0, 1.0)
-		left_hp -= amount
+		left_hp = maxf(0.0, left_hp - amount)
 		_update_world()
-		left_hp -= _wall_damage_feedback(side, previous_ratio, clampf(left_hp / left_max, 0.0, 1.0), maxf(0.0, left_hp))
-		if left_hp <= 0.0:
-			left_cleared += 1
-			left_max = FIRST_LEFT_WALL_HP * pow(1.18, left_cleared)
-			left_hp = left_max
+		left_hp = maxf(0.0, left_hp - _wall_damage_feedback(side, previous_ratio, clampf(left_hp / left_max, 0.0, 1.0), left_hp))
+		if left_hp <= 0.0 and left_cleared == 0:
+			left_cleared = 1
 			_change_joe_health(3.0, true)
-			_show_toast("PARED IZQUIERDA DESPEJADA")
+			_show_toast("PARED IZQUIERDA AGOTADA")
 	else:
+		if right_hp <= 0.0: return
 		var previous_ratio := clampf(right_hp / right_max, 0.0, 1.0)
-		right_hp -= amount
+		right_hp = maxf(0.0, right_hp - amount)
 		_update_world()
-		right_hp -= _wall_damage_feedback(side, previous_ratio, clampf(right_hp / right_max, 0.0, 1.0), maxf(0.0, right_hp))
-		if right_hp <= 0.0:
-			right_cleared += 1
-			right_max = FIRST_WALL_HP * pow(1.16, right_cleared)
-			right_hp = right_max
+		right_hp = maxf(0.0, right_hp - _wall_damage_feedback(side, previous_ratio, clampf(right_hp / right_max, 0.0, 1.0), right_hp))
+		if right_hp <= 0.0 and right_cleared == 0:
+			right_cleared = 1
 			_change_joe_health(3.0, true)
-			_show_toast("PARED DERECHA DESPEJADA")
+			_show_toast("PARED DERECHA AGOTADA")
 	_update_world()
 
 func _wall_damage_feedback(side: String, previous_ratio: float, current_ratio: float, available_mass := INF) -> float:
@@ -1015,7 +1020,7 @@ func _wall_damage_feedback(side: String, previous_ratio: float, current_ratio: f
 	var current_major := mini(9, floori(float(current_step) / 10.0))
 	var reserved := 0.0
 	for fracture_number in range(previous_major + 1, current_major + 1):
-		var stored := minf(float(WALL_CHUNK_HP), maxf(0.0, available_mass - reserved))
+		var stored := minf(WALL_CHUNK_MASS, maxf(0.0, available_mass - reserved))
 		if stored >= 1.0 and _spawn_fallen_wall_chunk(side, fracture_number, stored):
 			reserved += stored
 	return reserved
@@ -1063,7 +1068,6 @@ func _spawn_fallen_wall_chunk(side: String, fracture_number: int, stored_mass: f
 	if slot < 0 or slot >= MAX_FALLEN_WALL_CHUNKS:
 		return false
 	var variant := posmod(fracture_number - 1, 4)
-	var direction := -1.0 if side == "left" else 1.0
 	var chunk := Sprite2D.new()
 	chunk.texture = _wall_chunk_texture(variant)
 	chunk.scale = Vector2.ONE * WALL_CHUNK_SCALE
@@ -1073,8 +1077,10 @@ func _spawn_fallen_wall_chunk(side: String, fracture_number: int, stored_mass: f
 	chunk.set_meta("variant", variant)
 	chunk.set_meta("fracture_number", fracture_number)
 	chunk.set_meta("slot", slot)
-	chunk.set_meta("hp", stored_mass)
-	chunk.set_meta("max_hp", stored_mass)
+	chunk.set_meta("hp", WALL_CHUNK_HEALTH)
+	chunk.set_meta("max_hp", WALL_CHUNK_HEALTH)
+	chunk.set_meta("mass", stored_mass)
+	chunk.set_meta("max_mass", stored_mass)
 	chunk.set_meta("landed", not animate)
 	var crack := Line2D.new()
 	crack.name = "Crack"
@@ -1085,17 +1091,17 @@ func _spawn_fallen_wall_chunk(side: String, fracture_number: int, stored_mass: f
 	chunk.add_child(crack)
 	wall_chunks_layer.add_child(chunk)
 	fallen_wall_chunks.append(chunk)
-	var landing := Vector2(_mine_x(side) + direction * (25.0 + float(slot) * 64.0), _ground_y() - 27.0)
+	var landing := Vector2(_pile_center(side) + 78.0 + float(slot) * 64.0, _ground_y() - 27.0)
 	if not animate:
 		chunk.position = landing
 		return true
 	chunk.position = Vector2(_wall_free_x(side), _ground_y() - 360.0 + _fracture_center(fracture_number) * 360.0)
-	chunk.rotation = direction * randf_range(-0.18, 0.18)
+	chunk.rotation = randf_range(-0.18, 0.18)
 	var fall := create_tween().set_parallel()
 	fall.tween_property(chunk, "position", landing, 0.82).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	fall.tween_property(chunk, "rotation", direction * randf_range(0.16, 0.38), 0.82)
+	fall.tween_property(chunk, "rotation", randf_range(-0.38, 0.38), 0.82)
 	fall.chain().tween_callback(_land_fallen_wall_chunk.bind(chunk))
-	_show_toast("¡CRAC!  ·  UN TROZO DE PARED SE HA DESPRENDIDO")
+	_show_toast("¡PASO BLOQUEADO!  ·  PICA EL BLOQUE A MANO")
 	return true
 
 func _land_fallen_wall_chunk(chunk: Variant) -> void:
@@ -1110,7 +1116,7 @@ func _land_fallen_wall_chunk(chunk: Variant) -> void:
 	impact.tween_property(sprite, "scale", Vector2.ONE * WALL_CHUNK_SCALE, 0.11).set_trans(Tween.TRANS_BACK)
 
 func _open_septum() -> void:
-	if septum_open or total_clicks < PERFORATE_CLICKS: return
+	if septum_open or right_hp / right_max > TUNNEL_UNLOCK_RATIO: return
 	septum_open = true
 	active_side = "left"
 	camera_goal = maxf(0.0, SEPTUM_X - _visible_world_width() * 0.72)
@@ -1118,23 +1124,24 @@ func _open_septum() -> void:
 	_rebuild_pawns()
 	_rebuild_punchers()
 	_update_ui()
-	_show_toast("TABIQUE PERFORADO  ·  PASO A LA IZQUIERDA")
+	_show_toast("TUNELADORA DE NARICES  ·  SEGUNDA FOSA ABIERTA")
 	_save()
 
 func _update_world() -> void:
 	septum_gate.visible = not septum_open
 	septum_hole.visible = septum_open
-	left_button.disabled = not septum_open
+	left_button.disabled = not septum_open or left_hp <= 0.0
+	right_button.disabled = right_hp <= 0.0
 	left_visual.modulate = Color.WHITE if septum_open else Color(0.42, 0.42, 0.48)
 	left_caption.text = "FOSA IZQUIERDA" if septum_open else "FOSA IZQUIERDA  ·  BLOQUEADA"
-	break_button.visible = current_phase >= 2 and not septum_open and total_clicks >= PERFORATE_CLICKS
-	break_button.text = "PERFORAR TABIQUE\nMEJORA DESBLOQUEADA  ·  %s CLICS" % _number(total_clicks)
+	break_button.visible = not septum_open and right_hp / right_max <= TUNNEL_UNLOCK_RATIO
+	break_button.text = "TUNELADORA DE NARICES\nABRIR PASO A LA SEGUNDA FOSA"
 	right_visual.pivot_offset = Vector2(0.0, right_visual.size.y)
 	left_visual.pivot_offset = Vector2(left_visual.size.x, left_visual.size.y)
 	var right_ratio := clampf(right_hp / right_max, 0.0, 1.0)
 	var left_ratio := clampf(left_hp / left_max, 0.0, 1.0)
-	right_visual.scale.x = maxf(0.05, right_ratio)
-	left_visual.scale.x = maxf(0.05, left_ratio)
+	right_visual.scale.x = 0.0 if right_ratio <= 0.0 else maxf(0.05, right_ratio)
+	left_visual.scale.x = 0.0 if left_ratio <= 0.0 else maxf(0.05, left_ratio)
 	(right_visual.material as ShaderMaterial).set_shader_parameter("health_ratio", right_ratio)
 	(left_visual.material as ShaderMaterial).set_shader_parameter("health_ratio", left_ratio)
 	_update_box()
@@ -1143,7 +1150,8 @@ func _update_box() -> void:
 	box.pivot_offset = Vector2(box.size.x * 0.5, box.size.y)
 	var box_scale: float = 1.0 + float(levels.box) * 0.08
 	box.scale = Vector2(box_scale, box_scale)
-	box.modulate = Color.WHITE.lerp(Color("ad7f43"), contamination / 100.0)
+	box.modulate = Color("5e3428").lerp(Color("8c5130"), sin(Time.get_ticks_msec() * 0.012) * 0.5 + 0.5) if box_jammed else Color.WHITE.lerp(Color("ad7f43"), contamination / 100.0)
+	box.rotation = sin(Time.get_ticks_msec() * 0.025) * 0.012 if box_jammed else 0.0
 
 func _rebuild_pawns() -> void:
 	for child in pawns.get_children(): child.queue_free()
@@ -1250,12 +1258,12 @@ func _punch_output() -> int:
 	return 1 + int(levels.punch_power)
 
 func _auto_hit_rate() -> float:
-	if int(levels.puncher) == 0:
+	if int(levels.puncher) == 0 or box_jammed or _nearest_fallen_wall_chunk(active_side):
 		return 0.0
 	return float(levels.puncher) * float(_punch_output()) / _punch_interval()
 
 func _update_punchers(delta: float) -> void:
-	if int(levels.puncher) == 0:
+	if int(levels.puncher) == 0 or box_jammed or _nearest_fallen_wall_chunk(active_side):
 		return
 	if puncher_debut_pending:
 		puncher_debut_clock -= delta
@@ -1330,8 +1338,10 @@ func _update_puncher_motion(delta: float) -> void:
 
 func _resolve_punch(puncher: Sprite2D) -> void:
 	var side: String = puncher.get_meta("side", active_side)
+	if _wall_hp(side) <= 0.0:
+		return
 	var debut := bool(puncher.get_meta("debut", false))
-	var output := 12 if debut else _punch_output()
+	var output := mini(12 if debut else _punch_output(), ceili(_wall_hp(side)))
 	_damage_wall(float(output), side)
 	total_clicks += output
 	var direction := -1.0 if side == "left" else 1.0
@@ -1348,6 +1358,8 @@ func _click_power() -> float:
 	return 1.0 + float(levels.nails)
 
 func _rate() -> float:
+	if box_jammed:
+		return 0.0
 	var distance := absf(_box_x() - _pile_center(active_side))
 	var cycle := distance * 2.0 / maxf(1.0, _pawn_speed()) + 0.8 + _deposit_duration()
 	return float(2 + int(levels.pawn)) * float(_transport_capacity()) / cycle * _box_yield_multiplier()
@@ -1389,6 +1401,7 @@ func _debug_set_phase(next_phase: int) -> void:
 	joe_health_display = joe_health
 	contamination = 0.0 if current_phase < 3 else 42.0
 	contamination_band = int(contamination / 25.0)
+	box_jammed = false
 	joe_clock = 0.0
 	bacteria_clock = 0.0
 	blood_drop_clock = 0.0
@@ -1427,7 +1440,7 @@ func _remove_future_crisis_pieces() -> void:
 	for piece in loose_chunks.duplicate():
 		if not is_instance_valid(piece): continue
 		var kind: String = piece.get_meta("kind", "grain")
-		var remove := (current_phase < 2 and kind in ["rock", "smart_clump"]) or (current_phase < 3 and kind == "impurity") or (current_phase < 5 and kind == "bacteria")
+		var remove := (current_phase < 2 and kind == "rock") or (current_phase < 3 and kind == "impurity") or (current_phase < 5 and kind == "bacteria")
 		if remove:
 			loose_chunks.erase(piece)
 			piece.queue_free()
@@ -1522,7 +1535,7 @@ func _update_crisis(delta: float) -> void:
 					_spawn_chunk(Vector2(_mine_x(side) + randf_range(-22.0, 22.0), _ground_y() - randf_range(220.0, 380.0)), 1.0, side)
 	if current_phase >= 4:
 		var bleed_rate := 0.72 + float(current_phase - 4) * 0.16
-		var repair_rate := float(levels.platelets) * (0.42 + float(levels.repair) * 0.16) * (1.0 + float(levels.signals) * 0.1)
+		var repair_rate := 0.0 if box_jammed else float(levels.platelets) * (0.42 + float(levels.repair) * 0.16) * (1.0 + float(levels.signals) * 0.1)
 		tissue_repaired += maxf(0.0, repair_rate - bleed_rate) * delta
 		tissue_damage = clampf(tissue_damage + (bleed_rate - repair_rate) * delta, 0.0, 100.0)
 		phase_work += repair_rate * delta * 0.35
@@ -1536,7 +1549,7 @@ func _update_crisis(delta: float) -> void:
 			bacteria_clock = maxf(0.62, 1.8 - float(levels.signals) * 0.18)
 			_spawn_special_piece("bacteria", active_side)
 		var bacterial_load := float(_kind_count("bacteria"))
-		var containment := float(levels.handlers) * (0.025 + float(levels.signals) * 0.022)
+		var containment := 0.0 if box_jammed else float(levels.handlers) * (0.025 + float(levels.signals) * 0.022)
 		infection = clampf(infection + (0.07 + bacterial_load * 0.008 - containment) * delta, 0.0, 100.0)
 	_update_crisis_visuals()
 	_check_phase_progress()
@@ -1661,6 +1674,8 @@ func _rebuild_platelets() -> void:
 		platelets.add_child(platelet)
 
 func _update_platelets(_delta: float) -> void:
+	if box_jammed:
+		return
 	var now := Time.get_ticks_msec() * 0.001
 	for child in platelets.get_children():
 		var platelet := child as Sprite2D
@@ -1689,7 +1704,10 @@ func _update_crisis_visuals() -> void:
 
 func _update_pressure_visuals() -> void:
 	var rocks := _untreated_rock_count("left") + _untreated_rock_count("right")
-	if current_phase >= 5:
+	if box_jammed:
+		pressure_label.text = "LA CAJA NO TRAGA  ·  NADIE SE MUEVE"
+		pressure_label.modulate = Color("ef5b57")
+	elif current_phase >= 5:
 		pressure_label.text = "INFECCIÓN %d%%  ·  BACTERIAS %d" % [roundi(infection), _kind_count("bacteria")]
 		pressure_label.modulate = Color("a9d38c") if infection < 35.0 else Color("e9a1a0")
 	elif current_phase >= 4:
@@ -1739,7 +1757,8 @@ func _update_ui() -> void:
 	joe_health_label.text = "PRONÓSTICO DE JOE  %d%%" % roundi(joe_health_display)
 	cells_label.text = "CÉLULAS  %s" % _number(cells)
 	rate_label.text = "+%s/s  ·  %s/clic  ·  AUTO %s/s" % [_number(_rate()), _number(_click_power()), _number(_auto_hit_rate())]
-	click_counter.text = "CLICS  %s / 40K" % _number(total_clicks)
+	var tunnel_progress := clampf((1.0 - right_hp / right_max) / TUNNEL_UNLOCK_RATIO, 0.0, 1.0)
+	click_counter.text = "DOS FOSAS ACTIVAS" if septum_open else "TUNELADORA  %d%%" % roundi(tunnel_progress * 100.0)
 	var hp := left_hp if active_side == "left" else right_hp
 	wall_label.text = "PARED %s  ·  FALTAN %s" % ["IZQUIERDA" if active_side == "left" else "DERECHA", _number(maxf(0.0, hp))]
 	for upgrade in UPGRADES:
@@ -1764,7 +1783,6 @@ func _update_ui() -> void:
 		elif upgrade.kind == "repair": effect = "+16% reparación por plaqueta"
 		elif upgrade.kind == "handler": effect = "+1 cuidador con guantes"
 		elif upgrade.kind == "signals": effect = "+12% coordinación de crisis"
-		elif upgrade.kind == "smart_clump": effect = "6 granos visibles → 1 bola transportable"
 		elif upgrade.kind == "autoclicker": effect = "+1 púgil automático"
 		elif upgrade.kind == "auto_power": effect = "+1 grano por puñetazo"
 		elif upgrade.kind == "auto_speed": effect = "-16% intervalo automático"
@@ -1885,7 +1903,7 @@ func _serialize_fallen_wall_chunks() -> Array:
 	var data: Array = []
 	for chunk in fallen_wall_chunks:
 		if is_instance_valid(chunk):
-			data.append({"side":chunk.get_meta("side", "right"), "fracture":int(chunk.get_meta("fracture_number", 1)), "slot":int(chunk.get_meta("slot", 0)), "hp":float(chunk.get_meta("hp", WALL_CHUNK_HP)), "max_hp":float(chunk.get_meta("max_hp", WALL_CHUNK_HP))})
+			data.append({"side":chunk.get_meta("side", "right"), "fracture":int(chunk.get_meta("fracture_number", 1)), "slot":int(chunk.get_meta("slot", 0)), "hp":float(chunk.get_meta("hp", WALL_CHUNK_HEALTH)), "max_hp":float(chunk.get_meta("max_hp", WALL_CHUNK_HEALTH)), "mass":float(chunk.get_meta("mass", WALL_CHUNK_MASS)), "max_mass":float(chunk.get_meta("max_mass", WALL_CHUNK_MASS))})
 	return data
 
 func _clear_pile() -> void:
@@ -1907,11 +1925,16 @@ func _restore_fallen_wall_chunks(data: Variant) -> void:
 		if typeof(entry_value) != TYPE_DICTIONARY:
 			continue
 		var entry: Dictionary = entry_value
-		var hp := maxf(1.0, float(entry.get("hp", WALL_CHUNK_HP)))
+		var legacy_hp := maxf(0.0, float(entry.get("hp", WALL_CHUNK_MASS)))
+		var mass := maxf(0.0, float(entry.get("mass", legacy_hp)))
+		var hp := maxf(1.0, float(entry.get("hp", WALL_CHUNK_HEALTH if entry.has("mass") else WALL_CHUNK_HEALTH * legacy_hp / WALL_CHUNK_MASS)))
 		var side := str(entry.get("side", "right"))
-		if _spawn_fallen_wall_chunk(side, int(entry.get("fracture", 1)), hp, false, int(entry.get("slot", -1))):
+		if _spawn_fallen_wall_chunk(side, int(entry.get("fracture", 1)), mass, false, int(entry.get("slot", -1))):
 			var chunk: Sprite2D = fallen_wall_chunks.back()
-			chunk.set_meta("max_hp", maxf(hp, float(entry.get("max_hp", WALL_CHUNK_HP))))
+			chunk.set_meta("hp", hp)
+			chunk.set_meta("max_hp", maxf(hp, float(entry.get("max_hp", WALL_CHUNK_HEALTH))))
+			chunk.set_meta("mass", mass)
+			chunk.set_meta("max_mass", maxf(mass, float(entry.get("max_mass", WALL_CHUNK_MASS))))
 
 func _restore_pile(data: Variant) -> void:
 	_clear_pile()
@@ -1920,6 +1943,7 @@ func _restore_pile(data: Variant) -> void:
 		if typeof(entry_value) != TYPE_DICTIONARY: continue
 		var entry: Dictionary = entry_value
 		var kind := str(entry.get("kind", "grain"))
+		if kind == "smart_clump": kind = "grain"
 		var hardness := int(entry.get("hardness", 0))
 		var piece := _create_piece(kind, str(entry.get("side", "right")), float(entry.get("value", 1.0)), int(entry.get("max_hardness", hardness)), int(entry.get("column", 0)), float(entry.get("scale", 0.18 if kind == "rock" else 0.07)), str(entry.get("material", "")))
 		piece.set_meta("hardness", hardness)
@@ -1943,7 +1967,7 @@ func _save() -> void:
 			"total_clicks":total_clicks, "pile":_serialize_pile(), "fallen_wall_chunks":_serialize_fallen_wall_chunks(),
 			"compaction_steps":compaction_steps, "compaction_announced":compaction_announced,
 			"current_phase":current_phase, "phase_work":phase_work, "joe_health":joe_health,
-			"contamination":contamination, "tissue_damage":tissue_damage, "infection":infection,
+			"contamination":contamination, "box_jammed":box_jammed, "tissue_damage":tissue_damage, "infection":infection,
 			"impurities_handled":impurities_handled, "bacteria_handled":bacteria_handled,
 			"rocks_opened":rocks_opened, "impurities_cleaned":impurities_cleaned, "tissue_repaired":tissue_repaired,
 			"another_line_clock":another_line_clock, "another_line_wave":another_line_wave, "another_line_spawn_index":another_line_spawn_index, "another_line_events":another_line_events,
@@ -1970,11 +1994,15 @@ func _load() -> void:
 	for id in data.get("levels", {}):
 		if levels.has(id): levels[id] = int(data.levels[id])
 	if right_max < FIRST_WALL_HP:
-		right_max = FIRST_WALL_HP * pow(1.16, right_cleared)
-		right_hp = right_max
+		var right_ratio := clampf(right_hp / maxf(1.0, right_max), 0.0, 1.0)
+		right_max = FIRST_WALL_HP
+		right_hp = right_max * right_ratio
+		right_cleared = 1 if right_hp <= 0.0 else 0
 	if left_max < FIRST_LEFT_WALL_HP:
-		left_max = FIRST_LEFT_WALL_HP * pow(1.18, left_cleared)
-		left_hp = left_max
+		var left_ratio := clampf(left_hp / maxf(1.0, left_max), 0.0, 1.0)
+		left_max = FIRST_LEFT_WALL_HP
+		left_hp = left_max * left_ratio
+		left_cleared = 1 if left_hp <= 0.0 else 0
 	_restore_pile(data.get("pile", []))
 	_restore_fallen_wall_chunks(data.get("fallen_wall_chunks", []))
 	var saved_steps = data.get("compaction_steps", {})
@@ -1989,6 +2017,7 @@ func _load() -> void:
 	joe_health = clampf(float(data.get("joe_health", JOE_STARTING_HEALTH + float(current_phase - 1) * 5.0)), 0.0, 100.0)
 	joe_health_display = joe_health
 	contamination = clampf(float(data.get("contamination", 0.0)), 0.0, 100.0)
+	box_jammed = bool(data.get("box_jammed", contamination >= 99.9))
 	contamination_band = int(contamination / 25.0)
 	tissue_damage = clampf(float(data.get("tissue_damage", 0.0)), 0.0, 100.0)
 	infection = clampf(float(data.get("infection", 0.0)), 0.0, 100.0)
@@ -2047,6 +2076,7 @@ func _new_game() -> void:
 	joe_health_display = joe_health
 	contamination = 0.0
 	contamination_band = 0
+	box_jammed = false
 	tissue_damage = 0.0
 	infection = 0.0
 	impurities_handled = 0

@@ -95,15 +95,13 @@ func _run() -> void:
 	game._finish_delivery(pawn)
 	pawn.set_meta("specialist", false)
 
-	# Smart clumping turns six carried grains into one safe portable ball.
+	# Normal pawns keep every carried grain separate; safe smart clumping no longer exists.
 	game._clear_pile()
 	await process_frame
-	game.levels.smart_clump = 1
 	for index in range(6):
 		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), 0.072)
 	var cargo: Array = game._claim_top_pieces("right", 6, pawn)
-	_check(cargo.size() == 1 and (cargo[0] as Sprite2D).get_meta("kind", "") == "smart_clump", "Smart clumping must convert six carried grains into one portable ball.")
-	_check(is_equal_approx(float((cargo[0] as Sprite2D).get_meta("value", 0.0)), 6.0), "Smart clumping must preserve the value of all six grains.")
+	_check(cargo.size() == 6 and cargo.all(func(piece: Sprite2D) -> bool: return piece.get_meta("kind", "") == "grain"), "Normal pawns must carry six separate grains without creating a safe clump.")
 
 	# Cargo becomes currency only after the physical deposit finishes.
 	var cargo_value := 0.0
@@ -168,7 +166,7 @@ func _run() -> void:
 
 	# Save/load preserves the extended pile and adaptation state.
 	game.levels = game._empty_levels()
-	game.levels.merge({"nails":2, "pawn":1, "shift":1, "box":1, "coord":0, "breaker":1, "smart_clump":1}, true)
+	game.levels.merge({"nails":2, "pawn":1, "shift":1, "box":1, "coord":0, "breaker":1}, true)
 	game.cells = 1234.0
 	game.playing = true
 	game._save()
@@ -179,7 +177,6 @@ func _run() -> void:
 	_check(is_equal_approx(game.cells, 1234.0), "Save/load must preserve the existing economy.")
 	_check(is_equal_approx(game._pile_load("right"), saved_load), "Save/load must preserve loose grains and rocks.")
 	_check(int(game.levels.breaker) == 1, "Save/load must preserve specialist upgrades.")
-	_check(int(game.levels.smart_clump) == 1, "Save/load must preserve smart clumping.")
 	if FileAccess.file_exists(game.save_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(game.save_path))
 

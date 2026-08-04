@@ -6,35 +6,35 @@ const PHASES := [
 		"title": "UNA RAYITA PARA DESAYUNAR",
 		"joe": "Joe ha decidido que el desayuno equilibrado era opcional.",
 		"problem": "Haz clic en la pared para extraer y en el montón del suelo para lanzar una pieza a la caja. Aprende a limpiar, transportar y automatizar antes del primer desastre.",
-		"target": 800.0
+		"target": 1500.0
 	},
 	{
 		"id": 2,
 		"title": "¿QUIÉN HA VACIADO EL CÁRTEL?",
 		"joe": "Joe ha confundido una dosis con el inventario completo.",
 		"problem": "La avalancha apelmaza el polvo. Los cascos azules entran de guardia.",
-		"target": 4500.0
+		"target": 12000.0
 	},
 	{
 		"id": 3,
 		"title": "OFERTA DEL SUPERMERCADO",
 		"joe": "Joe ha comprado una ganga. La ganga contiene serrín, yeso y decisiones.",
 		"problem": "Las impurezas viajan con la cocaína y la caja empieza a comportarse de forma sospechosa.",
-		"target": 14000.0
+		"target": 35000.0
 	},
 	{
 		"id": 4,
 		"title": "NARIZ EN MODO VOLCÁN",
 		"joe": "Joe ha descubierto que una hemorragia tampoco era una señal suficiente.",
 		"problem": "Hay que limpiar y reparar al mismo tiempo. Llegan las plaquetas.",
-		"target": 32000.0
+		"target": 80000.0
 	},
 	{
 		"id": 5,
 		"title": "BIENVENIDOS AL ZOO",
 		"joe": "La nariz de Joe ya figura como alojamiento rural para bacterias.",
 		"problem": "Los cuidadores con guantes retiran visitas oportunistas sin convertir esto en una guerra.",
-		"target": 75000.0
+		"target": 180000.0
 	}
 ]
 
@@ -46,7 +46,6 @@ const UPGRADES := [
 	{"id":"shift", "phase":1, "unlock_at":230.0, "name":"MEMBRANAS REFORZADAS", "desc":"Los peones se mueven y manipulan la carga más deprisa.", "base":240.0, "growth":2.05, "kind":"speed", "power":0.18, "max":6},
 	{"id":"puncher", "phase":1, "requires_puncher_unlock":true, "name":"CÉLULA PÚGIL EN PRÁCTICAS", "desc":"Contrata una célula que golpea la pared sin esperar tus clics.", "base":120.0, "growth":1.75, "kind":"autoclicker", "power":1.0, "max":8},
 	{"id":"punch_power", "phase":1, "requires_upgrade":"puncher", "name":"GUANTES EMPAPADOS EN COCAÍNA", "desc":"Cada puñetazo automático desprende otro grano.", "base":500.0, "growth":2.1, "kind":"auto_power", "power":1.0, "max":5},
-	{"id":"smart_clump", "phase":2, "name":"APELMAZADO INTELIGENTE", "desc":"Convierte cada seis granos transportados en una bola segura y compacta.", "base":700.0, "growth":1.0, "kind":"smart_clump", "power":6.0, "max":1},
 	{"id":"click_rhythm", "phase":2, "requires_upgrade":"click_burst", "name":"RITMO DE BAÑO", "desc":"Necesitas menos clics para provocar cada ráfaga manual.", "base":800.0, "growth":2.0, "kind":"click_rhythm", "power":1.0, "max":4},
 	{"id":"punch_speed", "phase":2, "requires_upgrade":"puncher", "name":"CAMPANA SIN DESCANSO", "desc":"Acorta el tiempo entre puñetazos automáticos.", "base":1200.0, "growth":2.15, "kind":"auto_speed", "power":0.16, "max":5},
 	{"id":"coord", "phase":2, "requires_septum":true, "name":"TRABAJO EN CADENA", "desc":"Reparte peones entre las dos fosas y prioriza los atascos.", "base":550.0, "growth":2.4, "kind":"coordination", "power":1.0, "max":2},

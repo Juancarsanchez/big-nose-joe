@@ -20,11 +20,11 @@ Cada cambio de fase abre un diálogo que explica el nuevo problema. La adaptaci�
 
 1. `UNA RAYITA PARA DESAYUNAR`: tutorial de clic, caída, recogida y entrega. La primera gran oleada desbloquea la adaptación `CÉLULA PÚGIL EN PRÁCTICAS`.
 2. `¿QUIÉN HA VACIADO EL CÁRTEL?`: los grupos densos se apelmazan en pedruscos. Solo los especialistas de `CASCO AZUL REGLAMENTARIO` pueden abrirlos y transportarlos; hay que abrir seis para dominar la fase.
-3. `OFERTA DEL SUPERMERCADO`: serrín, yeso y tiza ensucian la caja lentamente. El perjuicio no se traduce a porcentajes: se descubre observando su color, la animación de descarga y las recompensas. Los `QUIMIORRECEPTORES` deben filtrar diez muestras.
+3. `OFERTA DEL SUPERMERCADO`: serrín, yeso y tiza ensucian la caja lentamente. El perjuicio no se traduce a porcentajes: se descubre observando su color, la animación de descarga y las recompensas. Al llenarse, la caja deja de aceptar entregas y todos los trabajadores se paran hasta que los `QUIMIORRECEPTORES` completan una limpieza de emergencia. También deben filtrar diez muestras.
 4. `NARIZ EN MODO VOLCÁN`: el fondo se enrojece, caen gotas desde el techo y comienza el medidor de daño tisular. Las `PLAQUETAS TURBO` reparan el tejido mientras continúa la limpieza.
 5. `BIENVENIDOS AL ZOO`: aparecen bacterias que los peones normales ignoran por completo. Solo los cuidadores de `GUANTES DE PROTECTORA` pueden retirarlas y contener la infección.
 
-Las fases necesitan 800, 4.500, 14.000, 32.000 y 75.000 puntos de trabajo, además de usar realmente su mecánica. La barra de estabilidad muestra el progreso y la condición pendiente. La versión 8 del guardado conserva fase, acontecimientos de Joe, objetivos, pronóstico, contaminación, daño, infección, automatización, roles, recursos, estado del montón y bloques desprendidos; las partidas anteriores se migran al cargar.
+Las fases necesitan 1.500, 12.000, 35.000, 80.000 y 180.000 puntos de trabajo, además de usar realmente su mecánica. La barra de estabilidad muestra el progreso y la condición pendiente. La versión 9 del guardado conserva fase, acontecimientos de Joe, objetivos, pronóstico, atasco de la caja, daño, infección, automatización, roles, recursos, estado del montón y resistencia de los bloques desprendidos; las partidas anteriores se migran al cargar.
 
 El panel `PRUEBA DE FASES`, fijado al extremo derecho, permite saltar inmediatamente a cualquiera de las cinco fases. Conserva células, mejoras y paredes, reinicia los indicadores de esa crisis y elimina los recursos futuros al volver hacia atrás.
 
@@ -34,15 +34,13 @@ Cada clic crea una bolita individual que cae con suavidad y queda apoyada sobre 
 
 En la fase 2, un grano con al menos cinco vecinos cercanos forma un pedrusco de seis unidades. Los pedruscos conservan su valor, bloquean la recogida y solo los cascos azules pueden tratarlos y llevarlos.
 
-`APELMAZADO INTELIGENTE` resuelve otro problema: cuando un peón carga seis granos normales, estos se convierten en una sola bola segura de valor seis. Esa bola de transporte no es un pedrusco y cualquier peón puede llevarla.
-
 Los peones recorren un ciclo físico completo: salen vacíos de la caja, rascan exactamente un grano de la pared, esperan la caída, levantan piezas expuestas, muestran la carga junto al cuerpo y la depositan dentro de la caja. Ese raspado mantiene una producción basal sin competir con los púgiles. `TRABAJO EN CADENA` solo aparece después de perforar el tabique.
 
 El jugador también puede intervenir directamente en la logística. Al pulsar sobre cualquier parte ocupada del montón, la pieza superior más cercana describe un arco hasta la caja y sólo se entrega al llegar. Las piezas que aún caen o están enterradas no responden. Los pedruscos siguen necesitando cascos azules, las bacterias necesitan cuidadores y enviar una impureza manualmente ensucia la caja igual que cualquier otra entrega.
 
 ## Pared y pronóstico de Joe
 
-La pared conserva su anchura completa al 100% y se reduce proporcionalmente hasta un mínimo visual del 5%. Cada punto porcentual atravesado abre o profundiza una muesca azulada claramente acumulativa en el borde libre y desprende polvo visual. El recorte se calcula desde el primer píxel opaco de la silueta, por lo que siempre elimina una parte visible del muro. Cada 10% una de esas fracturas crece, arranca un bloque compacto equivalente y lo deja caer al suelo en su propia capa. Ese bloque reserva 25 unidades reales de la pared: debe picarse, suelta polvo utilizable golpe a golpe y no duplica recursos. Los peones básicos lo priorizan y el jugador también puede minarlo directamente. Por debajo del 10% queda una tira muy fina y especialmente irregular, siempre pegada al tabique.
+La pared derecha tiene 120.000 puntos de resistencia y la izquierda 180.000. Conservan su anchura completa al 100% y se reducen proporcionalmente hasta un mínimo visual del 5%. Cada punto porcentual atravesado abre o profundiza una muesca azulada claramente acumulativa en el borde libre y desprende polvo visual. El recorte se calcula desde el primer píxel opaco de la silueta, por lo que siempre elimina una parte visible del muro. Cada 10% una de esas fracturas crece, arranca un bloque compacto equivalente y lo deja caer al suelo en su propia capa. Ese bloque contiene 25 unidades reales, pero tiene 24 puntos de resistencia independientes y una barra visible: cada golpe libera solo una parte y el daño manual está limitado a tres, por lo que incluso un clic muy mejorado necesita al menos ocho impactos. Al llegar a cero, una pared queda agotada y desaparece definitivamente; no se regenera de golpe.
 
 `PRONÓSTICO DE JOE` resume la evolución global sin revelar el cuello de botella concreto. Retirar cocaína limpia de la nariz lo mejora; las nuevas rayas producen retrocesos y una montaña excesiva, la contaminación, el daño tisular o la infección lo erosionan lentamente. Llegar a cero todavía no causa una derrota: primero debe demostrar que aporta decisiones interesantes.
 
@@ -50,7 +48,7 @@ La pared conserva su anchura completa al 100% y se reduce proporcionalmente hast
 
 La producción automática especializada no está disponible al comenzar. Cada 180 segundos Joe se mete `OTRA RAYITA`: aparece un aviso y una oleada de cocaína pura levanta varias lomas sobre el montón existente. Tras la primera avalancha se desbloquea `CÉLULA PÚGIL EN PRÁCTICAS`.
 
-El primer púgil entra con guante rojo y cinta azul, calienta el brazo, atraviesa físicamente la zona de trabajo y estrena su contrato contra el borde visible de la pared con un golpe especial de doce granos. Después de cada impacto regresa a su posición de espera. Las rondas posteriores repiten ese ciclo; el punto de contacto acompaña a la pared mientras se estrecha. Cada ronda daña la pared, cuenta para desbloquear el tabique y lanza granos físicos desde el lugar exacto del golpe.
+El primer púgil entra con guante rojo y cinta azul, calienta el brazo, atraviesa físicamente la zona de trabajo y estrena su contrato contra el borde visible de la pared con un golpe especial de doce granos. Después de cada impacto regresa a su posición de espera. Las rondas posteriores repiten ese ciclo; el punto de contacto acompaña a la pared mientras se estrecha. Cada ronda acerca la pared al 50% que desbloquea la tuneladora y lanza granos físicos desde el lugar exacto del golpe.
 
 `GUANTES EMPAPADOS EN COCAÍNA` aumenta los granos desprendidos por golpe y `CAMPANA SIN DESCANSO` reduce el intervalo entre rondas. Los recolectores siguen siendo necesarios para convertir el polvo del suelo en células, por lo que producción y logística pueden mejorarse por separado.
 
@@ -58,7 +56,7 @@ Las compras de la fase 1 aparecen de forma escalonada según el trabajo entregad
 
 ## Paso a la fosa izquierda
 
-La primera pared derecha necesita unos 20.000 clics base. Al alcanzar 40.000 clics totales aparece `PERFORAR TABIQUE`. Al comprarla, la cámara puede entrar en la fosa izquierda y los mismos peones cruzan para continuar minando la pared adherida al otro lado.
+Cuando la pared derecha baja al 50% aparece `TUNELADORA DE NARICES`. Al activarla, la cámara puede entrar en la fosa izquierda y los mismos peones cruzan para alternar el trabajo entre ambas paredes.
 
 La ventana es de 1440×810. El escenario interior mide 5200 píxeles de ancho y se muestra al 68 % de escala, dejando espacio para edificios y acontecimientos futuros.
 

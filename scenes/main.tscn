@@ -249,7 +249,7 @@ vertical_alignment = 1
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.55, 0.5, 1)
 theme_override_font_sizes/font_size = 12
-text = "CLICS  0 / 40K"
+text = "TUNELADORA  0%"
 vertical_alignment = 1
 
 [node name="StageViewport" type="Control" parent="World"]
@@ -532,15 +532,6 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="Layer48_WallChunks" type="Control" parent="World/StageViewport/Stage"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-
 [node name="BloodWash" type="ColorRect" parent="World/StageViewport/Stage/Layer46_Crisis"]
 modulate = Color(1, 1, 1, 0)
 layout_mode = 1
@@ -562,6 +553,15 @@ grow_vertical = 2
 mouse_filter = 2
 
 [node name="Layer50_Chunks" type="Control" parent="World/StageViewport/Stage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Layer52_WallChunks" type="Control" parent="World/StageViewport/Stage"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -727,7 +727,7 @@ visible = false
 custom_minimum_size = Vector2(0, 76)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.96, 0.78, 0.56, 1)
-text = "PERFORAR TABIQUE\nDESBLOQUEO: 40.000 CLICS"
+text = "TUNELADORA DE NARICES\nDESBLOQUEO: PARED DERECHA AL 50%"
 alignment = 0
 
 [node name="SaveLabel" type="Label" parent="Shop/Margin/Content"]
@@ -900,9 +900,9 @@ ok_button_text = "EMPEZAR DE CERO"
 cancel_button_text = "VOLVER"
 
 [node name="BreakDialog" type="ConfirmationDialog" parent="."]
-title = "PERFORAR EL TABIQUE"
-dialog_text = "Abrirás el paso a la fosa izquierda. Los peones podrán cruzar y continuar minando al otro lado."
-ok_button_text = "HACER EL AGUJERO"
+title = "TUNELADORA DE NARICES"
+dialog_text = "La pared derecha está lo bastante debilitada. La tuneladora abrirá el tabique y permitirá trabajar en ambas fosas."
+ok_button_text = "ENCENDER TUNELADORA"
 cancel_button_text = "TODAVÍA NO"
 
 [node name="JoeEventDialog" type="AcceptDialog" parent="."]

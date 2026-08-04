@@ -19,8 +19,8 @@ El escenario mide 5200 píxeles de ancho, se presenta al 68 % de escala y está 
 
 - la fosa derecha es la zona inicial;
 - la fosa izquierda es visible pero inaccesible;
-- la primera pared derecha tiene 20.000 puntos de resistencia;
-- al alcanzar 40.000 clics se desbloquea la perforación;
+- la pared derecha tiene 120.000 puntos de resistencia y la izquierda 180.000;
+- al reducir la pared derecha al 50% se desbloquea la `TUNELADORA DE NARICES`;
 - el agujero permite cruzar, desplazar la cámara y minar el lado izquierdo.
 
 La cámara se mueve con `A`, `D`, las flechas o acercando el cursor a los bordes.
@@ -33,7 +33,7 @@ La cámara se mueve con `A`, `D`, las flechas o acercando el cursor a los bordes
 4. `Layer30_Props`: caja de entrega.
 5. `Layer40_Resources`: paredes de cocaína de ambos lados.
 6. `Layer46_Crisis`: lavado rojo progresivo y gotas de la hemorragia, sin masas sólidas sobre el suelo.
-7. `Layer48_WallChunks`: grandes trozos desprendidos de la pared, minables y persistentes.
+7. `Layer52_WallChunks`: grandes trozos desprendidos, siempre visibles sobre el polvo y minables solo por el jugador.
 8. `Layer50_Chunks`: cocaína, impurezas, pedruscos y bacterias apiladas.
 9. `Layer55_Platelets`: refuerzos de reparación independientes.
 10. `Layer58_Punchers`: autoclickers con guantes de boxeo, separados de la logística.
@@ -74,15 +74,15 @@ Los originales con croma están en `assets/art/gameplay/source`. Cada elemento s
 
 Cada clic conserva su bolita visible. La caída dura entre 0,82 y 1,18 segundos, tiene poco giro y no rebota. Al aterrizar, el montón se compacta verticalmente por columnas; al retirar una pieza, todas las piezas superiores vuelven a apoyarse. El límite junto al tabique impide que el relieve invada la pared.
 
-El polvo se comporta como un pequeño vertedero. Las partículas que aún están cayendo reservan altura, diferentes tandas escogen zonas de vertido distintas y cada zona levanta su propia loma. Una pendiente excesiva provoca corrimientos laterales cortos, pero nunca una expansión plana por todo el suelo. La recogida abre valles y mordiscos; los pedruscos y bolas apelmazadas no ruedan y pueden sostener pendientes. `OTRA RAYITA` produce así varias montañas conectadas, no una aguja ni una inundación uniforme. Las oleadas sucesivas desplazan ligeramente sus puntos de caída, por lo que el perfil evoluciona en vez de reforzar siempre las mismas tres cumbres.
+El polvo se comporta como un pequeño vertedero. Las partículas que aún están cayendo reservan altura, diferentes tandas escogen zonas de vertido distintas y cada zona levanta su propia loma. Una pendiente excesiva provoca corrimientos laterales cortos, pero nunca una expansión plana por todo el suelo. La recogida abre valles y mordiscos; los pedruscos no ruedan y pueden sostener pendientes. `OTRA RAYITA` produce así varias montañas conectadas, no una aguja ni una inundación uniforme. Las oleadas sucesivas desplazan ligeramente sus puntos de caída, por lo que el perfil evoluciona en vez de reforzar siempre las mismas tres cumbres.
 
 El clic manual sobre el relieve toma la pieza superior de la columna más cercana. Durante el vuelo aumenta ligeramente de tamaño, gira y describe un arco limpio hasta la caja; permanece en `Layer50_Chunks` y no necesita un asset compuesto nuevo. Al salir deja de sostener su columna, de modo que el valle y los corrimientos resultantes se ven desde el primer instante.
 
-La pared se estrecha de forma proporcional hasta el 5%. Cada 1% activa o profundiza una muesca escalonada de varios píxeles y la perfila en azul frío para que el cambio se lea incluso con el zoom alejado; el borde unido al tabique permanece intacto. El shader busca primero el borde opaco real del PNG —no el límite transparente del rectángulo— y recorta desde esa silueta visible. Cada 10% la misma familia de fracturas crea un hueco mayor y suelta una de las cuatro variantes reducidas de `cocaine_wall_chunks.png`. El bloque cae hasta apoyar su base en el suelo, guarda masa retirada de la pared y se mina como un obstáculo antes de volver a ser polvo. Los fragmentos pequeños siguen viviendo en `Layer70_Effects`; los bloques persistentes, en `Layer48_WallChunks`. El retrato de Joe no cambia de asset: la barra y un breve tinte verde o rojo comunican mejoría o retroceso.
+La pared se estrecha de forma proporcional hasta el 5%. Cada 1% activa o profundiza una muesca escalonada de varios píxeles y la perfila en azul frío para que el cambio se lea incluso con el zoom alejado; el borde unido al tabique permanece intacto. El shader busca primero el borde opaco real del PNG —no el límite transparente del rectángulo— y recorta desde esa silueta visible. Cada 10% la misma familia de fracturas crea un hueco mayor y suelta una de las cuatro variantes reducidas de `cocaine_wall_chunks.png`. El bloque cae sobre la ruta entre la pila y la caja, guarda 25 unidades de masa y tiene 24 puntos de resistencia propios. Su desgaste se comunica con grietas, movimiento y texto de impacto, sin barras flotantes. Solo el jugador puede romperlo: los peones vacíos esperan delante y los púgiles paran hasta despejar el paso. Al agotarse una pared desaparece y no vuelve a su tamaño completo. Los fragmentos pequeños siguen viviendo en `Layer70_Effects`; los bloques persistentes, en `Layer52_WallChunks`, por encima del polvo.
 
-Una bola apelmazada natural representa seis granos vecinos y solo la transporta un casco azul después de tratarla. La bola creada por `APELMAZADO INTELIGENTE` también vale seis, pero es más clara, segura y transportable por cualquier peón.
+Una bola apelmazada natural representa seis granos vecinos y solo la transporta un casco azul después de tratarla. Los peones normales ya no pueden fabricar ni transportar una versión segura automáticamente.
 
-Las impurezas usan colores deliberadamente distintos —naranja, azul grisáceo y amarillo—. Al entrar en la caja la tiñen de marrón, alargan físicamente la descarga y reducen los números de entrega. No se muestran porcentajes, penalizaciones ni diagnósticos de equilibrio. Los avisos son comentarios sensoriales sobre la caja, no explicaciones de la fórmula. En la hemorragia no hay cúpulas: el peligro se representa mediante fondo rojo, gotas superiores y medidor de daño.
+Las impurezas usan colores deliberadamente distintos —naranja, azul grisáceo y amarillo—. Al entrar en la caja la tiñen de marrón, alargan físicamente la descarga y reducen los números de entrega. Si llega al máximo, la caja tiembla, se oscurece, rechaza los clics de entrega y congela peones y púgiles. Los quimiorreceptores realizan entonces una limpieza pasiva lenta; el trabajo solo vuelve cuando la suciedad baja al umbral seguro. No se muestra el porcentaje exacto. En la hemorragia no hay cúpulas: el peligro se representa mediante fondo rojo, gotas superiores y medidor de daño.
 
 El debut del primer púgil debe leerse como un salto de escala: calentamiento visible, recorrido completo hasta la pared, texto `¡¡PUM!!`, doce partículas y un montón alterado de inmediato. Después regresa por el suelo a su punto de espera. El guante se refleja de forma independiente al cambiar de fosa, la criatura siempre mira hacia la pared y el punto de impacto sigue su borde libre mientras ésta se estrecha. Sus guantes y cinta continúan siendo capas hijas independientes del cuerpo básico.
 
