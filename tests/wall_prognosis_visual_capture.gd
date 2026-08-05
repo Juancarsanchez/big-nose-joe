@@ -16,8 +16,8 @@ func _capture() -> void:
 	game.joe_dialog.hide()
 	game.playing = false
 	game.current_phase = 4
-	game.joe_health = 42.0
-	game.joe_health_display = 42.0
+	game.joe_high = 58.0
+	game.joe_high_display = 58.0
 	game.tissue_damage = 54.0
 	game.right_hp = game.right_max * 0.01
 	seed(91354)

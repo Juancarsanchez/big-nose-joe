@@ -19,12 +19,12 @@ Al abrir el juego aparece una portada desde la que se puede continuar, empezar d
 Cada cambio de fase abre un diálogo que explica el nuevo problema. La adaptación imprescindible se busca automáticamente en el laboratorio, aparece con el texto `NECESARIA PARA SUPERAR ESTA FASE` y queda rodeada por un halo azul hasta que se compra.
 
 1. `UNA RAYITA PARA DESAYUNAR`: tutorial de clic, caída, recogida y entrega. La primera gran oleada desbloquea la adaptación `CÉLULA PÚGIL EN PRÁCTICAS`.
-2. `¿QUIÉN HA VACIADO EL CÁRTEL?`: los grupos densos se apelmazan en pedruscos. Solo los especialistas de `CASCO AZUL REGLAMENTARIO` pueden abrirlos y transportarlos; hay que abrir seis para dominar la fase.
-3. `OFERTA DEL SUPERMERCADO`: serrín, yeso y tiza ensucian la caja lentamente. El perjuicio no se traduce a porcentajes: se descubre observando su color, la animación de descarga y las recompensas. Al llenarse, la caja deja de aceptar entregas y todos los trabajadores se paran hasta que los `QUIMIORRECEPTORES` completan una limpieza de emergencia. También deben filtrar diez muestras.
-4. `NARIZ EN MODO VOLCÁN`: el fondo se enrojece, caen gotas desde el techo y comienza el medidor de daño tisular. Las `PLAQUETAS TURBO` reparan el tejido mientras continúa la limpieza.
-5. `BIENVENIDOS AL ZOO`: aparecen bacterias que los peones normales ignoran por completo. Solo los cuidadores de `GUANTES DE PROTECTORA` pueden retirarlas y contener la infección.
+2. `¿QUIÉN HA VACIADO EL CÁRTEL?`: los grupos densos se apelmazan en pedruscos. Solo los especialistas de `CASCO AZUL REGLAMENTARIO` pueden abrirlos y transportarlos; `PULMONES DE DROGATA` roba almacén y los glóbulos con `PARAGUAS ROSA HOMOLOGADO` amortiguan la pérdida.
+3. `OFERTA DEL SUPERMERCADO`: cada rayita trae serrín, Joe añade tiza con su propio ritmo y el `SPRAY NASAL DEL BAZAR` vuelve a pegar cocaína a la pared treinta segundos después. Los `QUIMIORRECEPTORES` limpian una caja atascada y los `MACRÓFAGOS ESPONJA` absorben cantidades crecientes del spray.
+4. `NARIZ EN MODO VOLCÁN`: el fondo se enrojece, caen gotas desde el techo y comienza el medidor de daño tisular. El rascado de Joe abre heridas visibles; las `PLAQUETAS TURBO` y `PLAQUETAS GRAPADORAS` reparan el tejido.
+5. `BIENVENIDOS AL ZOO`: aparecen bacterias que los peones normales ignoran por completo y moco verde que impide minar la pared. Los cuidadores de `GUANTES DE PROTECTORA` retiran bacterias y las `CATAPULTAS MUCOLÍTICAS` lanzan glóbulos contra el bloqueo.
 
-Las fases necesitan 1.500, 12.000, 35.000, 80.000 y 180.000 puntos de trabajo, además de usar realmente su mecánica. La barra de estabilidad muestra el progreso y la condición pendiente. La versión 9 del guardado conserva fase, acontecimientos de Joe, objetivos, pronóstico, atasco de la caja, daño, infección, automatización, roles, recursos, estado del montón y resistencia de los bloques desprendidos; las partidas anteriores se migran al cargar.
+Las fases necesitan 1.500, 12.000, 35.000, 80.000 y 180.000 puntos de trabajo, además de usar realmente su mecánica. La barra de estabilidad muestra el progreso y la condición pendiente. La versión 10 del guardado conserva fase, temporizadores independientes de Joe, colocón, atasco de la caja, daño, infección, adaptaciones, recursos, estado del montón y resistencia de los bloques desprendidos; las partidas anteriores se migran al cargar.
 
 El panel `PRUEBA DE FASES`, fijado al extremo derecho, permite saltar inmediatamente a cualquiera de las cinco fases. Conserva células, mejoras y paredes, reinicia los indicadores de esa crisis y elimina los recursos futuros al volver hacia atrás.
 
@@ -38,15 +38,17 @@ Los peones recorren un ciclo físico completo: salen vacíos de la caja, rascan 
 
 El jugador también puede intervenir directamente en la logística. Al pulsar sobre cualquier parte ocupada del montón, la pieza superior más cercana describe un arco hasta la caja y sólo se entrega al llegar. Las piezas que aún caen o están enterradas no responden. Los pedruscos siguen necesitando cascos azules, las bacterias necesitan cuidadores y enviar una impureza manualmente ensucia la caja igual que cualquier otra entrega.
 
-## Pared y pronóstico de Joe
+## Pared y colocón de Joe
 
 La pared derecha tiene 120.000 puntos de resistencia y la izquierda 180.000. Conservan su anchura completa al 100% y se reducen proporcionalmente hasta un mínimo visual del 5%. Cada punto porcentual atravesado abre o profundiza una muesca azulada claramente acumulativa en el borde libre y desprende polvo visual. El recorte se calcula desde el primer píxel opaco de la silueta, por lo que siempre elimina una parte visible del muro. Cada 10% una de esas fracturas crece, arranca un bloque compacto equivalente y lo deja caer al suelo en su propia capa. Ese bloque contiene 25 unidades reales, pero tiene 24 puntos de resistencia independientes y una barra visible: cada golpe libera solo una parte y el daño manual está limitado a tres, por lo que incluso un clic muy mejorado necesita al menos ocho impactos. Al llegar a cero, una pared queda agotada y desaparece definitivamente; no se regenera de golpe.
 
-`PRONÓSTICO DE JOE` resume la evolución global sin revelar el cuello de botella concreto. Retirar cocaína limpia de la nariz lo mejora; las nuevas rayas producen retrocesos y una montaña excesiva, la contaminación, el daño tisular o la infección lo erosionan lentamente. Llegar a cero todavía no causa una derrota: primero debe demostrar que aporta decisiones interesantes.
+`COLOCÓN DE JOE` es la carrera global: entregar cocaína limpia baja el valor; las nuevas rayas, la contaminación, el daño tisular y la infección lo elevan. El jugador ve siempre unidades reales en los impactos —granos robados, absorbidos, restaurados o bloqueados— aunque el balance interno use porcentajes.
+
+Los desastres no forman una ruleta ni pueden cancelarse. Cada fase añade un temporizador propio y todos los anteriores continúan activos: `OTRA RAYITA` cae cada 120 segundos con 1.200 unidades; `PULMONES DE DROGATA` actúa cada 300 segundos, roba el 20% del almacén, suma otra lluvia y añade 20 puntos de colocón; la tiza cae cada 180 segundos; el spray vuelve a recubrir hasta 2.400 puntos de pared tras 30 segundos; después se incorporan el rascado y el moco aglutinante. Las adaptaciones reducen el golpe, nunca impiden que Joe fastidie la partida.
 
 ## Automatización de los golpes
 
-La producción automática especializada no está disponible al comenzar. Cada 180 segundos Joe se mete `OTRA RAYITA`: aparece un aviso y una oleada de cocaína pura levanta varias lomas sobre el montón existente. Tras la primera avalancha se desbloquea `CÉLULA PÚGIL EN PRÁCTICAS`.
+La producción automática especializada no está disponible al comenzar. Cada 120 segundos Joe se mete `OTRA RAYITA`: aparece un aviso y una oleada de exactamente 1.200 unidades —el 1% de la resistencia inicial de la pared derecha— levanta varias lomas sobre el montón existente. Tras la primera avalancha se desbloquea `CÉLULA PÚGIL EN PRÁCTICAS`.
 
 El primer púgil entra con guante rojo y cinta azul, calienta el brazo, atraviesa físicamente la zona de trabajo y estrena su contrato contra el borde visible de la pared con un golpe especial de doce granos. Después de cada impacto regresa a su posición de espera. Las rondas posteriores repiten ese ciclo; el punto de contacto acompaña a la pared mientras se estrecha. Cada ronda acerca la pared al 50% que desbloquea la tuneladora y lanza granos físicos desde el lugar exacto del golpe.
 

@@ -16,13 +16,14 @@ func _capture() -> void:
 	game.joe_dialog.hide()
 	game.current_phase = 3
 	game.levels = game._empty_levels()
-	game.levels.merge({"nails":3, "puncher":4, "punch_power":2, "punch_speed":2, "pawn":4, "shift":2, "box":1, "breaker":1}, true)
+	game.levels.merge({"nails":3, "puncher":4, "punch_power":2, "punch_speed":2, "pawn":4, "shift":2, "box":1, "breaker":1, "umbrella":2, "detector":1, "sponge":2, "sponge_power":3}, true)
 	game.cells = 6200.0
 	game.contamination = 100.0
 	game._update_box_jam(0.0)
 	game.phase_work = 860.0
 	game._rebuild_pawns()
 	game._rebuild_punchers()
+	game._rebuild_adaptations()
 	seed(73137)
 	for index in range(92):
 		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), randf_range(0.068, 0.078))
@@ -32,6 +33,7 @@ func _capture() -> void:
 	for index in range(4):
 		game._create_piece("rock", "right", 6.0, 0, game._choose_landing_column("right"), 0.18)
 	game._restack_pile("right")
+	game._trigger_spray()
 	game._update_crisis_visuals()
 	game._update_pressure_visuals()
 	game._update_ui()

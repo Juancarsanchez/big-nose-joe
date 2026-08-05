@@ -118,19 +118,20 @@ func _run() -> void:
 	_check(game.loose_chunks.size() == pile_before_scrape + 1, "The basal scrape must create one visible grain.")
 	game._clear_pile()
 
-	# The first three-minute event floods the pile and unlocks the hidden pugilist branch.
+	# The unavoidable two-minute line delivers exactly one percent of the initial wall.
 	game._update_ui()
 	_check(not (game.buttons.puncher as Button).visible, "The pugilist must not be available at the beginning.")
 	game.another_line_clock = 0.0
-	var joe_before_line: float = game.joe_health
+	var high_before_line: float = game.joe_high
 	game._update_another_line(0.01)
 	var expected_flood: int = game.another_line_wave
 	var safety := 100
 	while game.another_line_wave > 0 and safety > 0:
 		game._update_another_line(0.20)
 		safety -= 1
-	_check(expected_flood == 140 and game.loose_chunks.size() == expected_flood, "Otra rayita must throw a large phase-scaled cocaine wave onto the pile.")
-	_check(game.joe_health < joe_before_line, "Joe's extra line must visibly worsen his overall prognosis.")
+	_check(is_equal_approx(game.ANOTHER_LINE_INTERVAL, 120.0) and expected_flood == game.ANOTHER_LINE_VISUALS and game.loose_chunks.size() == expected_flood, "Otra rayita must repeat every 120 seconds with a bounded visual particle count.")
+	_check(is_equal_approx(game._pile_load("right"), game.FIRST_WALL_HP * 0.01), "Otra rayita must add exactly one percent of the initial wall as real cocaine units.")
+	_check(game.joe_high > high_before_line, "Joe's extra line must visibly increase his high.")
 	var wave_columns := {}
 	for piece in game.loose_chunks:
 		var column := int(piece.get_meta("column", 0))
@@ -218,13 +219,37 @@ func _run() -> void:
 	_check((game.buttons.coord as Button).visible, "Work in Chain may appear only after both fossae are unlocked.")
 	game.septum_open = false
 
+	# Pulmones de Drogata is inevitable; umbrellas reduce the real-number theft without cancelling it.
+	game.cells = 10000.0
+	game.joe_high = 40.0
+	game.levels.umbrella = 0
+	game.levels.umbrella_power = 0
+	game.another_line_wave = 0
+	game.another_line_clock = 17.0
+	game._trigger_lungs()
+	_check(is_equal_approx(game.cells, 8000.0) and is_equal_approx(game.joe_high, 60.0), "Unprotected lungs must steal 2,000 stored grains and add exactly twenty points of high.")
+	_check(is_equal_approx(game.another_line_clock, 17.0), "Pulmones de Drogata must not postpone the independent 120-second line timer.")
+	game.another_line_wave = 0
+	game._clear_pile()
+	game.cells = 10000.0
+	game.joe_high = 40.0
+	game.levels.umbrella = 3
+	game.levels.umbrella_power = 5
+	game._rebuild_adaptations()
+	await process_frame
+	game._trigger_lungs()
+	_check(is_equal_approx(game._umbrella_reduction(), 0.90) and is_equal_approx(game.cells, 9800.0), "Three fully reinforced umbrellas must save 1,800 of a 2,000-grain theft, never all of it.")
+	_check(game.adaptations.get_children().filter(func(node: Node) -> bool: return node.get_meta("adaptation_kind", "") == "umbrella").size() == 3, "Umbrella specialists must remain separate layered moving units.")
+	game.another_line_wave = 0
+	game._clear_pile()
+
 	game.levels.breaker = 1
 	game.rocks_opened = 6
 	game._update_ui()
 	_check(not (game.buttons.breaker as Button).has_theme_stylebox_override("normal"), "The halo must disappear after buying the mandatory adaptation.")
 	game.phase_work = game._phase_target()
 	game._check_phase_progress()
-	_check(game.current_phase == 3, "The avalanche must require a blue helmet and six opened rocks.")
+	_check(game.current_phase == 3, "The avalanche must require a blue helmet, an umbrella and six opened rocks.")
 	game._resume_after_joe()
 
 	# Phase 3 keeps its formulas hidden: players read the dirty box and slower animation.
@@ -255,6 +280,7 @@ func _run() -> void:
 	var blocked_grain: Sprite2D = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
 	_check(game._manual_collect_at(blocked_grain.position) and not bool(blocked_grain.get_meta("carried", false)), "A jammed box must reject manual deliveries too.")
 	game.levels.detector = 1
+	game.levels.sponge = 1
 	game._update_box_jam(4.0)
 	_check(game.box_jammed and game.contamination < 100.0, "Quimioreceptors must clean a jammed box slowly while visible workers remain stopped.")
 	game.contamination = 85.0
@@ -277,11 +303,30 @@ func _run() -> void:
 	_check(game.contamination < contamination_before_cleaning, "Quimioreceptors must clean existing box contamination.")
 	_check(contamination_before_cleaning - game.contamination < 1.0, "A detector must clean the box gradually.")
 
+	game._clear_pile()
+	game._trigger_chalk()
+	_check(is_equal_approx(game._pile_load("right"), game.CHALK_UNITS) and game._kind_count("impurity") == 60, "The independent chalk event must add 600 real units every cycle.")
+	game._clear_pile()
+	game.levels.sponge = 2
+	game.levels.sponge_power = 5
+	game._rebuild_adaptations()
+	await process_frame
+	game.right_hp = game.right_max - 5000.0
+	var wall_before_spray_line: float = game.right_hp
+	game._trigger_spray()
+	_check(game.spray_pending and game.joe_events.get_child_count() >= 20, "The spray must appear as a clearly visible blue rain thirty seconds before the line.")
+	var spray_coats: Array = game.joe_events.get_children().filter(func(node: Node) -> bool: return node.get_meta("event_kind", "") == "spray_coat")
+	_check(spray_coats.size() == 5 and spray_coats.all(func(node: Node) -> bool: return absf((node as Node2D).position.x - game._wall_center_x("right")) <= 40.0), "The blue spray coat must remain visibly attached to the cocaine wall during the warning.")
+	game.spray_followup_clock = 0.0
+	game._update_joe_events(0.01)
+	_check(not game.spray_pending and is_equal_approx(game._sponge_reduction(), 0.90), "Two fully upgraded sponge macrophages must absorb ninety percent of the spray.")
+	_check(is_equal_approx(game.right_hp - wall_before_spray_line, game.SPRAY_RECOAT_UNITS * 0.10), "The UI-reported absorbed amount and actual wall restoration must use the same real units.")
+
 	game.phase_work = game._phase_target()
 	game.contamination = 29.0
 	game.impurities_cleaned = 10
 	game._check_phase_progress()
-	_check(game.current_phase == 4, "Phase 3 must require ten filtered samples and a clean enough box.")
+	_check(game.current_phase == 4, "Phase 3 must require a detector, a sponge, ten filtered samples and a clean enough box.")
 	game._resume_after_joe()
 
 	game.levels.platelets = 2
@@ -297,7 +342,14 @@ func _run() -> void:
 	_check(game.tissue_damage > damage_before_jammed_repair, "A full-box jam must stop platelet repair as well as transport and punching.")
 	game.box_jammed = false
 	_check(game.damage_meter.visible and game.blood_drops.get_child_count() > 0, "Phase 4 must show a damage meter and falling blood drops.")
+	_check(game.get_node("World/JoeHigh").visible and game.joe_high_label.text.contains("COLOCÓN"), "The permanent Joe meter must be named and shown as his high, not as the removed prognosis.")
 	_check(game.get_node_or_null("World/StageViewport/Stage/Layer46_Crisis/LeftWound") == null, "The old red wound domes must be removed.")
+	game.tissue_damage = 10.0
+	game.joe_high = 40.0
+	game._trigger_scratch()
+	var visible_wounds: Array = game.joe_events.get_children().filter(func(node: Node) -> bool: return node.get_meta("event_kind", "") == "wound")
+	_check(is_equal_approx(game.tissue_damage, 10.0 + game.SCRATCH_DAMAGE) and is_equal_approx(game.joe_high, 40.0 + game.SCRATCH_HIGH_GAIN), "Joe's recurring scratch must add explicit tissue damage and high.")
+	_check(visible_wounds.size() >= 3, "The scratch must create several grounded fissures instead of a red dome.")
 
 	game.phase_work = game._phase_target()
 	game.tissue_damage = 30.0
@@ -332,11 +384,32 @@ func _run() -> void:
 		game._finish_delivery(handler)
 		_check(game.infection < 50.0, "Handlers must contain infection without a combat system.")
 
+	game.levels.catapult = 1
+	game.levels.catapult_power = 2
+	game._rebuild_adaptations()
+	await process_frame
+	game.mucus_hp = 0.0
+	game.mucus_max_hp = 0.0
+	game._trigger_mucus()
+	var mucus_patches: Array = game.joe_events.get_children().filter(func(node: Node) -> bool: return node.get_meta("event_kind", "") == "mucus")
+	_check(mucus_patches.size() >= 5 and mucus_patches.all(func(node: Node) -> bool: return absf((node as Node2D).position.x - game._wall_center_x("right")) <= 40.0), "Mucus must visibly coat the wall instead of floating beside it.")
+	var wall_before_mucus_click: float = game.right_hp
+	var mucus_before_click: float = game.mucus_hp
+	game._click_wall("right")
+	_check(game.mucus_hp < mucus_before_click and is_equal_approx(game.right_hp, wall_before_mucus_click), "Mucus must block wall mining and receive the manual click instead.")
+	var mucus_before_launch: float = game.mucus_hp
+	game._launch_catapults()
+	await create_timer(0.9).timeout
+	_check(game.mucus_hp <= mucus_before_launch - 400.0, "A level-two catapult impact must visibly remove 400 real mucus resistance.")
+	_check(game.adaptations.get_children().any(func(node: Node) -> bool: return node.get_meta("adaptation_kind", "") == "catapult"), "The catapult must exist in its own adaptation layer.")
+
 	game.phase_work = 321.0
 	game.contamination = 17.0
 	game.another_line_clock = 77.0
 	game.another_line_events = 4
-	game.joe_health = 63.0
+	game.joe_high = 63.0
+	game.lung_clock = 123.0
+	game.spray_clock = 111.0
 	game.rocks_opened = 9
 	game.impurities_cleaned = 13
 	game.tissue_repaired = 21.0
@@ -348,13 +421,13 @@ func _run() -> void:
 	game.contamination = 0.0
 	game.another_line_clock = 180.0
 	game.another_line_events = 0
-	game.joe_health = 0.0
+	game.joe_high = 0.0
 	game._clear_fallen_wall_chunks()
 	game._load()
-	_check(game.current_phase == 5 and is_equal_approx(game.phase_work, 321.0), "Save version 9 must preserve Joe's crisis progression.")
-	_check(is_equal_approx(game.contamination, 17.0) and is_equal_approx(game.another_line_clock, 77.0), "Save version 9 must preserve hidden contamination and Joe's event clock.")
-	_check(game.another_line_events == 4 and is_equal_approx(game.joe_health, 63.0), "Save version 9 must preserve both the evolving drop pattern and Joe's prognosis.")
-	_check(game.fallen_wall_chunks.size() == 1 and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), game.WALL_CHUNK_HEALTH) and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("mass", 0.0)), 11.0), "Save version 9 must preserve wall-block health and mass independently.")
+	_check(game.current_phase == 5 and is_equal_approx(game.phase_work, 321.0), "Save version 10 must preserve Joe's crisis progression.")
+	_check(is_equal_approx(game.contamination, 17.0) and is_equal_approx(game.another_line_clock, 77.0), "Save version 10 must preserve hidden contamination and Joe's line clock.")
+	_check(game.another_line_events == 4 and is_equal_approx(game.joe_high, 63.0) and is_equal_approx(game.lung_clock, 123.0) and is_equal_approx(game.spray_clock, 111.0), "Save version 10 must preserve the high and every independent Joe timer.")
+	_check(game.fallen_wall_chunks.size() == 1 and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), game.WALL_CHUNK_HEALTH) and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("mass", 0.0)), 11.0), "Save version 10 must preserve wall-block health and mass independently.")
 	_check(game.rocks_opened == 9 and game.impurities_cleaned == 13 and is_equal_approx(game.tissue_repaired, 21.0), "Save version 6 must preserve mechanical phase objectives.")
 
 	var legacy := FileAccess.open(game.save_path, FileAccess.WRITE)

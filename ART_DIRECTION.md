@@ -32,15 +32,17 @@ La cámara se mueve con `A`, `D`, las flechas o acercando el cursor a los bordes
 3. `Layer20_Ground`: terreno horizontal continuo.
 4. `Layer30_Props`: caja de entrega.
 5. `Layer40_Resources`: paredes de cocaína de ambos lados.
-6. `Layer46_Crisis`: lavado rojo progresivo y gotas de la hemorragia, sin masas sólidas sobre el suelo.
-7. `Layer52_WallChunks`: grandes trozos desprendidos, siempre visibles sobre el polvo y minables solo por el jugador.
+6. `Layer45_JoeEvents`: gotas azules, recubrimiento de spray, heridas y moco; todos independientes de pared y fondo.
+7. `Layer46_Crisis`: lavado rojo progresivo y gotas de la hemorragia, sin masas sólidas sobre el suelo.
 8. `Layer50_Chunks`: cocaína, impurezas, pedruscos y bacterias apiladas.
-9. `Layer55_Platelets`: refuerzos de reparación independientes.
-10. `Layer58_Punchers`: autoclickers con guantes de boxeo, separados de la logística.
-11. `Layer60_Pawns`: peones básicos y variantes funcionales.
-12. `Layer70_Effects`: números y confirmaciones visuales.
-13. Interfaz fija: laboratorio, daño, cabecera y prueba de fases. La contaminación exacta permanece oculta.
-14. `JoePrognosis`: retrato, etiqueta y barra global independientes de los medidores de crisis.
+9. `Layer52_WallChunks`: grandes trozos desprendidos, siempre visibles sobre el polvo y minables solo por el jugador.
+10. `Layer55_Platelets`: refuerzos de reparación independientes.
+11. `Layer58_Punchers`: autoclickers con guantes de boxeo, separados de la logística.
+12. `Layer59_Adaptations`: paraguas, esponjas y catapultas, montados como cuerpo y accesorio reemplazables.
+13. `Layer60_Pawns`: peones básicos y variantes funcionales.
+14. `Layer70_Effects`: cifras reales y confirmaciones visuales.
+15. Interfaz fija: laboratorio, colocón, daño, cabecera y prueba de fases. La contaminación exacta permanece oculta.
+16. `JoeHigh`: retrato, etiqueta y barra de colocón independientes de los medidores de crisis.
 
 No existe una silueta dinámica de presión detrás del montón: era la sombra roja que cambiaba con su altura y se eliminó por completo.
 
@@ -53,13 +55,16 @@ Los elementos jugables móviles usan sprites separados:
 - `pawn_detector_empty.png` y `pawn_detector_carry.png`: el mismo peón con gafas de ingeniería;
 - `pawn_handler_empty.png` y `pawn_handler_carry.png`: cuidador con guantes gruesos;
 - `pawn_empty.png` reutilizado por los púgiles, con guante rojo y cinta azul añadidos como capas hijas independientes;
+- `umbrella_pink.png`: paraguas rosa separado del cuerpo básico;
+- `sponge_yellow.png`: esponja amarilla separada del cuerpo del macrófago;
+- `mucus_catapult.png`: máquina mucolítica independiente; el proyectil vuelve a usar el cuerpo básico;
 - `platelet.png`: plaqueta coral;
 - `bacteria.png`: bacteria verde;
 - `collection_box.png`: caja de entrega;
 - `cocaine_wall.png`: pared compacta adherida al tabique;
 - `cocaine_wall_chunks.png`: atlas de cuatro bloques desprendidos; su fuente con croma permanece en `source/`;
 - `cocaine_grain.png`: grano, impureza, bola segura y base visual de los pedruscos.
-- `ui/joe_prognosis.png`: retrato de estado de Joe generado como pixel art y recortado con transparencia.
+- `ui/joe_prognosis.png`: retrato de Joe para la barra de colocón, generado como pixel art y recortado con transparencia.
 - `effects/cocaine_wall_damage.gdshader`: máscara escalonada que muerde el borde de la pared sin alterar su textura.
 
 El escenario utiliza:
@@ -68,7 +73,7 @@ El escenario utiliza:
 - `environment/septum.png`: revestimiento orgánico del tabique;
 - `environment/septum_gate.png`: tramo independiente que desaparece al perforar.
 
-Los originales con croma están en `assets/art/gameplay/source`. Cada elemento se mantiene en su propia capa o nodo para poder sustituirlo sin romper los demás.
+Los originales con croma están en `assets/art/gameplay/source`. Cada elemento se mantiene en su propia capa o nodo para poder sustituirlo sin romper los demás. Las adaptaciones reutilizan el cuerpo del peón: el paraguas y la esponja animan suavemente sin desplazar los pies, y la catapulta permanece apoyada mientras el proyectil describe un arco independiente.
 
 ## Reglas visuales de las mecánicas
 
@@ -82,7 +87,9 @@ La pared se estrecha de forma proporcional hasta el 5%. Cada 1% activa o profund
 
 Una bola apelmazada natural representa seis granos vecinos y solo la transporta un casco azul después de tratarla. Los peones normales ya no pueden fabricar ni transportar una versión segura automáticamente.
 
-Las impurezas usan colores deliberadamente distintos —naranja, azul grisáceo y amarillo—. Al entrar en la caja la tiñen de marrón, alargan físicamente la descarga y reducen los números de entrega. Si llega al máximo, la caja tiembla, se oscurece, rechaza los clics de entrega y congela peones y púgiles. Los quimiorreceptores realizan entonces una limpieza pasiva lenta; el trabajo solo vuelve cuando la suciedad baja al umbral seguro. No se muestra el porcentaje exacto. En la hemorragia no hay cúpulas: el peligro se representa mediante fondo rojo, gotas superiores y medidor de daño.
+Las impurezas usan colores deliberadamente distintos —naranja, azul grisáceo y amarillo—. Al entrar en la caja la tiñen de marrón, alargan físicamente la descarga y reducen los números de entrega. Si llega al máximo, la caja tiembla, se oscurece, rechaza los clics de entrega y congela peones y púgiles. Los quimiorreceptores realizan entonces una limpieza pasiva lenta; el trabajo solo vuelve cuando la suciedad baja al umbral seguro. No se muestra el porcentaje exacto. En la hemorragia no hay cúpulas: el peligro se representa mediante fondo rojo, gotas superiores, heridas en el suelo y medidor de daño.
+
+El spray reutiliza la silueta de gota en azul y deja manchas húmedas sobre la pared durante sus 30 segundos de preparación. Los macrófagos mantienen el cuerpo básico y llevan una esponja amarilla que crece con la mejora. El moco usa manchas verdes irregulares sobre la pared: bloquea la minería hasta perder su resistencia. La catapulta coral queda anclada al suelo y lanza el mismo glóbulo blanco en un arco suave. Cada resolución muestra cantidades concretas (`-2.000 GRANOS`, `ESPONJAS ABSORBEN 1.440`, `CATAPULTA -400 MOCO`) en lugar de comunicar porcentajes abstractos.
 
 El debut del primer púgil debe leerse como un salto de escala: calentamiento visible, recorrido completo hasta la pared, texto `¡¡PUM!!`, doce partículas y un montón alterado de inmediato. Después regresa por el suelo a su punto de espera. El guante se refleja de forma independiente al cambiar de fosa, la criatura siempre mira hacia la pared y el punto de impacto sigue su borde libre mientras ésta se estrecha. Sus guantes y cinta continúan siendo capas hijas independientes del cuerpo básico.
 

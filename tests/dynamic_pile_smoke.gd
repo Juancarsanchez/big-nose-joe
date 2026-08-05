@@ -124,15 +124,15 @@ func _run() -> void:
 	game.current_phase = 1
 	game.contamination = 0.0
 	game.cells = 0.0
-	game.joe_health = 30.0
-	game.joe_health_display = 30.0
+	game.joe_high = 70.0
+	game.joe_high_display = 70.0
 	var manual_grain: Sprite2D = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
 	var manual_point := Vector2(manual_grain.position.x, game._ground_y() - 2.0)
 	_check(game._manual_collect_at(manual_point), "Clicking the visible pile must start a manual collection.")
 	_check(bool(manual_grain.get_meta("manual_flying", false)) and bool(manual_grain.get_meta("carried", false)), "A manually collected grain must leave the pile immediately.")
 	await create_timer(0.85).timeout
 	_check(is_equal_approx(game.cells, 1.0) and game.loose_chunks.is_empty(), "Manual cargo must become currency only after reaching the box.")
-	_check(game.joe_health > 30.0, "Removing clean cocaine from the nose must improve Joe's prognosis.")
+	_check(game.joe_high < 70.0, "Removing clean cocaine from the nose must reduce Joe's high.")
 
 	game.current_phase = 3
 	var manual_impurity: Sprite2D = game._create_piece("impurity", "right", 1.0, 0, 0, 0.064, "yeso")

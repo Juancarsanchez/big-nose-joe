@@ -1,7 +1,7 @@
 extends Control
 
 const SAVE := "user://big_nose_joe.save"
-const SAVE_VERSION := 9
+const SAVE_VERSION := 10
 const ProgressionData = preload("res://scripts/progression_data.gd")
 const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
@@ -36,11 +36,27 @@ const PUNCH_BASE_INTERVAL := 3.4
 const PUNCHER_WALK_SPEED := 235.0
 const PUNCHER_STRIKE_TIME := 0.18
 const MANUAL_DELIVERY_BASE_TIME := 0.46
-const JOE_STARTING_HEALTH := 30.0
-const JOE_RECOVERY_PER_CLEAN_UNIT := 0.01
-const ANOTHER_LINE_INTERVAL := 180.0
+const JOE_STARTING_HIGH := 70.0
+const JOE_HIGH_PER_COCAINE_UNIT := 0.001
+const ANOTHER_LINE_INTERVAL := 120.0
 const ANOTHER_LINE_WARNING := 8.0
-const JOE_DROP_INTERVALS := [0.0, 0.0, 4.5, 4.0, 3.5, 3.0]
+const ANOTHER_LINE_UNITS := FIRST_WALL_HP * 0.01
+const ANOTHER_LINE_VISUALS := 120
+const LUNG_INTERVAL := 300.0
+const LUNG_WARNING := 150.0
+const LUNG_STEAL_RATIO := 0.20
+const LUNG_HIGH_GAIN := 20.0
+const CHALK_INTERVAL := 180.0
+const CHALK_UNITS := 600.0
+const SPRAY_INTERVAL := 240.0
+const SPRAY_FOLLOWUP := 30.0
+const SPRAY_RECOAT_UNITS := FIRST_WALL_HP * 0.02
+const SCRATCH_INTERVAL := 240.0
+const SCRATCH_DAMAGE := 28.0
+const SCRATCH_HIGH_GAIN := 6.0
+const MUCUS_INTERVAL := 210.0
+const MUCUS_STRENGTH := 1200.0
+const CATAPULT_INTERVAL := 3.4
 const WALL_CHUNK_MASS := 25.0
 const WALL_CHUNK_HEALTH := 24.0
 const WALL_CHUNK_MAX_CLICK_DAMAGE := 3.0
@@ -60,6 +76,9 @@ const PLATELET_TEXTURE := preload("res://assets/art/gameplay/sprites/platelet.pn
 const BACTERIA_TEXTURE := preload("res://assets/art/gameplay/sprites/bacteria.png")
 const GRAIN_TEXTURE := preload("res://assets/art/gameplay/sprites/cocaine_grain.png")
 const WALL_CHUNK_SHEET := preload("res://assets/art/gameplay/sprites/cocaine_wall_chunks.png")
+const UMBRELLA_TEXTURE := preload("res://assets/art/gameplay/sprites/umbrella_pink.png")
+const SPONGE_TEXTURE := preload("res://assets/art/gameplay/sprites/sponge_yellow.png")
+const CATAPULT_TEXTURE := preload("res://assets/art/gameplay/sprites/mucus_catapult.png")
 
 @onready var stage_view: Control = $World/StageViewport
 @onready var stage: Control = $World/StageViewport/Stage
@@ -67,16 +86,18 @@ const WALL_CHUNK_SHEET := preload("res://assets/art/gameplay/sprites/cocaine_wal
 @onready var punchers: Control = $World/StageViewport/Stage/Layer58_Punchers
 @onready var chunks: Control = $World/StageViewport/Stage/Layer50_Chunks
 @onready var wall_chunks_layer: Control = $World/StageViewport/Stage/Layer52_WallChunks
+@onready var joe_events: Control = $World/StageViewport/Stage/Layer45_JoeEvents
 @onready var platelets: Control = $World/StageViewport/Stage/Layer55_Platelets
 @onready var effects: Control = $World/StageViewport/Stage/Layer70_Effects
+@onready var adaptations: Control = $World/StageViewport/Stage/Layer59_Adaptations
 @onready var blood_wash: ColorRect = $World/StageViewport/Stage/Layer46_Crisis/BloodWash
 @onready var blood_drops: Control = $World/StageViewport/Stage/Layer46_Crisis/BloodDrops
 @onready var damage_meter: PanelContainer = $World/DamageMeter
 @onready var damage_label: Label = $World/DamageMeter/Margin/Content/Label
 @onready var damage_progress: ProgressBar = $World/DamageMeter/Margin/Content/Progress
-@onready var joe_health_label: Label = $World/JoePrognosis/Margin/Content/Label
-@onready var joe_health_progress: ProgressBar = $World/JoePrognosis/Margin/Content/Progress
-@onready var joe_portrait: TextureRect = $World/JoePrognosis/Margin/Content/Portrait
+@onready var joe_high_label: Label = $World/JoeHigh/Margin/Content/Label
+@onready var joe_high_progress: ProgressBar = $World/JoeHigh/Margin/Content/Progress
+@onready var joe_portrait: TextureRect = $World/JoeHigh/Margin/Content/Portrait
 @onready var contamination_meter: PanelContainer = $World/ContaminationMeter
 @onready var contamination_label: Label = $World/ContaminationMeter/Margin/Content/Label
 @onready var contamination_progress: ProgressBar = $World/ContaminationMeter/Margin/Content/Progress
@@ -132,11 +153,10 @@ var phase_work := 0.0
 var contamination := 0.0
 var tissue_damage := 0.0
 var infection := 0.0
-var joe_health := JOE_STARTING_HEALTH
-var joe_health_display := JOE_STARTING_HEALTH
+var joe_high := JOE_STARTING_HIGH
+var joe_high_display := JOE_STARTING_HIGH
 var impurities_handled := 0
 var bacteria_handled := 0
-var joe_clock := 0.0
 var bacteria_clock := 0.0
 var blood_drop_clock := 0.0
 var punch_clock := 0.0
@@ -148,6 +168,18 @@ var another_line_drop_clock := 0.0
 var another_line_spawn_index := 0
 var another_line_events := 0
 var another_line_warned := false
+var lung_clock := LUNG_INTERVAL
+var lung_warned := false
+var chalk_clock := CHALK_INTERVAL
+var spray_clock := SPRAY_INTERVAL
+var spray_followup_clock := 0.0
+var spray_pending := false
+var spray_side := "right"
+var scratch_clock := SCRATCH_INTERVAL
+var mucus_clock := MUCUS_INTERVAL
+var mucus_hp := 0.0
+var mucus_max_hp := 0.0
+var catapult_clock := 0.0
 var puncher_unlocked := false
 var puncher_debut_pending := false
 var puncher_debut_clock := 0.0
@@ -207,6 +239,7 @@ func _finish_layout() -> void:
 	_rebuild_pawns()
 	_rebuild_punchers()
 	_rebuild_platelets()
+	_rebuild_adaptations()
 	_update_crisis_visuals()
 	_update_pressure_visuals()
 
@@ -215,12 +248,14 @@ func _process(delta: float) -> void:
 		return
 	_update_camera(delta)
 	_update_another_line(delta)
+	_update_joe_events(delta)
 	_update_crisis(delta)
 	_update_box_jam(delta)
-	_update_joe_prognosis(delta)
+	_update_joe_high(delta)
 	_update_punchers(delta)
 	_update_pawns(delta)
 	_update_platelets(delta)
+	_update_adaptations(delta)
 	ui_clock += delta
 	if ui_clock >= 0.12:
 		ui_clock = 0.0
@@ -257,6 +292,9 @@ func _ground_y() -> float:
 func _mine_x(side: String = active_side) -> float:
 	return 2418.0 if side == "left" else 2782.0
 
+func _wall_center_x(side: String = active_side) -> float:
+	return 2484.0 if side == "left" else 2716.0
+
 func _wall_hp(side: String) -> float:
 	return left_hp if side == "left" else right_hp
 
@@ -272,10 +310,10 @@ func _pawn_speed() -> float:
 		crisis_factor *= lerpf(1.0, 0.68, tissue_damage / 100.0)
 	if current_phase >= 5:
 		crisis_factor *= lerpf(1.0, 0.72, infection / 100.0)
-	return BASE_PAWN_SPEED * (1.0 + float(levels.shift) * 0.18) * crisis_factor
+	return BASE_PAWN_SPEED * pow(1.35, int(levels.shift)) * crisis_factor
 
 func _transport_capacity() -> int:
-	return BASE_CAPACITY + int(levels.box)
+	return BASE_CAPACITY * int(pow(2.0, int(levels.box)))
 
 func _deposit_duration() -> float:
 	return 0.30 / _deposit_speed_multiplier()
@@ -367,7 +405,7 @@ func _update_pawns(delta: float) -> void:
 			pawn.position.x = work_point.x + sin(Time.get_ticks_msec() * 0.018 + int(pawn.get_meta("index", 0))) * 1.8
 			if timer <= 0.0:
 				if not bool(pawn.get_meta("did_mine", false)):
-					if _wall_hp(side) > 0.0:
+					if mucus_hp <= 0.0 and _wall_hp(side) > 0.0:
 						_damage_wall(1.0, side)
 						_spawn_chunk(Vector2(_mine_x(side) + lane_x * 0.35, _ground_y() - 245.0), 1.0, side)
 					pawn.set_meta("did_mine", true)
@@ -833,7 +871,7 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 				delivered += value
 				bacteria_handled += 1
 				infection = maxf(0.0, infection - 3.5)
-				_change_joe_health(0.18)
+				_change_joe_high(-0.18)
 				phase_work += 2.5
 			else:
 				piece.set_meta("carried", false)
@@ -967,6 +1005,12 @@ func _rock_count(side: String) -> int:
 func _click_wall(side: String) -> void:
 	if (side == "left" and not septum_open) or _wall_hp(side) <= 0.0: return
 	active_side = side
+	if mucus_hp > 0.0:
+		total_clicks += 1
+		var mucus_hit := minf(_click_power(), mucus_hp)
+		_damage_mucus(mucus_hit)
+		_float_text("MOCO  -%s" % _number(mucus_hit), Vector2(_mine_x(side), _ground_y() - 235.0))
+		return
 	for node in punchers.get_children():
 		node.set_meta("side", side)
 		_place_puncher(node as Sprite2D)
@@ -995,7 +1039,7 @@ func _damage_wall(amount: float, side: String = active_side) -> void:
 		left_hp = maxf(0.0, left_hp - _wall_damage_feedback(side, previous_ratio, clampf(left_hp / left_max, 0.0, 1.0), left_hp))
 		if left_hp <= 0.0 and left_cleared == 0:
 			left_cleared = 1
-			_change_joe_health(3.0, true)
+			_change_joe_high(-3.0, true)
 			_show_toast("PARED IZQUIERDA AGOTADA")
 	else:
 		if right_hp <= 0.0: return
@@ -1005,7 +1049,7 @@ func _damage_wall(amount: float, side: String = active_side) -> void:
 		right_hp = maxf(0.0, right_hp - _wall_damage_feedback(side, previous_ratio, clampf(right_hp / right_max, 0.0, 1.0), right_hp))
 		if right_hp <= 0.0 and right_cleared == 0:
 			right_cleared = 1
-			_change_joe_health(3.0, true)
+			_change_joe_high(-3.0, true)
 			_show_toast("PARED DERECHA AGOTADA")
 	_update_world()
 
@@ -1252,18 +1296,18 @@ func _puncher_strike_position(puncher: Sprite2D) -> Vector2:
 	return Vector2(_wall_free_x(side) + direction * 14.0, _ground_y() - 14.0)
 
 func _punch_interval() -> float:
-	return PUNCH_BASE_INTERVAL * pow(0.84, int(levels.punch_speed))
+	return PUNCH_BASE_INTERVAL * pow(0.72, int(levels.punch_speed))
 
 func _punch_output() -> int:
-	return 1 + int(levels.punch_power)
+	return int(pow(2.0, int(levels.punch_power)))
 
 func _auto_hit_rate() -> float:
-	if int(levels.puncher) == 0 or box_jammed or _nearest_fallen_wall_chunk(active_side):
+	if int(levels.puncher) == 0 or box_jammed or mucus_hp > 0.0 or _nearest_fallen_wall_chunk(active_side):
 		return 0.0
 	return float(levels.puncher) * float(_punch_output()) / _punch_interval()
 
 func _update_punchers(delta: float) -> void:
-	if int(levels.puncher) == 0 or box_jammed or _nearest_fallen_wall_chunk(active_side):
+	if int(levels.puncher) == 0 or box_jammed or mucus_hp > 0.0 or _nearest_fallen_wall_chunk(active_side):
 		return
 	if puncher_debut_pending:
 		puncher_debut_clock -= delta
@@ -1355,7 +1399,7 @@ func _resolve_punch(puncher: Sprite2D) -> void:
 	_update_world()
 
 func _click_power() -> float:
-	return 1.0 + float(levels.nails)
+	return pow(2.0, int(levels.nails))
 
 func _rate() -> float:
 	if box_jammed:
@@ -1381,6 +1425,7 @@ func _buy(id: String) -> void:
 			_show_toast("EL NUEVO PÚGIL ESTÁ CALENTANDO EL BRAZO...")
 	elif upgrade.kind == "capacity": _update_box()
 	elif upgrade.kind == "platelet": _rebuild_platelets()
+	elif upgrade.kind in ["umbrella", "umbrella_power", "sponge", "sponge_power", "catapult", "catapult_power"]: _rebuild_adaptations()
 	_update_ui()
 	_check_phase_progress()
 	_save()
@@ -1397,12 +1442,11 @@ func _debug_set_phase(next_phase: int) -> void:
 	playing = true
 	current_phase = clampi(next_phase, 1, PHASES.size())
 	phase_work = 0.0
-	joe_health = clampf(JOE_STARTING_HEALTH + float(current_phase - 1) * 7.0, 0.0, 100.0)
-	joe_health_display = joe_health
+	joe_high = clampf(JOE_STARTING_HIGH + float(current_phase - 1) * 4.0, 0.0, 96.0)
+	joe_high_display = joe_high
 	contamination = 0.0 if current_phase < 3 else 42.0
 	contamination_band = int(contamination / 25.0)
 	box_jammed = false
-	joe_clock = 0.0
 	bacteria_clock = 0.0
 	blood_drop_clock = 0.0
 	punch_clock = 0.0
@@ -1412,6 +1456,17 @@ func _debug_set_phase(next_phase: int) -> void:
 	another_line_spawn_index = 0
 	another_line_events = 0
 	another_line_warned = false
+	lung_clock = LUNG_INTERVAL
+	lung_warned = false
+	chalk_clock = CHALK_INTERVAL
+	spray_clock = SPRAY_INTERVAL
+	spray_followup_clock = 0.0
+	spray_pending = false
+	scratch_clock = SCRATCH_INTERVAL
+	mucus_clock = MUCUS_INTERVAL
+	mucus_hp = 0.0
+	mucus_max_hp = 0.0
+	catapult_clock = 0.0
 	puncher_unlocked = current_phase >= 2 or int(levels.puncher) > 0
 	puncher_debut_pending = false
 	puncher_debut_clock = 0.0
@@ -1426,6 +1481,8 @@ func _debug_set_phase(next_phase: int) -> void:
 	infection = 38.0 if current_phase >= 5 else 0.0
 	_rebuild_pawns()
 	_rebuild_punchers()
+	_rebuild_adaptations()
+	_rebuild_joe_event_visuals()
 	_remove_future_crisis_pieces()
 	_rebuild_platelets()
 	_update_world()
@@ -1474,11 +1531,11 @@ func _update_another_line(delta: float) -> void:
 		another_line_clock = maxf(0.0, another_line_clock - delta)
 		another_line_drop_clock -= delta
 		if another_line_drop_clock <= 0.0:
-			another_line_drop_clock = 0.18
+			another_line_drop_clock = 0.08
 			var batch := mini(5, another_line_wave)
 			another_line_wave -= batch
 			for grain in range(batch):
-				var wave_total := 120 + current_phase * 20
+				var wave_total := ANOTHER_LINE_VISUALS
 				var projected_load := _pile_load(active_side) + float(another_line_wave)
 				var previous_load := maxf(0.0, projected_load - float(wave_total))
 				var reach := mini(MAX_PILE_RADIUS, 18 + current_phase * 2 + int(sqrt(previous_load / 12.0)))
@@ -1490,23 +1547,39 @@ func _update_another_line(delta: float) -> void:
 				var center := roundi(lerpf(float(bounds.x), float(bounds.y), anchor))
 				another_line_spawn_index += 1
 				var rain_x := _pile_center(active_side) + float(center) * GRAIN_SPACING
-				_spawn_chunk(Vector2(rain_x + randf_range(-7.0, 7.0), _ground_y() - randf_range(300.0, 430.0)), 1.0, active_side, center)
+				_spawn_line_piece(Vector2(rain_x + randf_range(-7.0, 7.0), _ground_y() - randf_range(300.0, 430.0)), active_side, center, another_line_spawn_index)
 			if another_line_wave == 0:
 				_finish_another_line()
 		return
 	another_line_clock -= delta
 	if another_line_clock <= ANOTHER_LINE_WARNING and not another_line_warned:
 		another_line_warned = true
-		_show_toast("JOE ESTÁ PREPARANDO OTRA RAYITA...")
+		_show_toast("JOE PREPARA OTRA RAYITA  ·  CAERÁN %s GRANOS" % _number(ANOTHER_LINE_UNITS))
 	if another_line_clock <= 0.0:
+		_start_another_line("normal")
+
+func _start_another_line(source: String) -> void:
+	if source == "normal":
 		another_line_clock = ANOTHER_LINE_INTERVAL
 		another_line_warned = false
-		another_line_wave = 120 + current_phase * 20
-		another_line_drop_clock = 0.0
-		another_line_spawn_index = 0
-		another_line_events += 1
-		_change_joe_health(-1.2 - float(current_phase) * 0.25, true)
-		_show_toast("OTRA RAYITA  ·  JOE ACABA DE INUNDAR LA FOSA")
+	another_line_wave += ANOTHER_LINE_VISUALS
+	another_line_drop_clock = 0.0
+	another_line_spawn_index = 0
+	another_line_events += 1
+	if source == "normal":
+		_change_joe_high(ANOTHER_LINE_UNITS * JOE_HIGH_PER_COCAINE_UNIT, true)
+	var source_text := "PULMONES DE DROGATA" if source == "lungs" else "OTRA RAYITA"
+	_show_toast("%s  ·  +%s GRANOS" % [source_text, _number(ANOTHER_LINE_UNITS)])
+	_float_text("+%s GRANOS" % _number(ANOTHER_LINE_UNITS), Vector2(_pile_center(active_side), _ground_y() - 250.0))
+
+func _spawn_line_piece(origin: Vector2, side: String, column: int, index: int) -> void:
+	var value := ANOTHER_LINE_UNITS / float(ANOTHER_LINE_VISUALS)
+	var impurity_stride := maxi(5, 5 + int(levels.sorting))
+	if current_phase >= 3 and index % impurity_stride == 0:
+		var piece := _create_piece("impurity", side, value, 0, _choose_landing_column(side, column), randf_range(0.078, 0.09), "serrín")
+		_drop_piece(piece, origin)
+	else:
+		_spawn_chunk(origin, value, side, column)
 
 func _finish_another_line() -> void:
 	if puncher_unlocked:
@@ -1519,23 +1592,229 @@ func _finish_another_line() -> void:
 	_show_toast("NUEVA ADAPTACIÓN  ·  CÉLULA PÚGIL EN PRÁCTICAS")
 	_save()
 
-func _update_crisis(delta: float) -> void:
+func _update_joe_events(delta: float) -> void:
 	if current_phase >= 2:
-		joe_clock -= delta
-		if joe_clock <= 0.0:
-			joe_clock = float(JOE_DROP_INTERVALS[current_phase])
-			var side := active_side
-			var drops := mini(5, current_phase)
-			for index in range(drops):
-				var impurity_chance := maxf(0.08, 0.34 - float(levels.sorting) * 0.08)
-				if current_phase >= 3 and randf() < impurity_chance:
-					var materials := ["serrín", "yeso", "tiza"]
-					_spawn_special_piece("impurity", side, materials[randi_range(0, materials.size() - 1)])
-				else:
-					_spawn_chunk(Vector2(_mine_x(side) + randf_range(-22.0, 22.0), _ground_y() - randf_range(220.0, 380.0)), 1.0, side)
+		lung_clock -= delta
+		if lung_clock <= LUNG_WARNING and not lung_warned:
+			lung_warned = true
+			var warning_attempt := floorf(cells * LUNG_STEAL_RATIO)
+			var warning_loss := maxf(0.0, warning_attempt - floorf(warning_attempt * _umbrella_reduction()))
+			_show_toast("PULMONES EN %d SEGUNDOS  ·  AHORA ARRIESGAS %s GRANOS" % [ceili(lung_clock), _number(warning_loss)])
+		if lung_clock <= 0.0:
+			lung_clock = LUNG_INTERVAL
+			lung_warned = false
+			_trigger_lungs()
+	if current_phase >= 3:
+		chalk_clock -= delta
+		if chalk_clock <= 0.0:
+			chalk_clock = CHALK_INTERVAL
+			_trigger_chalk()
+		if spray_pending:
+			spray_followup_clock -= delta
+			if spray_followup_clock <= 0.0:
+				_resolve_spray_line()
+		else:
+			spray_clock -= delta
+			if spray_clock <= 0.0:
+				spray_clock = SPRAY_INTERVAL
+				_trigger_spray()
 	if current_phase >= 4:
-		var bleed_rate := 0.72 + float(current_phase - 4) * 0.16
-		var repair_rate := 0.0 if box_jammed else float(levels.platelets) * (0.42 + float(levels.repair) * 0.16) * (1.0 + float(levels.signals) * 0.1)
+		scratch_clock -= delta
+		if scratch_clock <= 0.0:
+			scratch_clock = SCRATCH_INTERVAL
+			_trigger_scratch()
+	if current_phase >= 5:
+		mucus_clock -= delta
+		if mucus_clock <= 0.0:
+			mucus_clock = MUCUS_INTERVAL
+			_trigger_mucus()
+	if mucus_hp > 0.0 and int(levels.catapult) > 0:
+		catapult_clock -= delta
+		if catapult_clock <= 0.0:
+			catapult_clock = CATAPULT_INTERVAL
+			_launch_catapults()
+
+func _trigger_lungs() -> void:
+	var attempted := floorf(cells * LUNG_STEAL_RATIO)
+	var protected := floorf(attempted * _umbrella_reduction())
+	var stolen := maxf(0.0, attempted - protected)
+	cells = maxf(0.0, cells - stolen)
+	_start_another_line("lungs")
+	_change_joe_high(LUNG_HIGH_GAIN, true)
+	_show_toast("PULMONES DE DROGATA  ·  -%s GRANOS  ·  COLOCÓN +20" % _number(stolen))
+	_float_text("-%s GRANOS" % _number(stolen), Vector2(_box_x(), _ground_y() - 105.0))
+	if protected > 0.0:
+		_float_text("PARAGUAS SALVAN %s" % _number(protected), Vector2(_box_x() - 95.0, _ground_y() - 150.0))
+	_pulse_adaptation("umbrella")
+
+func _umbrella_reduction() -> float:
+	return minf(0.90, float(levels.umbrella) * 0.05 + float(levels.umbrella_power) * 0.15)
+
+func _trigger_chalk() -> void:
+	var visuals := 60
+	var value := CHALK_UNITS / float(visuals)
+	for index in range(visuals):
+		var column := _choose_landing_column(active_side)
+		var piece := _create_piece("impurity", active_side, value, 0, column, randf_range(0.078, 0.092), "tiza")
+		_drop_piece(piece, Vector2(_pile_center(active_side) + float(column) * GRAIN_SPACING + randf_range(-8.0, 8.0), _ground_y() - randf_range(300.0, 440.0)))
+	_change_joe_high(CHALK_UNITS * JOE_HIGH_PER_COCAINE_UNIT, true)
+	_show_toast("JOE SE HA METIDO TIZA  ·  +%s UNIDADES" % _number(CHALK_UNITS))
+
+func _trigger_spray() -> void:
+	spray_pending = true
+	spray_followup_clock = SPRAY_FOLLOWUP
+	spray_side = active_side
+	for index in range(22):
+		_spawn_spray_drop(index)
+	_add_spray_coat()
+	_pulse_adaptation("sponge")
+	_show_toast("SPRAY NASAL DEL BAZAR  ·  HASTA %s DE PARED EN 30 SEGUNDOS" % _number(SPRAY_RECOAT_UNITS))
+
+func _spawn_spray_drop(index: int) -> void:
+	var drop := Polygon2D.new()
+	drop.polygon = PackedVector2Array([Vector2(0, -8), Vector2(-5, 0), Vector2(-3, 6), Vector2(0, 9), Vector2(3, 6), Vector2(5, 0)])
+	drop.color = Color("57bce8")
+	drop.z_index = 8
+	drop.position = Vector2(_wall_center_x(spray_side) + randf_range(-72.0, 72.0), 28.0 + float(index % 5) * 24.0)
+	drop.set_meta("event_kind", "spray")
+	joe_events.add_child(drop)
+	var duration := randf_range(1.0, 1.7)
+	var tween := create_tween().set_parallel()
+	tween.tween_property(drop, "position:y", _ground_y() - randf_range(5.0, 80.0), duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_property(drop, "modulate:a", 0.2, duration)
+	tween.chain().tween_callback(drop.queue_free)
+
+func _add_spray_coat() -> void:
+	for child in joe_events.get_children():
+		if child.get_meta("event_kind", "") == "spray_coat": child.queue_free()
+	for index in range(5):
+		var coat := Polygon2D.new()
+		coat.polygon = PackedVector2Array([Vector2(-14, 8), Vector2(-11, -18), Vector2(0, -27), Vector2(13, -16), Vector2(16, 7), Vector2(7, 20), Vector2(-8, 19)])
+		coat.color = Color(0.25, 0.72, 0.95, 0.62)
+		coat.z_index = 8
+		coat.position = Vector2(_wall_center_x(spray_side) + randf_range(-34.0, 34.0), _ground_y() - 55.0 - float(index) * 58.0)
+		coat.rotation = randf_range(-0.18, 0.18)
+		coat.set_meta("event_kind", "spray_coat")
+		joe_events.add_child(coat)
+
+func _resolve_spray_line() -> void:
+	spray_pending = false
+	for child in joe_events.get_children():
+		if child.get_meta("event_kind", "") == "spray_coat": child.queue_free()
+	var reduction := _sponge_reduction()
+	var absorbed := floorf(SPRAY_RECOAT_UNITS * reduction)
+	var attempted := maxf(0.0, SPRAY_RECOAT_UNITS - absorbed)
+	var maximum := left_max if spray_side == "left" else right_max
+	var current := left_hp if spray_side == "left" else right_hp
+	var restored := minf(attempted, maxf(0.0, maximum - current))
+	if spray_side == "left": left_hp += restored
+	else: right_hp += restored
+	_update_world()
+	_pulse_adaptation("sponge")
+	_float_text("ESPONJAS ABSORBEN %s" % _number(absorbed), Vector2(_pile_center(spray_side), _ground_y() - 170.0))
+	_show_toast("RAYITA SOLIDIFICADA  ·  PARED +%s  ·  ABSORBIDAS %s" % [_number(restored), _number(absorbed)])
+
+func _sponge_reduction() -> float:
+	return minf(0.90, float(levels.sponge) * 0.10 + float(levels.sponge_power) * 0.14)
+
+func _trigger_scratch() -> void:
+	tissue_damage = clampf(tissue_damage + SCRATCH_DAMAGE, 0.0, 100.0)
+	_change_joe_high(SCRATCH_HIGH_GAIN, true)
+	for index in range(3):
+		_spawn_scratch_wound(index)
+	_show_toast("RASCADO DE PRECISIÓN  ·  DAÑO +%s  ·  COLOCÓN +%s" % [_number(SCRATCH_DAMAGE), _number(SCRATCH_HIGH_GAIN)])
+	_float_text("DAÑO +%s" % _number(SCRATCH_DAMAGE), Vector2(_pile_center(active_side) + 90.0, _ground_y() - 80.0))
+
+func _spawn_scratch_wound(index: int) -> void:
+	var wound := Line2D.new()
+	wound.width = 7.0
+	wound.default_color = Color("d83a50")
+	wound.points = PackedVector2Array([Vector2(-26, 0), Vector2(-12, -10), Vector2(-3, 2), Vector2(9, -12), Vector2(27, 0)])
+	wound.position = Vector2(_pile_center(active_side) + 120.0 + float(index) * 58.0 + randf_range(-12.0, 12.0), _ground_y() - 5.0)
+	wound.set_meta("event_kind", "wound")
+	joe_events.add_child(wound)
+	var flash := create_tween()
+	flash.tween_property(wound, "modulate", Color(1.6, 1.1, 1.1, 1.0), 0.08)
+	flash.tween_property(wound, "modulate", Color.WHITE, 0.18)
+	var wounds := joe_events.get_children().filter(func(node: Node) -> bool: return node.get_meta("event_kind", "") == "wound")
+	if wounds.size() > 9:
+		(wounds[0] as Node).queue_free()
+
+func _trigger_mucus() -> void:
+	mucus_hp += MUCUS_STRENGTH
+	mucus_max_hp += MUCUS_STRENGTH
+	_add_mucus_patches()
+	catapult_clock = 0.25
+	_update_mucus_visuals()
+	_show_toast("MOCO AGLUTINANTE  ·  PARED BLOQUEADA  ·  %s RESISTENCIA" % _number(mucus_hp))
+
+func _add_mucus_patches() -> void:
+	for index in range(5):
+		var patch := Polygon2D.new()
+		patch.polygon = PackedVector2Array([Vector2(-18, 5), Vector2(-14, -12), Vector2(-2, -19), Vector2(14, -13), Vector2(20, 2), Vector2(10, 16), Vector2(-8, 17)])
+		patch.color = Color("77bf69")
+		patch.z_index = 9
+		patch.position = Vector2(_wall_center_x(active_side) + randf_range(-34.0, 34.0), _ground_y() - 58.0 - float(index) * 57.0)
+		patch.rotation = randf_range(-0.3, 0.3)
+		patch.set_meta("event_kind", "mucus")
+		joe_events.add_child(patch)
+
+func _rebuild_joe_event_visuals() -> void:
+	for child in joe_events.get_children(): child.queue_free()
+	if mucus_hp > 0.0:
+		_add_mucus_patches()
+		_update_mucus_visuals()
+
+func _damage_mucus(amount: float) -> void:
+	if mucus_hp <= 0.0 or amount <= 0.0: return
+	var damage := minf(amount, mucus_hp)
+	mucus_hp -= damage
+	_update_mucus_visuals()
+	if mucus_hp > 0.0: return
+	mucus_hp = 0.0
+	mucus_max_hp = 0.0
+	for child in joe_events.get_children():
+		if child.get_meta("event_kind", "") == "mucus": child.queue_free()
+	_show_toast("MOCO DESPEJADO  ·  LA PARED VUELVE A ESTAR LIBRE")
+
+func _update_mucus_visuals() -> void:
+	var ratio := clampf(mucus_hp / maxf(1.0, mucus_max_hp), 0.0, 1.0)
+	for child in joe_events.get_children():
+		if child.get_meta("event_kind", "") == "mucus":
+			child.modulate.a = 0.25 + ratio * 0.75
+			child.scale = Vector2.ONE * (0.72 + ratio * 0.28)
+
+func _launch_catapults() -> void:
+	var damage := 100.0 * pow(2.0, int(levels.catapult_power))
+	for root in adaptations.get_children():
+		if root.get_meta("adaptation_kind", "") != "catapult": continue
+		var projectile := Sprite2D.new()
+		projectile.texture = PAWN_EMPTY
+		projectile.scale = Vector2.ONE * 0.035
+		projectile.position = root.position + Vector2(-18.0, -25.0)
+		adaptations.add_child(projectile)
+		var start := projectile.position
+		var target := Vector2(_wall_center_x(active_side), _ground_y() - 115.0)
+		var tween := create_tween()
+		tween.tween_method(_animate_catapult_projectile.bind(projectile, start, target), 0.0, 1.0, 0.72).set_trans(Tween.TRANS_SINE)
+		tween.tween_callback(_catapult_hit.bind(projectile, damage))
+
+func _animate_catapult_projectile(progress: float, projectile: Sprite2D, start: Vector2, target: Vector2) -> void:
+	if not is_instance_valid(projectile): return
+	projectile.position = start.lerp(target, progress) - Vector2(0.0, sin(progress * PI) * 105.0)
+	projectile.rotation += 0.16
+
+func _catapult_hit(projectile: Sprite2D, damage: float) -> void:
+	if is_instance_valid(projectile): projectile.queue_free()
+	if mucus_hp <= 0.0: return
+	var actual := minf(damage, mucus_hp)
+	_damage_mucus(actual)
+	_float_text("CATAPULTA  -%s MOCO" % _number(actual), Vector2(_wall_center_x(active_side), _ground_y() - 155.0))
+
+func _update_crisis(delta: float) -> void:
+	if current_phase >= 4:
+		var bleed_rate := 0.18 + float(current_phase - 4) * 0.08
+		var repair_rate := 0.0 if box_jammed else float(levels.platelets) * 0.28 * pow(2.0, int(levels.repair)) * (1.0 + float(levels.signals) * 0.1)
 		tissue_repaired += maxf(0.0, repair_rate - bleed_rate) * delta
 		tissue_damage = clampf(tissue_damage + (bleed_rate - repair_rate) * delta, 0.0, 100.0)
 		phase_work += repair_rate * delta * 0.35
@@ -1555,23 +1834,23 @@ func _update_crisis(delta: float) -> void:
 	_check_phase_progress()
 
 func _improve_joe(clean_units: float) -> void:
-	_change_joe_health(clean_units * JOE_RECOVERY_PER_CLEAN_UNIT)
+	_change_joe_high(-clean_units * JOE_HIGH_PER_COCAINE_UNIT)
 
-func _change_joe_health(amount: float, pulse: bool = false) -> void:
-	joe_health = clampf(joe_health + amount, 0.0, 100.0)
+func _change_joe_high(amount: float, pulse: bool = false) -> void:
+	joe_high = clampf(joe_high + amount, 0.0, 100.0)
 	if not pulse or not is_instance_valid(joe_portrait):
 		return
-	joe_portrait.modulate = Color("8be2ae") if amount > 0.0 else Color("f06470")
+	joe_portrait.modulate = Color("ff69ad") if amount > 0.0 else Color("79d5e8")
 	create_tween().tween_property(joe_portrait, "modulate", Color.WHITE, 0.48)
 
-func _update_joe_prognosis(delta: float) -> void:
+func _update_joe_high(delta: float) -> void:
 	var pile_burden := _pile_load("left") + _pile_load("right") + _fallen_wall_chunk_load()
-	var pile_drain := clampf((pile_burden - 90.0) / 900.0, 0.0, 1.0) * 0.025
-	var contamination_drain := contamination / 100.0 * 0.012 if current_phase >= 3 else 0.0
-	var tissue_drain := tissue_damage / 100.0 * 0.018 if current_phase >= 4 else 0.0
-	var infection_drain := infection / 100.0 * 0.022 if current_phase >= 5 else 0.0
-	joe_health = clampf(joe_health - (pile_drain + contamination_drain + tissue_drain + infection_drain) * delta, 0.0, 100.0)
-	joe_health_display = move_toward(joe_health_display, joe_health, delta * 9.0)
+	var pile_rise := clampf((pile_burden - 900.0) / 9000.0, 0.0, 1.0) * 0.018
+	var contamination_rise := contamination / 100.0 * 0.010 if current_phase >= 3 else 0.0
+	var tissue_rise := tissue_damage / 100.0 * 0.015 if current_phase >= 4 else 0.0
+	var infection_rise := infection / 100.0 * 0.018 if current_phase >= 5 else 0.0
+	joe_high = clampf(joe_high + (pile_rise + contamination_rise + tissue_rise + infection_rise) * delta, 0.0, 100.0)
+	joe_high_display = move_toward(joe_high_display, joe_high, delta * 9.0)
 
 func _fallen_wall_chunk_load() -> float:
 	var total := 0.0
@@ -1611,18 +1890,19 @@ func _check_phase_progress() -> void:
 	if current_phase == 1:
 		adapted = puncher_unlocked and int(levels.puncher) > 0 and int(levels.pawn) + int(levels.shift) + int(levels.box) >= 3
 	elif current_phase == 2:
-		adapted = int(levels.breaker) > 0 and rocks_opened >= 6
+		adapted = int(levels.breaker) > 0 and int(levels.umbrella) > 0 and rocks_opened >= 6
 	elif current_phase == 3:
-		adapted = int(levels.detector) > 0 and contamination < 30.0 and impurities_cleaned >= 10
+		adapted = int(levels.detector) > 0 and int(levels.sponge) > 0 and contamination < 30.0 and impurities_cleaned >= 10
 	elif current_phase == 4:
 		adapted = int(levels.platelets) > 0 and tissue_damage < 45.0 and tissue_repaired >= 18.0
+	elif current_phase == 5:
+		adapted = int(levels.handlers) > 0 and int(levels.catapult) > 0 and infection < 35.0
 	if adapted:
 		_advance_phase()
 
 func _advance_phase() -> void:
 	current_phase = mini(PHASES.size(), current_phase + 1)
 	phase_work = 0.0
-	joe_clock = 0.0
 	bacteria_clock = 0.0
 	blood_drop_clock = 0.0
 	if current_phase == 2: rocks_opened = 0
@@ -1634,6 +1914,7 @@ func _advance_phase() -> void:
 	playing = false
 	_rebuild_pawns()
 	_rebuild_platelets()
+	_rebuild_adaptations()
 	_update_world()
 	_update_ui()
 	call_deferred("_focus_required_upgrade")
@@ -1686,6 +1967,84 @@ func _update_platelets(_delta: float) -> void:
 		platelet.position.x = center + sin(now * (1.2 + float(index % 3) * 0.08) + index) * 18.0
 		platelet.position.y = _ground_y() - 8.0
 		platelet.rotation = sin(now * 1.6 + index) * 0.025
+
+func _rebuild_adaptations() -> void:
+	for child in adaptations.get_children(): child.queue_free()
+	for index in range(int(levels.umbrella)):
+		var root := _adaptation_root("umbrella", index, Vector2(_box_x() - 215.0 - float(index) * 45.0, _ground_y() - 14.0))
+		var body := Sprite2D.new()
+		body.name = "Body"
+		body.texture = PAWN_EMPTY
+		body.scale = Vector2.ONE * 0.043
+		body.offset = Vector2(0.0, PAWN_FOOT_DEPTH / body.scale.y - PAWN_EMPTY.get_height() * 0.5)
+		root.add_child(body)
+		var umbrella := Sprite2D.new()
+		umbrella.name = "Accessory"
+		umbrella.texture = UMBRELLA_TEXTURE
+		umbrella.scale = Vector2.ONE * 0.031
+		umbrella.position = Vector2(-2.0, -29.0)
+		umbrella.z_index = 2
+		root.add_child(umbrella)
+	for index in range(int(levels.sponge)):
+		var root := _adaptation_root("sponge", index, Vector2(_box_x() - 80.0 - float(index) * 52.0, _ground_y() - 14.0))
+		var sponge := Sprite2D.new()
+		sponge.name = "Accessory"
+		sponge.texture = SPONGE_TEXTURE
+		sponge.scale = Vector2.ONE * 0.027 * (1.0 + float(levels.sponge_power) * 0.09)
+		sponge.position = Vector2(0.0, -15.0)
+		sponge.z_index = -1
+		root.add_child(sponge)
+		var body := Sprite2D.new()
+		body.name = "Body"
+		body.texture = PAWN_EMPTY
+		body.scale = Vector2.ONE * 0.048
+		body.offset = Vector2(0.0, PAWN_FOOT_DEPTH / body.scale.y - PAWN_EMPTY.get_height() * 0.5)
+		root.add_child(body)
+	for index in range(int(levels.catapult)):
+		var root := _adaptation_root("catapult", index, Vector2(_box_x() - 300.0 - float(index) * 92.0, _ground_y()))
+		var machine := Sprite2D.new()
+		machine.name = "Machine"
+		machine.texture = CATAPULT_TEXTURE
+		machine.scale = Vector2.ONE * 0.072
+		machine.position = Vector2(0.0, -22.0)
+		machine.z_index = 4
+		root.add_child(machine)
+
+func _adaptation_root(kind: String, index: int, position: Vector2) -> Node2D:
+	var root := Node2D.new()
+	root.name = "%s_%d" % [kind.capitalize(), index]
+	root.position = position
+	root.set_meta("base_y", position.y)
+	root.set_meta("adaptation_kind", kind)
+	root.set_meta("index", index)
+	root.z_index = 3
+	adaptations.add_child(root)
+	return root
+
+func _update_adaptations(_delta: float) -> void:
+	var now := Time.get_ticks_msec() * 0.001
+	for root in adaptations.get_children():
+		if not root is Node2D: continue
+		var item := root as Node2D
+		var kind: String = item.get_meta("adaptation_kind", "")
+		var index := int(item.get_meta("index", 0))
+		item.position.y = float(item.get_meta("base_y", item.position.y))
+		item.rotation = 0.0
+		var accessory := item.get_node_or_null("Accessory") as Sprite2D
+		if not accessory: continue
+		if kind == "umbrella":
+			accessory.position.y = -29.0 + sin(now * 1.7 + index * 0.8) * 1.2
+			accessory.rotation = sin(now * 1.1 + index) * 0.025
+		elif kind == "sponge":
+			accessory.position.y = -15.0 + sin(now * 1.5 + index) * 0.7
+			accessory.rotation = sin(now * 1.0 + index) * 0.012
+
+func _pulse_adaptation(kind: String) -> void:
+	for root in adaptations.get_children():
+		if root.get_meta("adaptation_kind", "") != kind: continue
+		var tween := create_tween()
+		tween.tween_property(root, "scale", Vector2(1.22, 0.86), 0.10).set_trans(Tween.TRANS_BACK)
+		tween.tween_property(root, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_ELASTIC)
 
 func _update_crisis_visuals() -> void:
 	var bleeding := current_phase >= 4
@@ -1752,9 +2111,9 @@ func _update_ui() -> void:
 	phase_progress.max_value = _phase_target()
 	phase_progress.value = minf(phase_work, _phase_target())
 	phase_hint.text = "ESTABILIDAD  %s / %s  ·  %s" % [_number(phase_work), _number(_phase_target()), _phase_requirement()]
-	joe_health_progress.value = joe_health_display
-	joe_health_progress.modulate = Color("e15b67").lerp(Color("72d39c"), joe_health_display / 100.0)
-	joe_health_label.text = "PRONÓSTICO DE JOE  %d%%" % roundi(joe_health_display)
+	joe_high_progress.value = joe_high_display
+	joe_high_progress.modulate = Color("7b67d8").lerp(Color("ffcc58"), joe_high_display / 100.0)
+	joe_high_label.text = "COLOCÓN DE JOE  %d%%  ·  %s" % [roundi(joe_high_display), _high_state()]
 	cells_label.text = "CÉLULAS  %s" % _number(cells)
 	rate_label.text = "+%s/s  ·  %s/clic  ·  AUTO %s/s" % [_number(_rate()), _number(_click_power()), _number(_auto_hit_rate())]
 	var tunnel_progress := clampf((1.0 - right_hp / right_max) / TUNNEL_UNLOCK_RATIO, 0.0, 1.0)
@@ -1771,33 +2130,50 @@ func _update_ui() -> void:
 		if not button.visible: continue
 		var cost: float = ceil(float(upgrade.base) * pow(float(upgrade.growth), level))
 		var maxed: bool = level >= int(upgrade.get("max", 999))
-		var effect := "+%s / clic" % _number(float(upgrade.power))
+		var effect := "CLIC %s → %s" % [_number(pow(2.0, level)), _number(pow(2.0, level + 1))]
 		if upgrade.kind == "pawn": effect = "+1 peón"
-		elif upgrade.kind == "speed": effect = "+18% velocidad de movimiento"
-		elif upgrade.kind == "capacity": effect = "+1 pieza visible por viaje"
+		elif upgrade.kind == "speed": effect = "VELOCIDAD %s → %s" % [_number(BASE_PAWN_SPEED * pow(1.35, level)), _number(BASE_PAWN_SPEED * pow(1.35, level + 1))]
+		elif upgrade.kind == "capacity": effect = "CARGA %d → %d" % [BASE_CAPACITY * int(pow(2.0, level)), BASE_CAPACITY * int(pow(2.0, level + 1))]
 		elif upgrade.kind == "coordination": effect = "reparto entre fosas" if level == 0 else "prioridad a pedruscos"
 		elif upgrade.kind == "specialist": effect = "1 de cada %d peones especializado" % maxi(1, 3 - level)
 		elif upgrade.kind == "detector": effect = "menos viajes desperdiciados"
 		elif upgrade.kind == "sorting": effect = "-8% de impurezas por nivel"
 		elif upgrade.kind == "platelet": effect = "+2 plaquetas visibles"
-		elif upgrade.kind == "repair": effect = "+16% reparación por plaqueta"
+		elif upgrade.kind == "repair": effect = "REPARACIÓN x%d → x%d" % [int(pow(2.0, level)), int(pow(2.0, level + 1))]
 		elif upgrade.kind == "handler": effect = "+1 cuidador con guantes"
 		elif upgrade.kind == "signals": effect = "+12% coordinación de crisis"
 		elif upgrade.kind == "autoclicker": effect = "+1 púgil automático"
-		elif upgrade.kind == "auto_power": effect = "+1 grano por puñetazo"
-		elif upgrade.kind == "auto_speed": effect = "-16% intervalo automático"
+		elif upgrade.kind == "auto_power": effect = "GOLPE %d → %d GRANOS" % [int(pow(2.0, level)), int(pow(2.0, level + 1))]
+		elif upgrade.kind == "auto_speed": effect = "INTERVALO %.2f → %.2f S" % [PUNCH_BASE_INTERVAL * pow(0.72, level), PUNCH_BASE_INTERVAL * pow(0.72, level + 1)]
 		elif upgrade.kind == "click_burst": effect = "+3 granos en cada ráfaga"
 		elif upgrade.kind == "click_rhythm": effect = "-1 clic para provocar la ráfaga"
+		elif upgrade.kind in ["umbrella", "umbrella_power"]:
+			var future_umbrellas := level + 1 if upgrade.kind == "umbrella" else int(levels.umbrella)
+			var future_fabric := level + 1 if upgrade.kind == "umbrella_power" else int(levels.umbrella_power)
+			effect = "SALVA %s DE CADA 10K ROBADOS" % _number(10000.0 * minf(0.90, float(future_umbrellas) * 0.05 + float(future_fabric) * 0.15))
+		elif upgrade.kind in ["sponge", "sponge_power"]:
+			var future_sponges := level + 1 if upgrade.kind == "sponge" else int(levels.sponge)
+			var future_foam := level + 1 if upgrade.kind == "sponge_power" else int(levels.sponge_power)
+			effect = "ABSORBE %s DE %s" % [_number(SPRAY_RECOAT_UNITS * minf(0.90, float(future_sponges) * 0.10 + float(future_foam) * 0.14)), _number(SPRAY_RECOAT_UNITS)]
+		elif upgrade.kind == "catapult": effect = "+1 LANZAMIENTO DE %s" % _number(100.0 * pow(2.0, int(levels.catapult_power)))
+		elif upgrade.kind == "catapult_power": effect = "IMPACTO %s → %s" % [_number(100.0 * pow(2.0, level)), _number(100.0 * pow(2.0, level + 1))]
 		var required_line := "★ NECESARIA PARA SUPERAR ESTA FASE\n" if required else ""
 		button.text = "%s%s  [NV. %d]\n%s\n%s  ·  %s células" % [required_line, upgrade.name, level, upgrade.desc, effect, _number(cost)]
 		button.disabled = cells < cost or maxed
 
+func _high_state() -> String:
+	if joe_high_display < 25.0: return "CASI SERENO"
+	if joe_high_display < 50.0: return "ANIMADO"
+	if joe_high_display < 75.0: return "FINO FILIPINO"
+	if joe_high_display < 100.0: return "VIENDO SONIDOS"
+	return "KO TÉCNICO"
+
 func _required_upgrade_id() -> String:
 	if current_phase == 1 and puncher_unlocked: return "puncher"
-	if current_phase == 2: return "breaker"
-	if current_phase == 3: return "detector"
+	if current_phase == 2: return "breaker" if int(levels.breaker) == 0 else "umbrella"
+	if current_phase == 3: return "detector" if int(levels.detector) == 0 else "sponge"
 	if current_phase == 4: return "platelets"
-	if current_phase == 5: return "handlers"
+	if current_phase == 5: return "handlers" if int(levels.handlers) == 0 else "catapult"
 	return ""
 
 func _set_upgrade_halo(button: Button, active: bool) -> void:
@@ -1838,9 +2214,11 @@ func _phase_requirement() -> String:
 		if int(levels.puncher) == 0: return "FALTA ESTRENAR AL PÚGIL"
 		if int(levels.pawn) + int(levels.shift) + int(levels.box) < 3: return "SIGUE MEJORANDO LA LOGÍSTICA"
 	if current_phase == 2 and int(levels.breaker) == 0: return "FALTA UN CASCO AZUL"
+	if current_phase == 2 and int(levels.umbrella) == 0: return "PULMONES DE DROGATA EXIGE UN PARAGUAS"
 	if current_phase == 2 and rocks_opened < 6: return "PEDRUSCOS ABIERTOS  %d / 6" % rocks_opened
 	if current_phase == 3:
 		if int(levels.detector) == 0: return "FALTAN QUIMIORRECEPTORES"
+		if int(levels.sponge) == 0: return "EL SPRAY EXIGE UN MACRÓFAGO ESPONJA"
 		if impurities_cleaned < 10: return "MUESTRAS FILTRADAS  %d / 10" % impurities_cleaned
 		if contamination >= 30.0: return "CAJA AÚN CONTAMINADA"
 	if current_phase == 4:
@@ -1849,6 +2227,7 @@ func _phase_requirement() -> String:
 		if tissue_damage >= 45.0: return "TEJIDO AÚN INESTABLE"
 	if current_phase == 5:
 		if int(levels.handlers) == 0: return "FALTAN CUIDADORES"
+		if int(levels.catapult) == 0: return "EL MOCO EXIGE UNA CATAPULTA"
 		if infection >= 35.0: return "INFECCIÓN AÚN INESTABLE"
 		if phase_work >= _phase_target(): return "JOE SIGUE VIVO. DE MOMENTO."
 	return "SISTEMA EN ADAPTACIÓN"
@@ -1966,11 +2345,13 @@ func _save() -> void:
 			"septum_open":septum_open, "active_side":active_side, "levels":levels,
 			"total_clicks":total_clicks, "pile":_serialize_pile(), "fallen_wall_chunks":_serialize_fallen_wall_chunks(),
 			"compaction_steps":compaction_steps, "compaction_announced":compaction_announced,
-			"current_phase":current_phase, "phase_work":phase_work, "joe_health":joe_health,
+			"current_phase":current_phase, "phase_work":phase_work, "joe_high":joe_high,
 			"contamination":contamination, "box_jammed":box_jammed, "tissue_damage":tissue_damage, "infection":infection,
 			"impurities_handled":impurities_handled, "bacteria_handled":bacteria_handled,
 			"rocks_opened":rocks_opened, "impurities_cleaned":impurities_cleaned, "tissue_repaired":tissue_repaired,
 			"another_line_clock":another_line_clock, "another_line_wave":another_line_wave, "another_line_spawn_index":another_line_spawn_index, "another_line_events":another_line_events,
+			"lung_clock":lung_clock, "chalk_clock":chalk_clock, "spray_clock":spray_clock, "spray_pending":spray_pending, "spray_followup_clock":spray_followup_clock, "spray_side":spray_side,
+			"scratch_clock":scratch_clock, "mucus_clock":mucus_clock, "mucus_hp":mucus_hp, "mucus_max_hp":mucus_max_hp, "catapult_clock":catapult_clock,
 			"puncher_unlocked":puncher_unlocked, "puncher_debut_pending":puncher_debut_pending,
 			"puncher_debut_clock":puncher_debut_clock, "manual_clicks_since_burst":manual_clicks_since_burst,
 			"phase_event_pending":phase_event_pending
@@ -2014,8 +2395,9 @@ func _load() -> void:
 	if current_phase == 0:
 		current_phase = 2 if compaction_announced or int(levels.breaker) > 0 else 1
 	phase_work = float(data.get("phase_work", cells))
-	joe_health = clampf(float(data.get("joe_health", JOE_STARTING_HEALTH + float(current_phase - 1) * 5.0)), 0.0, 100.0)
-	joe_health_display = joe_health
+	var legacy_health := clampf(float(data.get("joe_health", 100.0 - JOE_STARTING_HIGH)), 0.0, 100.0)
+	joe_high = clampf(float(data.get("joe_high", 100.0 - legacy_health)), 0.0, 100.0)
+	joe_high_display = joe_high
 	contamination = clampf(float(data.get("contamination", 0.0)), 0.0, 100.0)
 	box_jammed = bool(data.get("box_jammed", contamination >= 99.9))
 	contamination_band = int(contamination / 25.0)
@@ -2030,13 +2412,24 @@ func _load() -> void:
 	another_line_wave = maxi(0, int(data.get("another_line_wave", 0)))
 	another_line_spawn_index = maxi(0, int(data.get("another_line_spawn_index", 0)))
 	another_line_events = maxi(0, int(data.get("another_line_events", 0)))
+	lung_clock = clampf(float(data.get("lung_clock", LUNG_INTERVAL)), 0.0, LUNG_INTERVAL)
+	lung_warned = lung_clock <= LUNG_WARNING
+	chalk_clock = clampf(float(data.get("chalk_clock", CHALK_INTERVAL)), 0.0, CHALK_INTERVAL)
+	spray_clock = clampf(float(data.get("spray_clock", SPRAY_INTERVAL)), 0.0, SPRAY_INTERVAL)
+	spray_pending = bool(data.get("spray_pending", false))
+	spray_followup_clock = clampf(float(data.get("spray_followup_clock", 0.0)), 0.0, SPRAY_FOLLOWUP)
+	spray_side = str(data.get("spray_side", active_side))
+	scratch_clock = clampf(float(data.get("scratch_clock", SCRATCH_INTERVAL)), 0.0, SCRATCH_INTERVAL)
+	mucus_clock = clampf(float(data.get("mucus_clock", MUCUS_INTERVAL)), 0.0, MUCUS_INTERVAL)
+	mucus_hp = maxf(0.0, float(data.get("mucus_hp", 0.0)))
+	mucus_max_hp = maxf(mucus_hp, float(data.get("mucus_max_hp", mucus_hp)))
+	catapult_clock = maxf(0.0, float(data.get("catapult_clock", 0.0)))
 	puncher_unlocked = bool(data.get("puncher_unlocked", current_phase >= 2 or int(levels.puncher) > 0))
 	puncher_debut_pending = bool(data.get("puncher_debut_pending", false))
 	puncher_debut_clock = maxf(0.0, float(data.get("puncher_debut_clock", 0.0)))
 	manual_clicks_since_burst = maxi(0, int(data.get("manual_clicks_since_burst", 0)))
 	another_line_warned = another_line_clock <= ANOTHER_LINE_WARNING
 	another_line_drop_clock = 0.0
-	joe_clock = 0.0
 	bacteria_clock = 0.0
 	blood_drop_clock = 0.0
 	punch_clock = 0.0
@@ -2072,8 +2465,8 @@ func _new_game() -> void:
 	compaction_announced = false
 	current_phase = 1
 	phase_work = 0.0
-	joe_health = JOE_STARTING_HEALTH
-	joe_health_display = joe_health
+	joe_high = JOE_STARTING_HIGH
+	joe_high_display = joe_high
 	contamination = 0.0
 	contamination_band = 0
 	box_jammed = false
@@ -2084,7 +2477,6 @@ func _new_game() -> void:
 	rocks_opened = 0
 	impurities_cleaned = 0
 	tissue_repaired = 0.0
-	joe_clock = 0.0
 	bacteria_clock = 0.0
 	blood_drop_clock = 0.0
 	punch_clock = 0.0
@@ -2094,6 +2486,17 @@ func _new_game() -> void:
 	another_line_spawn_index = 0
 	another_line_events = 0
 	another_line_warned = false
+	lung_clock = LUNG_INTERVAL
+	lung_warned = false
+	chalk_clock = CHALK_INTERVAL
+	spray_clock = SPRAY_INTERVAL
+	spray_followup_clock = 0.0
+	spray_pending = false
+	scratch_clock = SCRATCH_INTERVAL
+	mucus_clock = MUCUS_INTERVAL
+	mucus_hp = 0.0
+	mucus_max_hp = 0.0
+	catapult_clock = 0.0
 	puncher_unlocked = false
 	puncher_debut_pending = false
 	puncher_debut_clock = 0.0
@@ -2111,6 +2514,8 @@ func _begin_game() -> void:
 	_rebuild_pawns()
 	_rebuild_punchers()
 	_rebuild_platelets()
+	_rebuild_adaptations()
+	_rebuild_joe_event_visuals()
 	_update_world()
 	_update_crisis_visuals()
 	_update_pressure_visuals()
