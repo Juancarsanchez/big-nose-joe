@@ -16,7 +16,9 @@ func _capture() -> void:
 	game.joe_dialog.hide()
 	game.playing = false
 	seed(92741)
-	game.levels.merge({"nails":2, "pawn":2, "shift":1, "box":1, "click_burst":1}, true)
+	game.levels.merge({"nails":2, "pawn":2, "shift":1, "container":1, "cart":1, "click_burst":1}, true)
+	game._rebuild_infrastructure()
+	game._rebuild_transporters()
 	game.cells = 900.0
 	game.phase_work = 420.0
 	game._rebuild_pawns()

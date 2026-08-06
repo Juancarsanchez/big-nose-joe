@@ -15,7 +15,8 @@ func _capture() -> void:
 	game.joe_dialog.hide()
 	game.current_phase = 5
 	game.levels = game._empty_levels()
-	game.levels.merge({"nails":3, "pawn":6, "shift":3, "box":2, "coord":1, "breaker":2, "umbrella":3, "umbrella_power":2, "detector":2, "sorting":1, "sponge":2, "sponge_power":3, "platelets":3, "repair":2, "handlers":2, "signals":1, "catapult":2, "catapult_power":2}, true)
+	game.levels.merge({"nails":3, "pawn":6, "shift":3, "container":1, "cart":1, "silo":1, "ox_convoy":1, "plant":1, "train":1, "coord":1, "breaker":2, "umbrella":3, "umbrella_power":2, "detector":2, "sorting":1, "sponge":2, "sponge_power":3, "platelets":3, "repair":2, "handlers":2, "signals":1, "catapult":2, "catapult_power":2}, true)
+	game.septum_open = true
 	game.cells = 18400.0
 	game.tissue_damage = 58.0
 	game.infection = 61.0
@@ -23,6 +24,8 @@ func _capture() -> void:
 	game._rebuild_pawns()
 	game._rebuild_platelets()
 	game._rebuild_adaptations()
+	game._rebuild_infrastructure()
+	game._rebuild_transporters()
 	seed(73119)
 	for index in range(64):
 		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), randf_range(0.068, 0.078))

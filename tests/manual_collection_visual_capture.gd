@@ -15,7 +15,9 @@ func _capture() -> void:
 	game.phase_event_pending = false
 	game.joe_dialog.hide()
 	game.playing = false
-	game.levels.merge({"nails":2, "pawn":2, "shift":1, "box":1}, true)
+	game.levels.merge({"nails":2, "pawn":2, "shift":1, "container":1, "cart":1}, true)
+	game._rebuild_infrastructure()
+	game._rebuild_transporters()
 	game.cells = 240.0
 	seed(41872)
 	for index in range(96):

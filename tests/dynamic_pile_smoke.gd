@@ -59,13 +59,20 @@ func _run() -> void:
 			accumulated += height
 
 	# Dense local groups compact often while preserving their total value.
-	game.compaction_steps.right = game.COMPACTION_INTERVAL
+	game.levels.puncher = 0
+	game.levels.elephant = 0
+	_check(game._compaction_interval() == game.COMPACTION_INTERVAL_MAX, "Low extraction must leave generous time between compacted rocks.")
+	game.levels.puncher = 4
+	game.levels.punch_power = 3
+	_check(game._compaction_interval() == game.COMPACTION_INTERVAL_MIN, "Explosive extraction must compact powder at the minimum twelve-landings cadence.")
+	game.levels.puncher = 0
+	game.compaction_steps.right = game.COMPACTION_INTERVAL_MAX
 	var load_before: float = game._pile_load("right")
 	game._maybe_compact("right")
 	_check(is_equal_approx(game._pile_load("right"), load_before), "Compaction must preserve the value of all merged grains.")
 	_check(game._untreated_rock_count("right") >= 1, "Overloaded powder must compact into a rock.")
 	for attempt in range(4):
-		game.compaction_steps.right = game.COMPACTION_INTERVAL
+		game.compaction_steps.right = game.COMPACTION_INTERVAL_MAX
 		game._maybe_compact("right")
 	_check(game._rock_count("right") >= 4, "Dense powder must create compacted rocks frequently enough to matter.")
 
@@ -166,7 +173,7 @@ func _run() -> void:
 
 	# Save/load preserves the extended pile and adaptation state.
 	game.levels = game._empty_levels()
-	game.levels.merge({"nails":2, "pawn":1, "shift":1, "box":1, "coord":0, "breaker":1}, true)
+	game.levels.merge({"nails":2, "pawn":1, "shift":1, "container":1, "cart":1, "coord":0, "breaker":1}, true)
 	game.cells = 1234.0
 	game.playing = true
 	game._save()

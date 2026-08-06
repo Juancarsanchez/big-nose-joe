@@ -1,18 +1,20 @@
 extends Control
 
 const SAVE := "user://big_nose_joe.save"
-const SAVE_VERSION := 10
+const SETTINGS := "user://big_nose_joe_settings.cfg"
+const SAVE_VERSION := 14
 const ProgressionData = preload("res://scripts/progression_data.gd")
 const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
-const PHASE_SHORT_NAMES := ["DESAYUNO", "AVALANCHA", "ADULTERADA", "VOLCÁN", "ZOO"]
-const STAGE_WIDTH := 5200.0
-const SEPTUM_X := 2600.0
-const WORLD_SCALE := 0.68
+const PHASE_SHORT_NAMES := ["DESAYUNO", "ASPIRADO", "ADULTERADA", "SPRAY", "COLAPSO"]
+const PHASE_HIGH_THRESHOLDS := [90.0, 70.0, 52.0, 34.0, 18.0]
+const STAGE_WIDTH := 7800.0
+const SEPTUM_X := 3800.0
+const WORLD_SCALE := 0.62
 const FLOOR_HEIGHT := 95.0
-const FIRST_WALL_HP := 120000.0
-const FIRST_LEFT_WALL_HP := 180000.0
-const TUNNEL_UNLOCK_RATIO := 0.50
+const FIRST_WALL_HP := 10000000000.0
+const FIRST_LEFT_WALL_HP := 10000000000.0
+const TUNNEL_UNLOCK_PHASE := 4
 const EDGE_SIZE := 34.0
 const PAN_SPEED := 1050.0
 const GRAIN_SPACING := 10.0
@@ -24,24 +26,42 @@ const TERRAIN_BAND_SIZE := 30
 const TERRAIN_ANCHORS := [0.16, 0.68, 0.38, 0.84, 0.53]
 const ANOTHER_LINE_ANCHORS := [0.10, 0.52, 0.90]
 const ANOTHER_LINE_SHIFTS := [0.0, 0.08, -0.05, 0.13, -0.10]
-const COMPACTION_THRESHOLD := 24.0
-const COMPACTION_INTERVAL := 3
+const COMPACTION_THRESHOLD := 18.0
+const COMPACTION_INTERVAL_MIN := 12
+const COMPACTION_INTERVAL_MAX := 36
 const COMPACTION_GRAINS := 6
 const RIGHT_WALL_COLUMN := -5
 const LEFT_WALL_COLUMN := 5
 const BASE_PAWN_SPEED := 70.0
 const BASE_CAPACITY := 3
 const PAWN_FOOT_DEPTH := 14.0
-const PUNCH_BASE_INTERVAL := 3.4
+const STORAGE_CAPACITIES := [1000.0, 5000.0, 50000.0, 500000.0]
+const CONTAINER_X := 4860.0
+const SILO_X := 5350.0
+const PLANT_X := 1150.0
+const CART_CAPACITY := 12.0
+const OX_CAPACITY := 40.0
+const CART_SPEED := 145.0
+const OX_SPEED := 105.0
+const TRAIN_SPEED := 330.0
+const TRAIN_TUNNEL_TIME := 2.0
+const LEFT_TUNNEL_X := 120.0
+const RIGHT_TUNNEL_X := 7680.0
+const PUGILIST_DAMAGE := [50, 300, 1800, 12000]
+const PUGILIST_INTERVALS := [4.0, 3.2, 2.6, 2.2]
 const PUNCHER_WALK_SPEED := 235.0
 const PUNCHER_STRIKE_TIME := 0.18
+const ELEPHANT_INTERVAL := 20.0
+const CANNON_INTERVAL := 14.0
+const SUPERSAIYAN_INTERVAL := 50.0
 const MANUAL_DELIVERY_BASE_TIME := 0.46
-const JOE_STARTING_HIGH := 70.0
-const JOE_HIGH_PER_COCAINE_UNIT := 0.001
+const JOE_STARTING_HIGH := 90.0
+const JOE_HIGH_PER_COCAINE_UNIT := 0.00011
 const ANOTHER_LINE_INTERVAL := 120.0
 const ANOTHER_LINE_WARNING := 8.0
-const ANOTHER_LINE_UNITS := FIRST_WALL_HP * 0.01
-const ANOTHER_LINE_VISUALS := 120
+const ANOTHER_LINE_UNITS := 200000.0
+const ANOTHER_LINE_HIGH_GAIN := 0.5
+const ANOTHER_LINE_VISUALS := 200
 const LUNG_INTERVAL := 300.0
 const LUNG_WARNING := 150.0
 const LUNG_STEAL_RATIO := 0.20
@@ -50,13 +70,16 @@ const CHALK_INTERVAL := 180.0
 const CHALK_UNITS := 600.0
 const SPRAY_INTERVAL := 240.0
 const SPRAY_FOLLOWUP := 30.0
-const SPRAY_RECOAT_UNITS := FIRST_WALL_HP * 0.02
+const SPRAY_RECOAT_UNITS := 50000000.0
+const SPRAY_FILM_UNITS := 2400.0
 const SCRATCH_INTERVAL := 240.0
 const SCRATCH_DAMAGE := 28.0
 const SCRATCH_HIGH_GAIN := 6.0
-const MUCUS_INTERVAL := 210.0
-const MUCUS_STRENGTH := 1200.0
-const CATAPULT_INTERVAL := 3.4
+const PLATELET_REPAIR_MULTIPLIERS := [1.0, 2.5, 6.0, 15.0, 40.0, 100.0]
+const MUCUS_INTERVAL := 180.0
+const MUCUS_STRENGTH := 12000.0
+const CATAPULT_INTERVAL := 2.8
+const CATAPULT_BASE_DAMAGE := 600.0
 const WALL_CHUNK_MASS := 25.0
 const WALL_CHUNK_HEALTH := 24.0
 const WALL_CHUNK_MAX_CLICK_DAMAGE := 3.0
@@ -79,6 +102,27 @@ const WALL_CHUNK_SHEET := preload("res://assets/art/gameplay/sprites/cocaine_wal
 const UMBRELLA_TEXTURE := preload("res://assets/art/gameplay/sprites/umbrella_pink.png")
 const SPONGE_TEXTURE := preload("res://assets/art/gameplay/sprites/sponge_yellow.png")
 const CATAPULT_TEXTURE := preload("res://assets/art/gameplay/sprites/mucus_catapult.png")
+const CART_TEXTURE := preload("res://assets/art/gameplay/sprites/vesicular_cart.png")
+const LEUKOX_TEXTURE := preload("res://assets/art/gameplay/sprites/leukox.png")
+const CONVOY_TEXTURE := preload("res://assets/art/gameplay/sprites/convoy_wagons.png")
+const TRAIN_TEXTURE := preload("res://assets/art/gameplay/sprites/leukocyte_express.png")
+const CONTAINER_TEXTURE := preload("res://assets/art/gameplay/infrastructure/storage_container.png")
+const SILO_TEXTURE := preload("res://assets/art/gameplay/infrastructure/cocaine_silo.png")
+const PLANT_TEXTURE := preload("res://assets/art/gameplay/infrastructure/processing_plant.png")
+const ELEPHANT_TEXTURE := preload("res://assets/art/gameplay/sprites/leukocyte_elephant.png")
+const PUGILIST_CANNON_TEXTURE := preload("res://assets/art/gameplay/sprites/pugilist_cannon.png")
+const SUPERSAIYAN_TEXTURE := preload("res://assets/art/gameplay/sprites/leukocyte_supersaiyan.png")
+const SPECIAL_SPRITE_FOOT_PIXELS := {"elephant":337.0, "cannon":306.0, "supersaiyan":461.0}
+const MUSIC_NASAL_SHIFT := preload("res://assets/audio/nasal_shift_loop.wav")
+const SFX_PUNCH := preload("res://assets/audio/punch.wav")
+const SFX_ELEPHANT := preload("res://assets/audio/elephant_hit.wav")
+const SFX_CANNON := preload("res://assets/audio/cannon_fire.wav")
+const SFX_KAMEHAMEHA := preload("res://assets/audio/kamehameha.wav")
+const SFX_JOE_INHALE := preload("res://assets/audio/joe_inhale.wav")
+const SFX_MUCUS := preload("res://assets/audio/mucus_splat.wav")
+const SFX_ROCK := preload("res://assets/audio/rock_crack.wav")
+const SFX_SAVE := preload("res://assets/audio/save_stamp.wav")
+const SFX_OVERDOSE := preload("res://assets/audio/overdose.wav")
 
 @onready var stage_view: Control = $World/StageViewport
 @onready var stage: Control = $World/StageViewport/Stage
@@ -86,6 +130,8 @@ const CATAPULT_TEXTURE := preload("res://assets/art/gameplay/sprites/mucus_catap
 @onready var punchers: Control = $World/StageViewport/Stage/Layer58_Punchers
 @onready var chunks: Control = $World/StageViewport/Stage/Layer50_Chunks
 @onready var wall_chunks_layer: Control = $World/StageViewport/Stage/Layer52_WallChunks
+@onready var infrastructure: Control = $World/StageViewport/Stage/Layer32_Infrastructure
+@onready var transporters: Control = $World/StageViewport/Stage/Layer57_Transport
 @onready var joe_events: Control = $World/StageViewport/Stage/Layer45_JoeEvents
 @onready var platelets: Control = $World/StageViewport/Stage/Layer55_Platelets
 @onready var effects: Control = $World/StageViewport/Stage/Layer70_Effects
@@ -122,6 +168,12 @@ const CATAPULT_TEXTURE := preload("res://assets/art/gameplay/sprites/mucus_catap
 @onready var phase_progress: ProgressBar = $Shop/Margin/Content/PhaseProgress
 @onready var phase_hint: Label = $Shop/Margin/Content/PhaseHint
 @onready var shop_subtitle: Label = $Shop/Margin/Content/Subtitle
+@onready var shop: PanelContainer = $Shop
+@onready var options_menu: PanelContainer = $OptionsMenu
+@onready var music_slider: HSlider = $OptionsMenu/Margin/Content/MusicSlider
+@onready var sfx_slider: HSlider = $OptionsMenu/Margin/Content/SfxSlider
+@onready var music_label: Label = $OptionsMenu/Margin/Content/MusicLabel
+@onready var sfx_label: Label = $OptionsMenu/Margin/Content/SfxLabel
 @onready var world_subtitle: Label = $World/Subtitle
 @onready var toast: Label = $World/Toast
 @onready var start_screen: Control = $StartScreen
@@ -150,6 +202,7 @@ var compaction_steps := {"left":0, "right":0}
 var compaction_announced := false
 var current_phase := 1
 var phase_work := 0.0
+var phase_events := {"line":0, "lungs":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
 var contamination := 0.0
 var tissue_damage := 0.0
 var infection := 0.0
@@ -175,6 +228,9 @@ var spray_clock := SPRAY_INTERVAL
 var spray_followup_clock := 0.0
 var spray_pending := false
 var spray_side := "right"
+var spray_film_hp := 0.0
+var spray_film_max := 0.0
+var spray_feedback_clock := 0.0
 var scratch_clock := SCRATCH_INTERVAL
 var mucus_clock := MUCUS_INTERVAL
 var mucus_hp := 0.0
@@ -191,10 +247,30 @@ var phase_event_pending := false
 var camera_x := 0.0
 var camera_goal := -1.0
 var playing := false
+var overdose_active := false
+var overdose_dialog: ConfirmationDialog
 var ui_clock := 0.0
 var save_path := SAVE
+var settings_path := SETTINGS
+var platelet_feedback_clock := 0.0
+var music_player: AudioStreamPlayer
+var impact_shake_tween: Tween
+var music_volume := 0.75
+var sfx_volume := 0.85
 
 func _ready() -> void:
+	_setup_audio()
+	_start_music()
+	overdose_dialog = ConfirmationDialog.new()
+	overdose_dialog.title = "JOE SE HA MUERTO"
+	overdose_dialog.dialog_text = "Joe se ha muerto por gilipollas y por sobredosis.\n\n¿Quieres cargar la última partida guardada?"
+	overdose_dialog.ok_button_text = "SÍ, CARGAR PARTIDA"
+	overdose_dialog.cancel_button_text = "NO, VOLVER AL MENÚ"
+	overdose_dialog.exclusive = false
+	overdose_dialog.confirmed.connect(_reload_after_overdose)
+	overdose_dialog.canceled.connect(_return_to_menu_after_overdose)
+	overdose_dialog.close_requested.connect(_return_to_menu_after_overdose)
+	add_child(overdose_dialog)
 	for phase in PHASES:
 		var phase_button := Button.new()
 		phase_button.custom_minimum_size = Vector2(0, 54)
@@ -216,7 +292,12 @@ func _ready() -> void:
 	left_button.pressed.connect(_click_wall.bind("left"))
 	break_button.pressed.connect($BreakDialog.popup_centered)
 	$BreakDialog.confirmed.connect(_open_septum)
-	$Shop/Margin/Content/ExitButton.pressed.connect(_exit_game)
+	$Shop/Margin/Content/MenuButton.pressed.connect(_open_options_menu)
+	$OptionsMenu/Margin/Content/SaveButton.pressed.connect(_manual_save)
+	$OptionsMenu/Margin/Content/SaveExitButton.pressed.connect(_exit_game)
+	$OptionsMenu/Margin/Content/CloseButton.pressed.connect(_close_options_menu)
+	music_slider.value_changed.connect(_set_music_volume)
+	sfx_slider.value_changed.connect(_set_sfx_volume)
 	continue_button.pressed.connect(_continue_game)
 	$StartScreen/Menu/Margin/Content/NewGameButton.pressed.connect(_request_new_game)
 	$StartScreen/Menu/Margin/Content/ExitButton.pressed.connect(get_tree().quit)
@@ -229,6 +310,118 @@ func _ready() -> void:
 	_update_world()
 	_update_ui()
 
+func _setup_audio() -> void:
+	_ensure_audio_bus("Music")
+	_ensure_audio_bus("SFX")
+	var settings := ConfigFile.new()
+	if settings.load(settings_path) == OK:
+		music_volume = clampf(float(settings.get_value("audio", "music", music_volume)), 0.0, 1.0)
+		sfx_volume = clampf(float(settings.get_value("audio", "effects", sfx_volume)), 0.0, 1.0)
+	music_slider.set_value_no_signal(music_volume * 100.0)
+	sfx_slider.set_value_no_signal(sfx_volume * 100.0)
+	_apply_audio_volume("Music", music_volume)
+	_apply_audio_volume("SFX", sfx_volume)
+	_update_audio_labels()
+
+func _ensure_audio_bus(bus_name: String) -> void:
+	if AudioServer.get_bus_index(bus_name) >= 0: return
+	AudioServer.add_bus()
+	AudioServer.set_bus_name(AudioServer.bus_count - 1, bus_name)
+
+func _apply_audio_volume(bus_name: String, volume: float) -> void:
+	var index := AudioServer.get_bus_index(bus_name)
+	if index < 0: return
+	AudioServer.set_bus_mute(index, volume <= 0.0)
+	AudioServer.set_bus_volume_db(index, linear_to_db(maxf(0.0001, volume)))
+
+func _set_music_volume(value: float) -> void:
+	music_volume = clampf(value / 100.0, 0.0, 1.0)
+	_apply_audio_volume("Music", music_volume)
+	_update_audio_labels()
+	_save_audio_settings()
+
+func _set_sfx_volume(value: float) -> void:
+	sfx_volume = clampf(value / 100.0, 0.0, 1.0)
+	_apply_audio_volume("SFX", sfx_volume)
+	_update_audio_labels()
+	_save_audio_settings()
+
+func _update_audio_labels() -> void:
+	music_label.text = "MÚSICA  %d%%" % roundi(music_volume * 100.0)
+	sfx_label.text = "EFECTOS DE SONIDO  %d%%" % roundi(sfx_volume * 100.0)
+
+func _save_audio_settings() -> void:
+	var settings := ConfigFile.new()
+	settings.set_value("audio", "music", music_volume)
+	settings.set_value("audio", "effects", sfx_volume)
+	settings.save(settings_path)
+
+func _open_options_menu() -> void:
+	shop.hide()
+	options_menu.show()
+
+func _close_options_menu() -> void:
+	options_menu.hide()
+	shop.show()
+
+func _start_music() -> void:
+	music_player = AudioStreamPlayer.new()
+	music_player.name = "NasalShiftMusic"
+	music_player.stream = MUSIC_NASAL_SHIFT
+	music_player.bus = "Music"
+	music_player.volume_db = -18.0
+	add_child(music_player)
+	music_player.finished.connect(music_player.play)
+	music_player.play()
+
+func _play_sfx(stream: AudioStream, volume_db: float = -7.0, pitch: float = 1.0) -> void:
+	var player := AudioStreamPlayer.new()
+	player.stream = stream
+	player.volume_db = volume_db
+	player.pitch_scale = pitch
+	player.bus = "SFX"
+	add_child(player)
+	player.finished.connect(player.queue_free)
+	player.play()
+
+func _impact_shake(strength: float) -> void:
+	if impact_shake_tween and impact_shake_tween.is_valid(): impact_shake_tween.kill()
+	stage.position.y = 0.0
+	impact_shake_tween = create_tween()
+	for offset in [strength, -strength * 0.7, strength * 0.4, 0.0]:
+		impact_shake_tween.tween_property(stage, "position:y", offset, 0.045)
+
+func _spawn_impact_dust(origin: Vector2, color: Color = Color("9b5960"), amount: int = 5) -> void:
+	for index in range(amount):
+		var dust := Sprite2D.new()
+		dust.texture = GRAIN_TEXTURE
+		dust.modulate = color
+		dust.scale = Vector2.ONE * randf_range(0.035, 0.065)
+		dust.position = origin + Vector2(randf_range(-14.0, 14.0), -randf_range(2.0, 12.0))
+		dust.z_index = 30
+		effects.add_child(dust)
+		var destination := dust.position + Vector2(randf_range(-32.0, 32.0), -randf_range(20.0, 55.0))
+		var tween := create_tween().set_parallel()
+		tween.tween_property(dust, "position", destination, 0.38).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tween.tween_property(dust, "modulate:a", 0.0, 0.38)
+		tween.chain().tween_callback(dust.queue_free)
+
+func _spawn_energy_ring(origin: Vector2, color: Color, radius: float = 20.0) -> void:
+	var ring := Line2D.new()
+	var points := PackedVector2Array()
+	for index in range(25):
+		var angle := TAU * float(index) / 24.0
+		points.append(origin + Vector2(cos(angle), sin(angle)) * radius)
+	ring.points = points
+	ring.width = 5.0
+	ring.default_color = color
+	ring.z_index = 19
+	effects.add_child(ring)
+	var tween := create_tween().set_parallel()
+	tween.tween_property(ring, "scale", Vector2.ONE * 4.8, 0.5).set_trans(Tween.TRANS_QUAD)
+	tween.tween_property(ring, "modulate:a", 0.0, 0.5)
+	tween.chain().tween_callback(ring.queue_free)
+
 func _finish_layout() -> void:
 	stage.scale = Vector2(WORLD_SCALE, WORLD_SCALE)
 	stage.size = Vector2(STAGE_WIDTH, stage_view.size.y / WORLD_SCALE)
@@ -240,6 +433,8 @@ func _finish_layout() -> void:
 	_rebuild_punchers()
 	_rebuild_platelets()
 	_rebuild_adaptations()
+	_rebuild_infrastructure()
+	_rebuild_transporters()
 	_update_crisis_visuals()
 	_update_pressure_visuals()
 
@@ -253,14 +448,17 @@ func _process(delta: float) -> void:
 	_update_box_jam(delta)
 	_update_joe_high(delta)
 	_update_punchers(delta)
+	_update_special_extractors(delta)
 	_update_pawns(delta)
 	_update_platelets(delta)
 	_update_adaptations(delta)
+	_update_transporters(delta)
 	ui_clock += delta
 	if ui_clock >= 0.12:
 		ui_clock = 0.0
 		_update_pressure_visuals()
 		_update_ui()
+		_check_phase_progress()
 
 func _update_camera(delta: float) -> void:
 	var direction := Input.get_axis("ui_left", "ui_right")
@@ -290,10 +488,10 @@ func _ground_y() -> float:
 	return stage.size.y - FLOOR_HEIGHT
 
 func _mine_x(side: String = active_side) -> float:
-	return 2418.0 if side == "left" else 2782.0
+	return 3618.0 if side == "left" else 3982.0
 
 func _wall_center_x(side: String = active_side) -> float:
-	return 2484.0 if side == "left" else 2716.0
+	return 3684.0 if side == "left" else 3916.0
 
 func _wall_hp(side: String) -> float:
 	return left_hp if side == "left" else right_hp
@@ -302,18 +500,55 @@ func _pile_center(side: String) -> float:
 	return _mine_x(side) + (-58.0 if side == "left" else 58.0)
 
 func _box_x() -> float:
+	if int(levels.get("silo", 0)) > 0:
+		return SILO_X
+	if int(levels.get("container", 0)) > 0:
+		return CONTAINER_X
 	return box.position.x + box.size.x * 0.35
+
+func _storage_tier() -> int:
+	if int(levels.get("plant", 0)) > 0: return 3
+	if int(levels.get("silo", 0)) > 0: return 2
+	if int(levels.get("container", 0)) > 0: return 1
+	return 0
+
+func _storage_capacity() -> float:
+	return float(STORAGE_CAPACITIES[_storage_tier()])
+
+func _storage_space() -> float:
+	return maxf(0.0, _storage_capacity() - cells)
+
+func _reserved_storage() -> float:
+	var reserved := 0.0
+	for piece in loose_chunks:
+		if not is_instance_valid(piece) or not bool(piece.get_meta("carried", false)):
+			continue
+		var kind: String = piece.get_meta("kind", "grain")
+		if kind == "impurity":
+			continue
+		var value := float(piece.get_meta("value", 1.0))
+		reserved += value * (_box_yield_multiplier() if kind == "grain" else 1.0)
+	return reserved
+
+func _storage_claim_space() -> float:
+	return maxf(0.0, _storage_space() - _reserved_storage())
+
+func _store_cocaine(amount: float) -> float:
+	var accepted := minf(maxf(0.0, amount), _storage_space())
+	cells += accepted
+	_update_storage_visual()
+	return accepted
 
 func _pawn_speed() -> float:
 	var crisis_factor := 1.0
-	if current_phase >= 4:
+	if current_phase >= 5:
 		crisis_factor *= lerpf(1.0, 0.68, tissue_damage / 100.0)
 	if current_phase >= 5:
 		crisis_factor *= lerpf(1.0, 0.72, infection / 100.0)
 	return BASE_PAWN_SPEED * pow(1.35, int(levels.shift)) * crisis_factor
 
 func _transport_capacity() -> int:
-	return BASE_CAPACITY * int(pow(2.0, int(levels.box)))
+	return BASE_CAPACITY
 
 func _deposit_duration() -> float:
 	return 0.30 / _deposit_speed_multiplier()
@@ -332,7 +567,7 @@ func _update_box_jam(delta: float) -> void:
 		box_jammed = true
 		_show_toast("CAJA ATASCADA  ·  TODOS PARADOS")
 	if box_jammed and int(levels.detector) > 0:
-		contamination = maxf(0.0, contamination - float(levels.detector) * 0.25 * delta)
+		contamination = maxf(0.0, contamination - float(levels.detector) * 0.04 * delta)
 	if box_jammed and contamination <= 85.0:
 		box_jammed = false
 		_show_toast("LA CAJA VUELVE A TRAGAR")
@@ -405,7 +640,7 @@ func _update_pawns(delta: float) -> void:
 			pawn.position.x = work_point.x + sin(Time.get_ticks_msec() * 0.018 + int(pawn.get_meta("index", 0))) * 1.8
 			if timer <= 0.0:
 				if not bool(pawn.get_meta("did_mine", false)):
-					if mucus_hp <= 0.0 and _wall_hp(side) > 0.0:
+					if not _wall_mining_blocked() and _wall_hp(side) > 0.0:
 						_damage_wall(1.0, side)
 						_spawn_chunk(Vector2(_mine_x(side) + lane_x * 0.35, _ground_y() - 245.0), 1.0, side)
 					pawn.set_meta("did_mine", true)
@@ -413,7 +648,7 @@ func _update_pawns(delta: float) -> void:
 				else:
 					var rock := _top_untreated_rock(side)
 					if bool(pawn.get_meta("specialist", false)) and is_instance_valid(rock):
-						_chip_rock(rock)
+						_chip_rock(rock, 1 + int(levels.breaker))
 						pawn.set_meta("timer", 0.34 / (1.0 + float(levels.shift) * 0.12))
 					else:
 						var cargo := _claim_top_pieces(side, _transport_capacity(), pawn)
@@ -638,6 +873,7 @@ func _top_pieces(side: String) -> Array[Sprite2D]:
 
 func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 	var cargo: Array = []
+	var remaining_storage := _storage_claim_space()
 	while cargo.size() < capacity:
 		var collectable: Array[Sprite2D] = []
 		var handler := bool(pawn.get_meta("handler", false))
@@ -645,6 +881,9 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 			var kind: String = candidate.get_meta("kind", "grain")
 			if kind == "rock" and (not bool(pawn.get_meta("specialist", false)) or int(candidate.get_meta("hardness", 0)) > 0): continue
 			if kind == "bacteria" and not handler: continue
+			if kind == "impurity" and int(levels.detector) > 0 and not bool(pawn.get_meta("detector", false)): continue
+			var stored_value := float(candidate.get_meta("value", 1.0)) * (_box_yield_multiplier() if kind == "grain" else 1.0)
+			if kind != "impurity" and stored_value > remaining_storage + 0.001: continue
 			collectable.append(candidate)
 		if collectable.is_empty(): break
 		var preferred: Array[Sprite2D] = []
@@ -657,6 +896,9 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 		var source := preferred if not preferred.is_empty() else collectable
 		var piece := source[randi_range(0, mini(6, source.size() - 1))]
 		piece.set_meta("carried", true)
+		var piece_kind: String = piece.get_meta("kind", "grain")
+		if piece_kind != "impurity":
+			remaining_storage -= float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if piece_kind == "grain" else 1.0)
 		piece.z_index = 20
 		if handler and piece.get_meta("kind", "grain") == "bacteria":
 			piece.visible = false
@@ -759,6 +1001,10 @@ func _manual_collect_at(world_pos: Vector2) -> bool:
 	if kind == "bacteria":
 		_float_text("ESO SE MUEVE", world_pos)
 		return true
+	var stored_value := float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if kind == "grain" else 1.0)
+	if kind != "impurity" and stored_value > _storage_claim_space() + 0.001:
+		_float_text("ALMACÃ‰N LLENO", world_pos)
+		return true
 	var side: String = piece.get_meta("side", "right")
 	piece.set_meta("carried", true)
 	piece.set_meta("manual_flying", true)
@@ -799,13 +1045,23 @@ func _finish_manual_delivery(piece: Variant) -> void:
 	var delivered := 0.0
 	if kind == "impurity":
 		impurities_handled += 1
-		contamination = clampf(contamination + _impurity_contamination(str(sprite.get_meta("material", ""))), 0.0, 100.0)
+		contamination = clampf(contamination + _impurity_contamination(str(sprite.get_meta("material", "")), value), 0.0, 100.0)
 		_float_text("LA CAJA SE ENSUCIA", Vector2(_box_x(), _ground_y() - 22.0))
 	else:
-		delivered = value * _box_yield_multiplier()
-		cells += delivered
-		phase_work += value
-		_improve_joe(value)
+		var requested := value * _box_yield_multiplier()
+		delivered = _store_cocaine(requested)
+		if delivered <= 0.0:
+			sprite.set_meta("carried", false)
+			sprite.set_meta("manual_flying", false)
+			sprite.visible = true
+			sprite.position = _landing_position(sprite)
+			sprite.scale = Vector2.ONE * float(sprite.get_meta("base_scale", 0.07))
+			_restack_pile(str(sprite.get_meta("side", "right")))
+			_float_text("ALMACÃ‰N LLENO", Vector2(_box_x(), _ground_y() - 22.0))
+			return
+		var progress_value := value * delivered / maxf(0.001, requested)
+		phase_work += progress_value
+		_improve_joe(progress_value)
 		_float_text("+%s" % _number(delivered), Vector2(_box_x(), _ground_y() - 22.0))
 	loose_chunks.erase(sprite)
 	sprite.queue_free()
@@ -857,36 +1113,48 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 		if not is_instance_valid(piece): continue
 		var value := float(piece.get_meta("value", 0.0))
 		var kind: String = piece.get_meta("kind", "grain")
+		var consumed := true
 		if kind == "impurity":
 			impurities_handled += 1
 			if bool(pawn.get_meta("detector", false)):
-				delivered += value * 0.15 * float(levels.detector)
+				delivered += _store_cocaine(value * 0.15 * float(levels.detector))
 				phase_work += 1.25 * float(levels.detector)
 				contamination_delta -= 0.45 + float(levels.detector) * 0.15
 				impurities_cleaned += 1
 			else:
-				contamination_delta += _impurity_contamination(str(piece.get_meta("material", "")))
+				contamination_delta += _impurity_contamination(str(piece.get_meta("material", "")), value)
 		elif kind == "bacteria":
 			if bool(pawn.get_meta("handler", false)):
-				delivered += value
-				bacteria_handled += 1
-				infection = maxf(0.0, infection - 3.5)
-				_change_joe_high(-0.18)
-				phase_work += 2.5
+				var accepted := _store_cocaine(value)
+				if accepted > 0.0:
+					delivered += accepted
+					bacteria_handled += 1
+					infection = maxf(0.0, infection - 3.5)
+					_change_joe_high(-0.18)
+					phase_work += 2.5
+				else:
+					consumed = false
 			else:
-				piece.set_meta("carried", false)
-				piece.visible = true
-				piece.scale = Vector2.ONE * float(piece.get_meta("base_scale", 0.08))
-				piece.position = _landing_position(piece)
-				continue
+				consumed = false
 		else:
-			delivered += value * _box_yield_multiplier()
-			phase_work += value
-			_improve_joe(value)
-		loose_chunks.erase(piece)
-		piece.queue_free()
+			var requested := value * _box_yield_multiplier()
+			var accepted := _store_cocaine(requested)
+			if accepted > 0.0:
+				delivered += accepted
+				var progress_value := value * accepted / maxf(0.001, requested)
+				phase_work += progress_value
+				_improve_joe(progress_value)
+			else:
+				consumed = false
+		if consumed:
+			loose_chunks.erase(piece)
+			piece.queue_free()
+		else:
+			piece.set_meta("carried", false)
+			piece.visible = true
+			piece.scale = Vector2.ONE * float(piece.get_meta("base_scale", 0.08))
+			piece.position = _landing_position(piece)
 	contamination = clampf(contamination + contamination_delta, 0.0, 100.0)
-	cells += delivered
 	if contamination_delta > 0.0:
 		_float_text("LA CAJA SE ENSUCIA", pawn.position - Vector2(0.0, 22.0))
 	elif contamination_delta < 0.0:
@@ -903,10 +1171,13 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 	_box_bump()
 	_check_phase_progress()
 
-func _impurity_contamination(material: String) -> float:
-	if material == "yeso": return 0.85
-	if material == "serrín": return 0.55
-	return 0.70
+func _impurity_contamination(material: String, value: float) -> float:
+	# La suciedad depende del bulto visual recogido, no del valor económico que
+	# representa. Así una lluvia tardía ensucia más veces, pero no atasca de golpe.
+	if material == "yeso": return 0.55
+	if material == "tiza": return 0.45
+	if material == "serrín": return 0.35
+	return 0.45
 
 func _update_contamination_warning(previous: float) -> void:
 	var previous_band := int(previous / 25.0)
@@ -927,10 +1198,10 @@ func _top_untreated_rock(side: String) -> Sprite2D:
 		if piece.get_meta("kind", "grain") == "rock" and int(piece.get_meta("hardness", 0)) > 0: return piece
 	return null
 
-func _chip_rock(rock: Sprite2D) -> void:
+func _chip_rock(rock: Sprite2D, power: int = 1) -> void:
 	if not is_instance_valid(rock): return
 	var previous_hardness := int(rock.get_meta("hardness", 0))
-	var hardness := maxi(0, previous_hardness - 1)
+	var hardness := maxi(0, previous_hardness - maxi(1, power))
 	rock.set_meta("hardness", hardness)
 	if previous_hardness > 0 and hardness == 0:
 		rocks_opened += 1
@@ -943,12 +1214,18 @@ func _chip_rock(rock: Sprite2D) -> void:
 	tween.tween_property(rock, "rotation", rock.rotation - 0.10, 0.06)
 	tween.tween_property(rock, "rotation", 0.0, 0.08)
 	_float_text("CRACK" if hardness > 0 else "LISTO", rock.position - Vector2(0.0, 18.0))
-	if hardness == 0: rock.modulate = Color("eef4e7")
+	_play_sfx(SFX_ROCK, -13.0, randf_range(0.88, 1.12))
+	if hardness == 0:
+		rock.modulate = Color("eef4e7")
+		_spawn_impact_dust(rock.position, Color("eef4e7"), 5)
 
 func _maybe_compact(side: String) -> void:
 	if current_phase < 2: return
-	if int(levels.breaker) == 0 and _rock_count(side) >= 6: return
-	if _pile_load(side) < COMPACTION_THRESHOLD or int(compaction_steps.get(side, 0)) < COMPACTION_INTERVAL: return
+	var rock_limit := 8 + current_phase * 2 + int(levels.breaker) * 4
+	if _rock_count(side) >= rock_limit: return
+	var pressure_rate := _auto_hit_rate() + _special_extraction_rate(true)
+	var interval := _compaction_interval()
+	if _pile_load(side) < COMPACTION_THRESHOLD or int(compaction_steps.get(side, 0)) < interval: return
 	var grains := _dense_grain_cluster(side)
 	if grains.size() < COMPACTION_GRAINS: return
 	var value := 0.0
@@ -958,7 +1235,7 @@ func _maybe_compact(side: String) -> void:
 		grain.queue_free()
 	compaction_steps[side] = 0
 	_restack_pile(side)
-	var hardness := clampi(2 + int(_pile_load(side) / 180.0), 2, 4)
+	var hardness := clampi(2 + floori(log(maxf(1.0, pressure_rate + 1.0)) / log(4.0)), 2, 9)
 	var rock := _create_piece("rock", side, value, hardness, _choose_landing_column(side), randf_range(0.17, 0.205))
 	rock.rotation = randf_range(-0.18, 0.18)
 	rock.scale = Vector2.ZERO
@@ -966,6 +1243,10 @@ func _maybe_compact(side: String) -> void:
 	if not compaction_announced:
 		compaction_announced = true
 		_show_toast("EL POLVO SE APELMAZA  ·  HACEN FALTA ESPECIALISTAS")
+
+func _compaction_interval() -> int:
+	var pressure_rate := _auto_hit_rate() + _special_extraction_rate(true)
+	return clampi(roundi(float(COMPACTION_INTERVAL_MAX) - sqrt(maxf(0.0, pressure_rate)) * 2.4), COMPACTION_INTERVAL_MIN, COMPACTION_INTERVAL_MAX)
 
 func _dense_grain_cluster(side: String) -> Array[Sprite2D]:
 	var grains: Array[Sprite2D] = []
@@ -1011,9 +1292,13 @@ func _click_wall(side: String) -> void:
 		_damage_mucus(mucus_hit)
 		_float_text("MOCO  -%s" % _number(mucus_hit), Vector2(_mine_x(side), _ground_y() - 235.0))
 		return
+	if spray_film_hp > 0.0:
+		_float_text("PELÍCULA DE SPRAY  %s" % _number(spray_film_hp), Vector2(_mine_x(side), _ground_y() - 235.0))
+		return
 	for node in punchers.get_children():
-		node.set_meta("side", side)
-		_place_puncher(node as Sprite2D)
+		if node is Sprite2D:
+			node.set_meta("side", side)
+			_place_puncher(node as Sprite2D)
 	total_clicks += 1
 	var hit := minf(_click_power(), _wall_hp(side))
 	_damage_wall(hit, side)
@@ -1160,13 +1445,15 @@ func _land_fallen_wall_chunk(chunk: Variant) -> void:
 	impact.tween_property(sprite, "scale", Vector2.ONE * WALL_CHUNK_SCALE, 0.11).set_trans(Tween.TRANS_BACK)
 
 func _open_septum() -> void:
-	if septum_open or right_hp / right_max > TUNNEL_UNLOCK_RATIO: return
+	if septum_open or current_phase < TUNNEL_UNLOCK_PHASE: return
 	septum_open = true
 	active_side = "left"
 	camera_goal = maxf(0.0, SEPTUM_X - _visible_world_width() * 0.72)
 	_update_world()
 	_rebuild_pawns()
 	_rebuild_punchers()
+	_rebuild_infrastructure()
+	_rebuild_transporters()
 	_update_ui()
 	_show_toast("TUNELADORA DE NARICES  ·  SEGUNDA FOSA ABIERTA")
 	_save()
@@ -1178,7 +1465,7 @@ func _update_world() -> void:
 	right_button.disabled = right_hp <= 0.0
 	left_visual.modulate = Color.WHITE if septum_open else Color(0.42, 0.42, 0.48)
 	left_caption.text = "FOSA IZQUIERDA" if septum_open else "FOSA IZQUIERDA  ·  BLOQUEADA"
-	break_button.visible = not septum_open and right_hp / right_max <= TUNNEL_UNLOCK_RATIO
+	break_button.visible = not septum_open and current_phase >= TUNNEL_UNLOCK_PHASE
 	break_button.text = "TUNELADORA DE NARICES\nABRIR PASO A LA SEGUNDA FOSA"
 	right_visual.pivot_offset = Vector2(0.0, right_visual.size.y)
 	left_visual.pivot_offset = Vector2(left_visual.size.x, left_visual.size.y)
@@ -1192,10 +1479,10 @@ func _update_world() -> void:
 
 func _update_box() -> void:
 	box.pivot_offset = Vector2(box.size.x * 0.5, box.size.y)
-	var box_scale: float = 1.0 + float(levels.box) * 0.08
-	box.scale = Vector2(box_scale, box_scale)
+	box.scale = Vector2.ONE
 	box.modulate = Color("5e3428").lerp(Color("8c5130"), sin(Time.get_ticks_msec() * 0.012) * 0.5 + 0.5) if box_jammed else Color.WHITE.lerp(Color("ad7f43"), contamination / 100.0)
 	box.rotation = sin(Time.get_ticks_msec() * 0.025) * 0.012 if box_jammed else 0.0
+	_update_storage_visual()
 
 func _rebuild_pawns() -> void:
 	for child in pawns.get_children(): child.queue_free()
@@ -1258,6 +1545,7 @@ func _rebuild_punchers() -> void:
 		puncher.add_child(headband)
 		punchers.add_child(puncher)
 		_place_puncher(puncher)
+	_add_special_extractors()
 
 func _place_puncher(puncher: Sprite2D) -> void:
 	var side: String = puncher.get_meta("side", active_side)
@@ -1296,18 +1584,22 @@ func _puncher_strike_position(puncher: Sprite2D) -> Vector2:
 	return Vector2(_wall_free_x(side) + direction * 14.0, _ground_y() - 14.0)
 
 func _punch_interval() -> float:
-	return PUNCH_BASE_INTERVAL * pow(0.72, int(levels.punch_speed))
+	var rank := clampi(int(levels.punch_power), 0, PUGILIST_INTERVALS.size() - 1)
+	return float(PUGILIST_INTERVALS[rank]) * pow(0.85, int(levels.punch_speed))
 
 func _punch_output() -> int:
-	return int(pow(2.0, int(levels.punch_power)))
+	return int(PUGILIST_DAMAGE[clampi(int(levels.punch_power), 0, PUGILIST_DAMAGE.size() - 1)])
+
+func _wall_mining_blocked() -> bool:
+	return mucus_hp > 0.0 or spray_film_hp > 0.0
 
 func _auto_hit_rate() -> float:
-	if int(levels.puncher) == 0 or box_jammed or mucus_hp > 0.0 or _nearest_fallen_wall_chunk(active_side):
+	if int(levels.puncher) == 0 or box_jammed or _wall_mining_blocked() or _nearest_fallen_wall_chunk(active_side):
 		return 0.0
 	return float(levels.puncher) * float(_punch_output()) / _punch_interval()
 
 func _update_punchers(delta: float) -> void:
-	if int(levels.puncher) == 0 or box_jammed or mucus_hp > 0.0 or _nearest_fallen_wall_chunk(active_side):
+	if int(levels.puncher) == 0 or box_jammed or _wall_mining_blocked() or _nearest_fallen_wall_chunk(active_side):
 		return
 	if puncher_debut_pending:
 		puncher_debut_clock -= delta
@@ -1342,7 +1634,7 @@ func _perform_punch_round(debut: bool) -> void:
 
 func _punchers_idle() -> bool:
 	for node in punchers.get_children():
-		if node.get_meta("state", "idle") != "idle":
+		if node is Sprite2D and node.get_meta("state", "idle") != "idle":
 			return false
 	return true
 
@@ -1385,18 +1677,248 @@ func _resolve_punch(puncher: Sprite2D) -> void:
 	if _wall_hp(side) <= 0.0:
 		return
 	var debut := bool(puncher.get_meta("debut", false))
-	var output := mini(12 if debut else _punch_output(), ceili(_wall_hp(side)))
+	var output := mini(_punch_output(), ceili(_wall_hp(side)))
 	_damage_wall(float(output), side)
 	total_clicks += output
 	var direction := -1.0 if side == "left" else 1.0
 	var impact_x := _wall_free_x(side) + direction * 4.0
-	for grain in range(output):
-		_spawn_chunk(Vector2(impact_x + randf_range(-7.0, 7.0), _ground_y() - randf_range(185.0, 300.0)), 1.0, side)
+	_spawn_extraction_payload(side, float(output), impact_x, mini(18, maxi(1, ceili(sqrt(float(output))))))
+	_spawn_impact_dust(Vector2(impact_x, _ground_y() - 10.0), Color("d6b8bc"), 4)
+	_impact_shake(1.6 if not debut else 3.0)
+	_play_sfx(SFX_PUNCH, -9.0, randf_range(0.92, 1.08))
 	_float_text("¡¡PUM!!  +%d" % output if debut else "¡PUM!  +%d" % output, Vector2(impact_x, _ground_y() - 95.0))
 	if debut:
 		_show_toast("DEBUT DEL PÚGIL  ·  ESO SÍ HA SIDO UN PUÑETAZO")
 	puncher.set_meta("debut", false)
 	_update_world()
+
+func _add_special_extractors() -> void:
+	if int(levels.elephant) > 0:
+		_add_special_extractor("elephant", ELEPHANT_TEXTURE, 0.115, ELEPHANT_INTERVAL)
+	if int(levels.pugilist_cannon) > 0:
+		_add_special_extractor("cannon", PUGILIST_CANNON_TEXTURE, 0.10, CANNON_INTERVAL)
+	if int(levels.supersaiyan) > 0:
+		_add_special_extractor("supersaiyan", SUPERSAIYAN_TEXTURE, 0.09, SUPERSAIYAN_INTERVAL)
+
+func _add_special_extractor(kind: String, texture: Texture2D, scale_factor: float, interval: float) -> void:
+	var root := Node2D.new()
+	root.name = kind.capitalize()
+	root.set_meta("extraction_kind", kind)
+	root.set_meta("state", "idle")
+	root.set_meta("timer", minf(3.0, interval * 0.2))
+	root.set_meta("step_clock", 0.0)
+	root.set_meta("side", active_side)
+	var sprite := Sprite2D.new()
+	sprite.name = "Sprite"
+	sprite.texture = texture
+	sprite.scale = Vector2.ONE * scale_factor
+	sprite.z_index = 5
+	root.add_child(sprite)
+	punchers.add_child(root)
+	_place_special_extractor(root)
+
+func _special_home_position(kind: String, side: String) -> Vector2:
+	var direction := -1.0 if side == "left" else 1.0
+	var distance := 250.0 if kind == "elephant" else (385.0 if kind == "cannon" else 520.0)
+	return Vector2(_pile_outer_x(side) + direction * distance, _ground_y())
+
+func _place_special_extractor(root: Node2D) -> void:
+	var kind: String = root.get_meta("extraction_kind", "")
+	var side: String = root.get_meta("side", active_side)
+	root.position = _special_home_position(kind, side)
+	root.rotation = 0.0
+	var sprite := root.get_node_or_null("Sprite") as Sprite2D
+	if sprite:
+		sprite.flip_h = side == "left"
+		_anchor_special_sprite(kind, sprite)
+
+func _anchor_special_sprite(kind: String, sprite: Sprite2D, bob: float = 0.0) -> void:
+	var foot_pixels := float(SPECIAL_SPRITE_FOOT_PIXELS.get(kind, 0.0))
+	sprite.position.y = -foot_pixels * sprite.scale.y + bob
+
+func _special_extractor_interval(kind: String) -> float:
+	if kind == "elephant": return ELEPHANT_INTERVAL
+	if kind == "cannon": return CANNON_INTERVAL
+	return SUPERSAIYAN_INTERVAL
+
+func _special_extractor_damage(kind: String) -> float:
+	if kind == "elephant": return 120000.0 * pow(5.0, int(levels.elephant_power))
+	if kind == "cannon": return 750000.0 * pow(6.0, int(levels.cannon_power))
+	return 50000000.0 * pow(10.0, int(levels.supersaiyan_power))
+
+func _special_extraction_rate(theoretical: bool = false) -> float:
+	if not theoretical and (box_jammed or _wall_mining_blocked() or _nearest_fallen_wall_chunk(active_side)):
+		return 0.0
+	var result := 0.0
+	if int(levels.elephant) > 0: result += _special_extractor_damage("elephant") / ELEPHANT_INTERVAL
+	if int(levels.pugilist_cannon) > 0: result += _special_extractor_damage("cannon") / CANNON_INTERVAL
+	if int(levels.supersaiyan) > 0: result += _special_extractor_damage("supersaiyan") / SUPERSAIYAN_INTERVAL
+	return result
+
+func _update_special_extractors(delta: float) -> void:
+	for child in punchers.get_children():
+		if not child is Node2D or str(child.get_meta("extraction_kind", "")).is_empty(): continue
+		var root := child as Node2D
+		var kind: String = root.get_meta("extraction_kind", "")
+		var state: String = root.get_meta("state", "idle")
+		if state == "idle" and root.get_meta("side", active_side) != active_side:
+			root.set_meta("side", active_side)
+			_place_special_extractor(root)
+		var sprite := root.get_node_or_null("Sprite") as Sprite2D
+		if not sprite: continue
+		var blocked := box_jammed or _wall_mining_blocked() or _nearest_fallen_wall_chunk(active_side)
+		if kind == "elephant":
+			_update_elephant_extractor(root, sprite, delta, blocked)
+		else:
+			root.position = _special_home_position(kind, str(root.get_meta("side", active_side)))
+			var timer := float(root.get_meta("timer", 0.0))
+			if not blocked: timer -= delta
+			root.set_meta("timer", timer)
+			if kind == "supersaiyan":
+				var charge := clampf(1.0 - timer / 3.0, 0.0, 1.0)
+				sprite.modulate = Color.WHITE.lerp(Color("fff39a"), charge * (0.45 + sin(Time.get_ticks_msec() * 0.02) * 0.12))
+				sprite.scale = Vector2.ONE * 0.09 * (1.0 + charge * 0.08)
+			_anchor_special_sprite(kind, sprite)
+			if timer <= 0.0 and not blocked:
+				root.set_meta("timer", _special_extractor_interval(kind))
+				if kind == "cannon": _fire_pugilist_cannon(root)
+				else: _fire_supersaiyan(root)
+
+func _update_elephant_extractor(root: Node2D, sprite: Sprite2D, delta: float, blocked: bool) -> void:
+	var state: String = root.get_meta("state", "idle")
+	var side: String = root.get_meta("side", active_side)
+	var direction := -1.0 if side == "left" else 1.0
+	var home := _special_home_position("elephant", side)
+	var strike := Vector2(_wall_free_x(side) + direction * 76.0, _ground_y())
+	if state == "idle":
+		root.position = home
+		_anchor_special_sprite("elephant", sprite)
+		var timer := float(root.get_meta("timer", 0.0))
+		if not blocked: timer -= delta
+		root.set_meta("timer", timer)
+		if timer <= 0.0 and not blocked: root.set_meta("state", "to_wall")
+	elif state == "to_wall":
+		if blocked: return
+		root.position = root.position.move_toward(strike, 82.0 * delta)
+		var gait := Time.get_ticks_msec() * 0.025
+		sprite.rotation = sin(gait) * 0.025
+		_anchor_special_sprite("elephant", sprite, absf(sin(gait)) * -3.0)
+		var step_clock := float(root.get_meta("step_clock", 0.0)) - delta
+		if step_clock <= 0.0:
+			step_clock = 0.34
+			_spawn_impact_dust(root.position + Vector2(-direction * 28.0, -2.0), Color("75464d"), 2)
+		root.set_meta("step_clock", step_clock)
+		if root.position.distance_to(strike) < 1.0:
+			root.position = strike
+			root.set_meta("state", "impact")
+			root.set_meta("timer", 0.55)
+			_special_extraction_hit("elephant", root.position)
+			_anchor_special_sprite("elephant", sprite)
+			var impact_tween := create_tween()
+			impact_tween.tween_property(sprite, "scale", Vector2(0.128, 0.098), 0.10).set_trans(Tween.TRANS_BACK)
+			impact_tween.tween_property(sprite, "scale", Vector2.ONE * 0.115, 0.24)
+	elif state == "impact":
+		_anchor_special_sprite("elephant", sprite)
+		var timer := float(root.get_meta("timer", 0.0)) - delta
+		root.set_meta("timer", timer)
+		if timer <= 0.0: root.set_meta("state", "returning")
+	elif state == "returning":
+		root.position = root.position.move_toward(home, 105.0 * delta)
+		sprite.rotation = sin(Time.get_ticks_msec() * 0.021) * 0.018
+		_anchor_special_sprite("elephant", sprite, absf(sin(Time.get_ticks_msec() * 0.021)) * -2.0)
+		if root.position.distance_to(home) < 1.0:
+			root.position = home
+			sprite.rotation = 0.0
+			root.set_meta("state", "idle")
+			root.set_meta("timer", ELEPHANT_INTERVAL)
+
+func _fire_pugilist_cannon(root: Node2D) -> void:
+	var side: String = root.get_meta("side", active_side)
+	var projectile := Sprite2D.new()
+	projectile.texture = PAWN_EMPTY
+	projectile.scale = Vector2.ONE * 0.038
+	projectile.position = root.position + Vector2(-54.0 if side == "right" else 54.0, -48.0)
+	projectile.flip_h = side == "left"
+	var glove := Polygon2D.new()
+	glove.polygon = PackedVector2Array([Vector2(-270, 30), Vector2(-225, 15), Vector2(-181, 37), Vector2(-166, 75), Vector2(-190, 118), Vector2(-240, 120), Vector2(-274, 82)])
+	glove.color = Color("f05261")
+	glove.scale.x = -1.0 if side == "left" else 1.0
+	glove.z_index = 2
+	projectile.add_child(glove)
+	var trail := Line2D.new()
+	trail.points = PackedVector2Array([Vector2(-115.0 if side == "right" else 115.0, 0.0), Vector2.ZERO])
+	trail.width = 13.0
+	trail.default_color = Color("f79a72", 0.72)
+	trail.z_index = -1
+	projectile.add_child(trail)
+	effects.add_child(projectile)
+	_play_sfx(SFX_CANNON, -5.0)
+	_spawn_impact_dust(root.position + Vector2(0.0, -5.0), Color("784951"), 6)
+	var recoil := create_tween()
+	recoil.tween_property(root, "scale", Vector2(1.14, 0.88), 0.08).set_trans(Tween.TRANS_BACK)
+	recoil.tween_property(root, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_ELASTIC)
+	var target := Vector2(_wall_free_x(side), _ground_y() - 70.0)
+	var tween := create_tween()
+	tween.set_parallel()
+	tween.tween_property(projectile, "position", target, 0.48).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_property(projectile, "rotation", (3.0 if side == "right" else -3.0), 0.48)
+	tween.chain().tween_callback(_finish_cannon_shot.bind(projectile, root.position))
+
+func _finish_cannon_shot(projectile: Sprite2D, origin: Vector2) -> void:
+	if is_instance_valid(projectile): projectile.queue_free()
+	_special_extraction_hit("cannon", origin)
+
+func _fire_supersaiyan(root: Node2D) -> void:
+	var side: String = root.get_meta("side", active_side)
+	var beam := Line2D.new()
+	beam.width = 28.0
+	beam.default_color = Color("8bf4ff")
+	beam.points = PackedVector2Array([root.position + Vector2(-45.0 if side == "right" else 45.0, -65.0), Vector2(_wall_free_x(side), _ground_y() - 65.0)])
+	beam.z_index = 20
+	effects.add_child(beam)
+	var inner := Line2D.new()
+	inner.width = 9.0
+	inner.default_color = Color.WHITE
+	inner.points = beam.points
+	inner.z_index = 21
+	effects.add_child(inner)
+	_spawn_energy_ring(root.position + Vector2(0.0, -62.0), Color("8bf4ff"), 18.0)
+	_spawn_energy_ring(root.position + Vector2(0.0, -62.0), Color("fff39a"), 11.0)
+	_play_sfx(SFX_KAMEHAMEHA, -3.0)
+	_special_extraction_hit("supersaiyan", root.position)
+	var tween := create_tween().set_parallel()
+	tween.tween_property(beam, "modulate:a", 0.0, 0.55)
+	tween.tween_property(inner, "modulate:a", 0.0, 0.55)
+	tween.chain().tween_callback(beam.queue_free)
+	tween.chain().tween_callback(inner.queue_free)
+
+func _special_extraction_hit(kind: String, origin: Vector2) -> void:
+	var side := active_side
+	if _wall_hp(side) <= 0.0: return
+	var damage := minf(_special_extractor_damage(kind), _wall_hp(side))
+	_damage_wall(damage, side)
+	total_clicks += roundi(damage)
+	var impact_x := _wall_free_x(side)
+	_spawn_extraction_payload(side, damage, impact_x, 24)
+	_spawn_impact_dust(Vector2(impact_x, _ground_y() - 8.0), Color("eef4e7"), 10 if kind != "elephant" else 14)
+	if kind == "elephant":
+		_play_sfx(SFX_ELEPHANT, -3.0)
+		_impact_shake(8.0)
+	elif kind == "cannon":
+		_impact_shake(5.0)
+	else:
+		_impact_shake(12.0)
+	var title := "¡¡¡CABEZAZO!!!" if kind == "elephant" else ("¡¡CÉLULA BALA!!" if kind == "cannon" else "¡¡¡KAMEHAMEHA LEUCOCITARIO!!!")
+	_float_text("%s  -%s" % [title, _number(damage)], Vector2(impact_x, _ground_y() - 145.0))
+	_show_toast("%s  ·  %s UNIDADES DE DAÑO" % [title, _number(damage)])
+	_update_world()
+
+func _spawn_extraction_payload(side: String, amount: float, impact_x: float, visuals: int) -> void:
+	if amount <= 0.0: return
+	var count := maxi(1, visuals)
+	var value := amount / float(count)
+	for index in range(count):
+		_spawn_chunk(Vector2(impact_x + randf_range(-10.0, 10.0), _ground_y() - randf_range(185.0, 320.0)), value, side)
 
 func _click_power() -> float:
 	return pow(2.0, int(levels.nails))
@@ -1406,7 +1928,16 @@ func _rate() -> float:
 		return 0.0
 	var distance := absf(_box_x() - _pile_center(active_side))
 	var cycle := distance * 2.0 / maxf(1.0, _pawn_speed()) + 0.8 + _deposit_duration()
-	return float(2 + int(levels.pawn)) * float(_transport_capacity()) / cycle * _box_yield_multiplier()
+	var result := float(2 + int(levels.pawn)) * float(_transport_capacity()) / cycle * _box_yield_multiplier()
+	if int(levels.get("cart", 0)) > 0:
+		result += CART_CAPACITY / (distance * 2.0 / CART_SPEED + 1.1)
+	if int(levels.get("ox_convoy", 0)) > 0:
+		result += OX_CAPACITY / (distance * 2.0 / OX_SPEED + 1.1)
+	if int(levels.get("train", 0)) > 0 and septum_open:
+		var available := _pile_load("left") + _pile_load("right")
+		var surface_trip := (absf(PLANT_X + 165.0 - LEFT_TUNNEL_X) + absf(RIGHT_TUNNEL_X - _pile_center("right") - 106.0)) * 2.0 / TRAIN_SPEED
+		result += minf(available, _storage_claim_space()) / (surface_trip + TRAIN_TUNNEL_TIME * 2.0 + 1.2)
+	return result
 
 func _buy(id: String) -> void:
 	var upgrade := _upgrade(id)
@@ -1423,8 +1954,14 @@ func _buy(id: String) -> void:
 			puncher_debut_clock = 1.35
 			punch_clock = _punch_interval()
 			_show_toast("EL NUEVO PÚGIL ESTÁ CALENTANDO EL BRAZO...")
-	elif upgrade.kind == "capacity": _update_box()
+	elif upgrade.kind == "storage":
+		_rebuild_infrastructure()
+		_rebuild_transporters()
+		_rebuild_pawns()
+	elif upgrade.kind in ["transport_cart", "transport_ox", "transport_train"]:
+		_rebuild_transporters()
 	elif upgrade.kind == "platelet": _rebuild_platelets()
+	elif upgrade.kind in ["elephant", "elephant_power", "pugilist_cannon", "cannon_power", "supersaiyan", "supersaiyan_power"]: _rebuild_punchers()
 	elif upgrade.kind in ["umbrella", "umbrella_power", "sponge", "sponge_power", "catapult", "catapult_power"]: _rebuild_adaptations()
 	_update_ui()
 	_check_phase_progress()
@@ -1433,16 +1970,14 @@ func _buy(id: String) -> void:
 func _phase() -> Dictionary:
 	return PHASES[clampi(current_phase - 1, 0, PHASES.size() - 1)]
 
-func _phase_target() -> float:
-	return float(_phase().target)
-
 func _debug_set_phase(next_phase: int) -> void:
 	joe_dialog.hide()
 	phase_event_pending = false
 	playing = true
 	current_phase = clampi(next_phase, 1, PHASES.size())
 	phase_work = 0.0
-	joe_high = clampf(JOE_STARTING_HIGH + float(current_phase - 1) * 4.0, 0.0, 96.0)
+	phase_events = {"line":0, "lungs":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
+	joe_high = minf(96.0, float(PHASE_HIGH_THRESHOLDS[current_phase - 1]) + 4.0)
 	joe_high_display = joe_high
 	contamination = 0.0 if current_phase < 3 else 42.0
 	contamination_band = int(contamination / 25.0)
@@ -1462,6 +1997,9 @@ func _debug_set_phase(next_phase: int) -> void:
 	spray_clock = SPRAY_INTERVAL
 	spray_followup_clock = 0.0
 	spray_pending = false
+	spray_film_hp = 0.0
+	spray_film_max = 0.0
+	spray_feedback_clock = 0.0
 	scratch_clock = SCRATCH_INTERVAL
 	mucus_clock = MUCUS_INTERVAL
 	mucus_hp = 0.0
@@ -1477,11 +2015,13 @@ func _debug_set_phase(next_phase: int) -> void:
 	compaction_steps = {"left":0, "right":0}
 	if current_phase < 2:
 		compaction_announced = false
-	tissue_damage = 0.0 if current_phase < 4 else (34.0 if current_phase == 4 else 48.0)
+	tissue_damage = 0.0 if current_phase < 5 else 48.0
 	infection = 38.0 if current_phase >= 5 else 0.0
 	_rebuild_pawns()
 	_rebuild_punchers()
 	_rebuild_adaptations()
+	_rebuild_infrastructure()
+	_rebuild_transporters()
 	_rebuild_joe_event_visuals()
 	_remove_future_crisis_pieces()
 	_rebuild_platelets()
@@ -1566,9 +2106,11 @@ func _start_another_line(source: String) -> void:
 	another_line_drop_clock = 0.0
 	another_line_spawn_index = 0
 	another_line_events += 1
+	if source == "normal": phase_events.line = int(phase_events.line) + 1
 	if source == "normal":
-		_change_joe_high(ANOTHER_LINE_UNITS * JOE_HIGH_PER_COCAINE_UNIT, true)
-	var source_text := "PULMONES DE DROGATA" if source == "lungs" else "OTRA RAYITA"
+		_change_joe_high(ANOTHER_LINE_HIGH_GAIN, true)
+		_play_sfx(SFX_JOE_INHALE, -13.0, 1.12)
+	var source_text := "PULMONES DE DROGATA" if source == "lungs" else ("RAYITA CON SERRÍN" if source == "adulterated" else "OTRA RAYITA")
 	_show_toast("%s  ·  +%s GRANOS" % [source_text, _number(ANOTHER_LINE_UNITS)])
 	_float_text("+%s GRANOS" % _number(ANOTHER_LINE_UNITS), Vector2(_pile_center(active_side), _ground_y() - 250.0))
 
@@ -1576,7 +2118,8 @@ func _spawn_line_piece(origin: Vector2, side: String, column: int, index: int) -
 	var value := ANOTHER_LINE_UNITS / float(ANOTHER_LINE_VISUALS)
 	var impurity_stride := maxi(5, 5 + int(levels.sorting))
 	if current_phase >= 3 and index % impurity_stride == 0:
-		var piece := _create_piece("impurity", side, value, 0, _choose_landing_column(side, column), randf_range(0.078, 0.09), "serrín")
+		var adulterant := "serrín" if another_line_events % 2 == 1 else "yeso"
+		var piece := _create_piece("impurity", side, value, 0, _choose_landing_column(side, column), randf_range(0.078, 0.09), adulterant)
 		_drop_piece(piece, origin)
 	else:
 		_spawn_chunk(origin, value, side, column)
@@ -1609,6 +2152,7 @@ func _update_joe_events(delta: float) -> void:
 		if chalk_clock <= 0.0:
 			chalk_clock = CHALK_INTERVAL
 			_trigger_chalk()
+	if current_phase >= 4:
 		if spray_pending:
 			spray_followup_clock -= delta
 			if spray_followup_clock <= 0.0:
@@ -1618,30 +2162,34 @@ func _update_joe_events(delta: float) -> void:
 			if spray_clock <= 0.0:
 				spray_clock = SPRAY_INTERVAL
 				_trigger_spray()
-	if current_phase >= 4:
-		scratch_clock -= delta
-		if scratch_clock <= 0.0:
-			scratch_clock = SCRATCH_INTERVAL
-			_trigger_scratch()
-	if current_phase >= 5:
+		if spray_film_hp > 0.0 and int(levels.sponge) > 0 and not box_jammed:
+			_absorb_spray_film(delta)
 		mucus_clock -= delta
 		if mucus_clock <= 0.0:
 			mucus_clock = MUCUS_INTERVAL
 			_trigger_mucus()
-	if mucus_hp > 0.0 and int(levels.catapult) > 0:
+	if current_phase >= 5:
+		scratch_clock -= delta
+		if scratch_clock <= 0.0:
+			scratch_clock = SCRATCH_INTERVAL
+			_trigger_scratch()
+	if mucus_hp > 0.0 and int(levels.catapult) > 0 and not box_jammed:
 		catapult_clock -= delta
 		if catapult_clock <= 0.0:
 			catapult_clock = CATAPULT_INTERVAL
 			_launch_catapults()
 
 func _trigger_lungs() -> void:
+	phase_events.lungs = int(phase_events.lungs) + 1
 	var attempted := floorf(cells * LUNG_STEAL_RATIO)
 	var protected := floorf(attempted * _umbrella_reduction())
 	var stolen := maxf(0.0, attempted - protected)
 	cells = maxf(0.0, cells - stolen)
 	_start_another_line("lungs")
+	_play_sfx(SFX_JOE_INHALE, -4.0, 0.78)
+	_impact_shake(4.0)
 	_change_joe_high(LUNG_HIGH_GAIN, true)
-	_show_toast("PULMONES DE DROGATA  ·  -%s GRANOS  ·  COLOCÓN +20" % _number(stolen))
+	_show_toast("TE HAN ROBADO %s  ·  LOS PARAGUAS HAN SALVADO %s  ·  COLOCÓN +20" % [_number(stolen), _number(protected)])
 	_float_text("-%s GRANOS" % _number(stolen), Vector2(_box_x(), _ground_y() - 105.0))
 	if protected > 0.0:
 		_float_text("PARAGUAS SALVAN %s" % _number(protected), Vector2(_box_x() - 95.0, _ground_y() - 150.0))
@@ -1651,6 +2199,7 @@ func _umbrella_reduction() -> float:
 	return minf(0.90, float(levels.umbrella) * 0.05 + float(levels.umbrella_power) * 0.15)
 
 func _trigger_chalk() -> void:
+	phase_events.chalk = int(phase_events.chalk) + 1
 	var visuals := 60
 	var value := CHALK_UNITS / float(visuals)
 	for index in range(visuals):
@@ -1658,17 +2207,23 @@ func _trigger_chalk() -> void:
 		var piece := _create_piece("impurity", active_side, value, 0, column, randf_range(0.078, 0.092), "tiza")
 		_drop_piece(piece, Vector2(_pile_center(active_side) + float(column) * GRAIN_SPACING + randf_range(-8.0, 8.0), _ground_y() - randf_range(300.0, 440.0)))
 	_change_joe_high(CHALK_UNITS * JOE_HIGH_PER_COCAINE_UNIT, true)
+	_play_sfx(SFX_ROCK, -7.0, 0.72)
 	_show_toast("JOE SE HA METIDO TIZA  ·  +%s UNIDADES" % _number(CHALK_UNITS))
 
 func _trigger_spray() -> void:
+	phase_events.spray = int(phase_events.spray) + 1
 	spray_pending = true
 	spray_followup_clock = SPRAY_FOLLOWUP
 	spray_side = active_side
+	spray_film_hp += SPRAY_FILM_UNITS
+	spray_film_max += SPRAY_FILM_UNITS
+	spray_feedback_clock = 0.0
 	for index in range(22):
 		_spawn_spray_drop(index)
 	_add_spray_coat()
 	_pulse_adaptation("sponge")
-	_show_toast("SPRAY NASAL DEL BAZAR  ·  HASTA %s DE PARED EN 30 SEGUNDOS" % _number(SPRAY_RECOAT_UNITS))
+	_play_sfx(SFX_MUCUS, -8.0, 1.35)
+	_show_toast("SPRAY NASAL DEL BAZAR  ·  PARED BLOQUEADA POR %s UNIDADES" % _number(spray_film_hp))
 
 func _spawn_spray_drop(index: int) -> void:
 	var drop := Polygon2D.new()
@@ -1687,37 +2242,59 @@ func _spawn_spray_drop(index: int) -> void:
 func _add_spray_coat() -> void:
 	for child in joe_events.get_children():
 		if child.get_meta("event_kind", "") == "spray_coat": child.queue_free()
-	for index in range(5):
+	for index in range(7):
 		var coat := Polygon2D.new()
-		coat.polygon = PackedVector2Array([Vector2(-14, 8), Vector2(-11, -18), Vector2(0, -27), Vector2(13, -16), Vector2(16, 7), Vector2(7, 20), Vector2(-8, 19)])
-		coat.color = Color(0.25, 0.72, 0.95, 0.62)
+		coat.polygon = PackedVector2Array([Vector2(-23, 11), Vector2(-19, -22), Vector2(-5, -31), Vector2(20, -23), Vector2(25, 9), Vector2(12, 27), Vector2(-13, 25)])
+		coat.color = Color(0.25, 0.72, 0.95, 0.54)
 		coat.z_index = 8
-		coat.position = Vector2(_wall_center_x(spray_side) + randf_range(-34.0, 34.0), _ground_y() - 55.0 - float(index) * 58.0)
+		coat.position = Vector2(_wall_center_x(spray_side) + randf_range(-25.0, 25.0), _ground_y() - 44.0 - float(index) * 46.0)
 		coat.rotation = randf_range(-0.18, 0.18)
 		coat.set_meta("event_kind", "spray_coat")
 		joe_events.add_child(coat)
 
 func _resolve_spray_line() -> void:
 	spray_pending = false
-	for child in joe_events.get_children():
-		if child.get_meta("event_kind", "") == "spray_coat": child.queue_free()
-	var reduction := _sponge_reduction()
-	var absorbed := floorf(SPRAY_RECOAT_UNITS * reduction)
-	var attempted := maxf(0.0, SPRAY_RECOAT_UNITS - absorbed)
+	var remaining_ratio := clampf(spray_film_hp / maxf(1.0, spray_film_max), 0.0, 1.0)
+	var attempted := SPRAY_RECOAT_UNITS * remaining_ratio
 	var maximum := left_max if spray_side == "left" else right_max
 	var current := left_hp if spray_side == "left" else right_hp
 	var restored := minf(attempted, maxf(0.0, maximum - current))
 	if spray_side == "left": left_hp += restored
 	else: right_hp += restored
 	_update_world()
-	_pulse_adaptation("sponge")
-	_float_text("ESPONJAS ABSORBEN %s" % _number(absorbed), Vector2(_pile_center(spray_side), _ground_y() - 170.0))
-	_show_toast("RAYITA SOLIDIFICADA  ·  PARED +%s  ·  ABSORBIDAS %s" % [_number(restored), _number(absorbed)])
+	_show_toast("RAYITA SOLIDIFICADA  ·  PARED +%s  ·  PELÍCULA RESTANTE %s" % [_number(restored), _number(spray_film_hp)])
 
-func _sponge_reduction() -> float:
-	return minf(0.90, float(levels.sponge) * 0.10 + float(levels.sponge_power) * 0.14)
+func _sponge_absorb_rate() -> float:
+	return float(levels.sponge) * 40.0 * pow(1.8, int(levels.sponge_power))
+
+func _absorb_spray_film(delta: float) -> void:
+	var absorbed := minf(spray_film_hp, _sponge_absorb_rate() * delta)
+	if absorbed <= 0.0: return
+	spray_film_hp -= absorbed
+	phase_work += absorbed * 0.12
+	spray_feedback_clock -= delta
+	if spray_feedback_clock <= 0.0:
+		spray_feedback_clock = 1.0
+		_float_text("ESPONJAS  -%s SPRAY" % _number(_sponge_absorb_rate()), Vector2(_wall_center_x(spray_side), _ground_y() - 170.0))
+		_pulse_adaptation("sponge")
+	_update_spray_coat_visuals()
+	if spray_film_hp > 0.0: return
+	spray_film_hp = 0.0
+	spray_film_max = 0.0
+	for child in joe_events.get_children():
+		if child.get_meta("event_kind", "") == "spray_coat": child.queue_free()
+	_show_toast("PELÍCULA DE SPRAY ABSORBIDA  ·  LA PARED VUELVE A MINARSE")
+
+func _update_spray_coat_visuals() -> void:
+	var ratio := clampf(spray_film_hp / maxf(1.0, spray_film_max), 0.0, 1.0)
+	for child in joe_events.get_children():
+		if child.get_meta("event_kind", "") == "spray_coat":
+			child.modulate.a = 0.24 + ratio * 0.76
+			child.scale = Vector2.ONE * (0.75 + ratio * 0.25)
 
 func _trigger_scratch() -> void:
+	phase_events.scratch = int(phase_events.scratch) + 1
+	_play_sfx(SFX_ROCK, -5.0, 0.62)
 	tissue_damage = clampf(tissue_damage + SCRATCH_DAMAGE, 0.0, 100.0)
 	_change_joe_high(SCRATCH_HIGH_GAIN, true)
 	for index in range(3):
@@ -1741,6 +2318,8 @@ func _spawn_scratch_wound(index: int) -> void:
 		(wounds[0] as Node).queue_free()
 
 func _trigger_mucus() -> void:
+	phase_events.mucus = int(phase_events.mucus) + 1
+	_play_sfx(SFX_MUCUS, -4.0, 0.82)
 	mucus_hp += MUCUS_STRENGTH
 	mucus_max_hp += MUCUS_STRENGTH
 	_add_mucus_patches()
@@ -1761,6 +2340,9 @@ func _add_mucus_patches() -> void:
 
 func _rebuild_joe_event_visuals() -> void:
 	for child in joe_events.get_children(): child.queue_free()
+	if spray_film_hp > 0.0:
+		_add_spray_coat()
+		_update_spray_coat_visuals()
 	if mucus_hp > 0.0:
 		_add_mucus_patches()
 		_update_mucus_visuals()
@@ -1785,7 +2367,7 @@ func _update_mucus_visuals() -> void:
 			child.scale = Vector2.ONE * (0.72 + ratio * 0.28)
 
 func _launch_catapults() -> void:
-	var damage := 100.0 * pow(2.0, int(levels.catapult_power))
+	var damage := CATAPULT_BASE_DAMAGE * pow(2.0, int(levels.catapult_power))
 	for root in adaptations.get_children():
 		if root.get_meta("adaptation_kind", "") != "catapult": continue
 		var projectile := Sprite2D.new()
@@ -1809,12 +2391,14 @@ func _catapult_hit(projectile: Sprite2D, damage: float) -> void:
 	if mucus_hp <= 0.0: return
 	var actual := minf(damage, mucus_hp)
 	_damage_mucus(actual)
+	_play_sfx(SFX_MUCUS, -11.0, 1.18)
+	_spawn_impact_dust(Vector2(_wall_center_x(active_side), _ground_y() - 70.0), Color("77bf69"), 4)
 	_float_text("CATAPULTA  -%s MOCO" % _number(actual), Vector2(_wall_center_x(active_side), _ground_y() - 155.0))
 
 func _update_crisis(delta: float) -> void:
-	if current_phase >= 4:
+	if current_phase >= 5:
 		var bleed_rate := 0.18 + float(current_phase - 4) * 0.08
-		var repair_rate := 0.0 if box_jammed else float(levels.platelets) * 0.28 * pow(2.0, int(levels.repair)) * (1.0 + float(levels.signals) * 0.1)
+		var repair_rate := 0.0 if box_jammed else _platelet_repair_rate()
 		tissue_repaired += maxf(0.0, repair_rate - bleed_rate) * delta
 		tissue_damage = clampf(tissue_damage + (bleed_rate - repair_rate) * delta, 0.0, 100.0)
 		phase_work += repair_rate * delta * 0.35
@@ -1822,6 +2406,10 @@ func _update_crisis(delta: float) -> void:
 		if blood_drop_clock <= 0.0 and tissue_damage > 1.0:
 			blood_drop_clock = lerpf(0.72, 0.2, tissue_damage / 100.0)
 			_spawn_blood_drop()
+		for wound in joe_events.get_children():
+			if wound.get_meta("event_kind", "") != "wound": continue
+			wound.modulate.a = clampf(tissue_damage / 30.0, 0.12, 1.0)
+			if tissue_damage <= 0.5: wound.queue_free()
 	if current_phase >= 5:
 		bacteria_clock -= delta
 		if bacteria_clock <= 0.0:
@@ -1833,24 +2421,71 @@ func _update_crisis(delta: float) -> void:
 	_update_crisis_visuals()
 	_check_phase_progress()
 
+func _platelet_repair_rate() -> float:
+	var count := float(mini(12, int(levels.platelets) * 2))
+	var rank := clampi(int(levels.repair), 0, PLATELET_REPAIR_MULTIPLIERS.size() - 1)
+	return count * 0.22 * float(PLATELET_REPAIR_MULTIPLIERS[rank]) * (1.0 + float(levels.signals) * 0.1)
+
+func _platelet_rate_for(repair_rank: int) -> float:
+	var count := float(mini(12, int(levels.platelets) * 2))
+	var rank := clampi(repair_rank, 0, PLATELET_REPAIR_MULTIPLIERS.size() - 1)
+	return count * 0.22 * float(PLATELET_REPAIR_MULTIPLIERS[rank]) * (1.0 + float(levels.signals) * 0.1)
+
+func _future_special_damage(kind: String, owned_level: int) -> float:
+	if owned_level <= 0: return 0.0
+	if kind == "elephant": return 120000.0 * pow(5.0, int(levels.elephant_power))
+	if kind == "cannon": return 750000.0 * pow(6.0, int(levels.cannon_power))
+	return 50000000.0 * pow(10.0, int(levels.supersaiyan_power))
+
 func _improve_joe(clean_units: float) -> void:
 	_change_joe_high(-clean_units * JOE_HIGH_PER_COCAINE_UNIT)
 
 func _change_joe_high(amount: float, pulse: bool = false) -> void:
 	joe_high = clampf(joe_high + amount, 0.0, 100.0)
+	if joe_high >= 100.0:
+		_trigger_overdose()
 	if not pulse or not is_instance_valid(joe_portrait):
 		return
 	joe_portrait.modulate = Color("ff69ad") if amount > 0.0 else Color("79d5e8")
 	create_tween().tween_property(joe_portrait, "modulate", Color.WHITE, 0.48)
 
+func _trigger_overdose() -> void:
+	if overdose_active: return
+	overdose_active = true
+	playing = false
+	joe_high = 100.0
+	joe_high_display = 100.0
+	_play_sfx(SFX_OVERDOSE, -2.0)
+	_update_ui()
+	overdose_dialog.popup_centered(Vector2i(560, 240))
+
+func _reload_after_overdose() -> void:
+	overdose_dialog.hide()
+	overdose_active = false
+	if FileAccess.file_exists(save_path):
+		_load()
+		_begin_game()
+	else:
+		_new_game()
+
+func _return_to_menu_after_overdose() -> void:
+	overdose_dialog.hide()
+	overdose_active = false
+	playing = false
+	start_screen.show()
+	_update_start_screen()
+
 func _update_joe_high(delta: float) -> void:
 	var pile_burden := _pile_load("left") + _pile_load("right") + _fallen_wall_chunk_load()
 	var pile_rise := clampf((pile_burden - 900.0) / 9000.0, 0.0, 1.0) * 0.018
 	var contamination_rise := contamination / 100.0 * 0.010 if current_phase >= 3 else 0.0
-	var tissue_rise := tissue_damage / 100.0 * 0.015 if current_phase >= 4 else 0.0
+	var jam_rise := 0.08 if box_jammed else 0.0
+	var tissue_rise := tissue_damage / 100.0 * 0.015 if current_phase >= 5 else 0.0
 	var infection_rise := infection / 100.0 * 0.018 if current_phase >= 5 else 0.0
-	joe_high = clampf(joe_high + (pile_rise + contamination_rise + tissue_rise + infection_rise) * delta, 0.0, 100.0)
+	joe_high = clampf(joe_high + (pile_rise + contamination_rise + jam_rise + tissue_rise + infection_rise) * delta, 0.0, 100.0)
 	joe_high_display = move_toward(joe_high_display, joe_high, delta * 9.0)
+	if joe_high >= 100.0:
+		_trigger_overdose()
 
 func _fallen_wall_chunk_load() -> float:
 	var total := 0.0
@@ -1884,37 +2519,28 @@ func _kind_count(kind: String) -> int:
 	return count
 
 func _check_phase_progress() -> void:
-	if phase_event_pending or current_phase >= PHASES.size() or phase_work < _phase_target():
-		return
-	var adapted := true
-	if current_phase == 1:
-		adapted = puncher_unlocked and int(levels.puncher) > 0 and int(levels.pawn) + int(levels.shift) + int(levels.box) >= 3
-	elif current_phase == 2:
-		adapted = int(levels.breaker) > 0 and int(levels.umbrella) > 0 and rocks_opened >= 6
-	elif current_phase == 3:
-		adapted = int(levels.detector) > 0 and int(levels.sponge) > 0 and contamination < 30.0 and impurities_cleaned >= 10
-	elif current_phase == 4:
-		adapted = int(levels.platelets) > 0 and tissue_damage < 45.0 and tissue_repaired >= 18.0
-	elif current_phase == 5:
-		adapted = int(levels.handlers) > 0 and int(levels.catapult) > 0 and infection < 35.0
-	if adapted:
-		_advance_phase()
+	if phase_event_pending or current_phase >= PHASES.size(): return
+	var next_threshold := float(PHASE_HIGH_THRESHOLDS[current_phase])
+	if joe_high <= next_threshold: _advance_phase()
 
 func _advance_phase() -> void:
 	current_phase = mini(PHASES.size(), current_phase + 1)
 	phase_work = 0.0
+	phase_events = {"line":0, "lungs":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
 	bacteria_clock = 0.0
 	blood_drop_clock = 0.0
 	if current_phase == 2: rocks_opened = 0
 	if current_phase == 3: impurities_cleaned = 0
-	if current_phase == 4: tissue_repaired = 0.0
-	if current_phase == 4: tissue_damage = maxf(tissue_damage, 28.0)
+	if current_phase == 5: tissue_repaired = 0.0
+	if current_phase == 5: tissue_damage = maxf(tissue_damage, 28.0)
 	if current_phase == 5: infection = maxf(infection, 24.0)
 	phase_event_pending = true
 	playing = false
 	_rebuild_pawns()
 	_rebuild_platelets()
 	_rebuild_adaptations()
+	_rebuild_infrastructure()
+	_rebuild_transporters()
 	_update_world()
 	_update_ui()
 	call_deferred("_focus_required_upgrade")
@@ -1936,13 +2562,26 @@ func _show_phase_event() -> void:
 func _resume_after_joe() -> void:
 	phase_event_pending = false
 	playing = true
+	_trigger_phase_debut()
 	_update_ui()
 	_save()
+
+func _trigger_phase_debut() -> void:
+	if current_phase == 2:
+		_trigger_lungs()
+	elif current_phase == 3:
+		_start_another_line("adulterated")
+		_change_joe_high(8.0, true)
+	elif current_phase == 4:
+		_trigger_spray()
+		mucus_clock = 60.0
+	elif current_phase == 5:
+		_trigger_scratch()
 
 func _rebuild_platelets() -> void:
 	for child in platelets.get_children():
 		child.queue_free()
-	if current_phase < 4:
+	if current_phase < 5:
 		return
 	var count := mini(12, int(levels.platelets) * 2)
 	for index in range(count):
@@ -1954,19 +2593,354 @@ func _rebuild_platelets() -> void:
 		platelet.position = Vector2(SEPTUM_X + (-1.0 if index % 2 == 0 else 1.0) * (92.0 + float(index / 2) * 19.0), _ground_y() - 8.0)
 		platelets.add_child(platelet)
 
-func _update_platelets(_delta: float) -> void:
+func _update_platelets(delta: float) -> void:
 	if box_jammed:
 		return
 	var now := Time.get_ticks_msec() * 0.001
+	var wounds := joe_events.get_children().filter(func(node: Node) -> bool: return node.get_meta("event_kind", "") == "wound")
 	for child in platelets.get_children():
 		var platelet := child as Sprite2D
 		if not platelet: continue
 		var index := int(platelet.get_meta("index", 0))
 		var side := -1.0 if index % 2 == 0 else 1.0
-		var center := SEPTUM_X + side * (92.0 + float(index / 2) * 19.0)
-		platelet.position.x = center + sin(now * (1.2 + float(index % 3) * 0.08) + index) * 18.0
+		var idle := Vector2(SEPTUM_X + side * (92.0 + float(index / 2) * 19.0), _ground_y() - 8.0)
+		var target := idle
+		if not wounds.is_empty():
+			var wound := wounds[index % wounds.size()] as Node2D
+			target = wound.position + Vector2(float(index % 3 - 1) * 9.0, -3.0)
+		platelet.position = platelet.position.move_toward(target, (95.0 + float(levels.repair) * 12.0) * delta)
 		platelet.position.y = _ground_y() - 8.0
-		platelet.rotation = sin(now * 1.6 + index) * 0.025
+		var working := platelet.position.distance_to(target) < 3.0 and not wounds.is_empty()
+		platelet.rotation = sin(now * (5.5 if working else 1.6) + index) * (0.08 if working else 0.025)
+		platelet.scale = Vector2(0.094, 0.082) if working and sin(now * 8.0 + index) > 0.0 else Vector2.ONE * 0.088
+	platelet_feedback_clock -= delta
+	if platelet_feedback_clock <= 0.0 and tissue_damage > 0.0 and int(levels.platelets) > 0:
+		platelet_feedback_clock = 3.0
+		_float_text("PLAQUETAS  +%s TEJIDO/S" % _number(_platelet_repair_rate()), Vector2(SEPTUM_X, _ground_y() - 90.0))
+
+func _rebuild_infrastructure() -> void:
+	for child in infrastructure.get_children(): child.queue_free()
+	box.visible = int(levels.get("container", 0)) == 0
+	if int(levels.get("silo", 0)) > 0:
+		_add_infrastructure_sprite(SILO_TEXTURE, Vector2(SILO_X, _ground_y() - 80.0), 0.14, "SILO DE NIEVE ESTRATÉGICA")
+	elif int(levels.get("container", 0)) > 0:
+		_add_infrastructure_sprite(CONTAINER_TEXTURE, Vector2(CONTAINER_X, _ground_y() - 43.0), 0.115, "CONTENEDOR DE EMERGENCIA")
+	if int(levels.get("plant", 0)) > 0:
+		_add_infrastructure_sprite(PLANT_TEXTURE, Vector2(PLANT_X, _ground_y() - 62.0), 0.17, "PLANTA DE NIEVE INDUSTRIAL")
+	if int(levels.get("train", 0)) > 0 and septum_open:
+		_add_train_tunnels()
+	_update_storage_visual()
+
+func _add_infrastructure_sprite(texture: Texture2D, position: Vector2, scale_factor: float, caption: String) -> void:
+	var root := Node2D.new()
+	root.position = position
+	root.z_index = 2
+	root.set_meta("storage_visual", true)
+	var sprite := Sprite2D.new()
+	sprite.texture = texture
+	sprite.scale = Vector2.ONE * scale_factor
+	root.add_child(sprite)
+	var label := Label.new()
+	label.position = Vector2(-155.0, -82.0)
+	label.size = Vector2(310.0, 24.0)
+	label.text = caption
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_color_override("font_color", Color("e8c99a"))
+	root.add_child(label)
+	infrastructure.add_child(root)
+
+func _add_train_tunnels() -> void:
+	for tunnel_x in [LEFT_TUNNEL_X, RIGHT_TUNNEL_X]:
+		var root := Node2D.new()
+		root.name = "TúnelIzquierdo" if tunnel_x == LEFT_TUNNEL_X else "TúnelDerecho"
+		root.position = Vector2(tunnel_x, _ground_y())
+		root.z_index = 1
+		root.set_meta("train_tunnel", true)
+		var arch_points := PackedVector2Array()
+		for step in range(17):
+			var angle := PI + PI * float(step) / 16.0
+			arch_points.append(Vector2(cos(angle) * 92.0, sin(angle) * 78.0))
+		var opening := Polygon2D.new()
+		opening.polygon = arch_points
+		opening.color = Color("130b19")
+		root.add_child(opening)
+		var rim := Line2D.new()
+		rim.points = arch_points
+		rim.width = 11.0
+		rim.default_color = Color("6e344e")
+		rim.joint_mode = Line2D.LINE_JOINT_ROUND
+		root.add_child(rim)
+		var inner := Line2D.new()
+		inner.points = arch_points
+		inner.width = 4.0
+		inner.default_color = Color("dc7966")
+		inner.joint_mode = Line2D.LINE_JOINT_ROUND
+		root.add_child(inner)
+		var label := Label.new()
+		label.position = Vector2(-100.0, -112.0)
+		label.size = Vector2(200.0, 22.0)
+		label.text = "TÚNEL LINFÁTICO"
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", 10)
+		label.add_theme_color_override("font_color", Color("e8c99a"))
+		root.add_child(label)
+		infrastructure.add_child(root)
+
+func _update_storage_visual() -> void:
+	var ratio := clampf(cells / maxf(1.0, _storage_capacity()), 0.0, 1.0)
+	var tint := Color.WHITE.lerp(Color("ffc66d"), ratio * 0.22)
+	tint = tint.lerp(Color("8c5130"), contamination / 100.0 * 0.55)
+	if box_jammed:
+		tint = tint.lerp(Color("70342f"), sin(Time.get_ticks_msec() * 0.012) * 0.22 + 0.48)
+	for child in infrastructure.get_children():
+		if bool(child.get_meta("storage_visual", false)):
+			child.modulate = tint
+	box.modulate = tint
+
+func _rebuild_transporters() -> void:
+	for child in transporters.get_children():
+		_release_transport_cargo(child)
+		child.queue_free()
+	if int(levels.get("cart", 0)) > 0:
+		_add_ground_transporter("cart", CART_CAPACITY, CART_SPEED)
+	if int(levels.get("ox_convoy", 0)) > 0:
+		_add_ground_transporter("ox", OX_CAPACITY, OX_SPEED)
+	if int(levels.get("train", 0)) > 0 and septum_open:
+		_add_train()
+	_restack_pile()
+
+func _add_ground_transporter(kind: String, capacity: float, speed: float) -> void:
+	var root := Node2D.new()
+	root.name = kind.capitalize()
+	root.position = Vector2(_box_x(), _ground_y())
+	root.z_index = 5
+	root.set_meta("transport_kind", kind)
+	root.set_meta("capacity", capacity)
+	root.set_meta("speed", speed)
+	root.set_meta("state", "to_pile")
+	root.set_meta("side", active_side)
+	root.set_meta("cargo", [])
+	root.set_meta("timer", 0.0)
+	if kind == "cart":
+		var cart := Sprite2D.new()
+		cart.name = "Vehicle"
+		cart.texture = CART_TEXTURE
+		cart.scale = Vector2.ONE * 0.075
+		cart.position = Vector2(18.0, -16.5)
+		root.add_child(cart)
+		var puller := Sprite2D.new()
+		puller.name = "Puller"
+		puller.texture = PAWN_EMPTY
+		puller.scale = Vector2.ONE * 0.036
+		puller.offset = Vector2(0.0, PAWN_FOOT_DEPTH / puller.scale.y - PAWN_EMPTY.get_height() * 0.5)
+		puller.position = Vector2(-52.0, -14.0)
+		puller.z_index = 2
+		root.add_child(puller)
+	else:
+		var wagons := Sprite2D.new()
+		wagons.name = "Vehicle"
+		wagons.texture = CONVOY_TEXTURE
+		wagons.scale = Vector2.ONE * 0.09
+		wagons.position = Vector2(48.0, -10.0)
+		root.add_child(wagons)
+		var ox := Sprite2D.new()
+		ox.name = "Puller"
+		ox.texture = LEUKOX_TEXTURE
+		ox.scale = Vector2.ONE * 0.085
+		ox.position = Vector2(-82.0, -27.5)
+		ox.z_index = 2
+		root.add_child(ox)
+	transporters.add_child(root)
+
+func _add_train() -> void:
+	var root := Node2D.new()
+	root.name = "LeukocyteExpress"
+	root.position = Vector2(PLANT_X + 165.0, _ground_y() - 10.0)
+	root.z_index = 7
+	root.set_meta("transport_kind", "train")
+	root.set_meta("state", "waiting")
+	root.set_meta("side", "right")
+	root.set_meta("cargo", [])
+	root.set_meta("timer", 1.2)
+	var train := Sprite2D.new()
+	train.name = "Vehicle"
+	train.texture = TRAIN_TEXTURE
+	train.scale = Vector2.ONE * 0.13
+	train.position = Vector2(0.0, -12.0)
+	root.add_child(train)
+	transporters.add_child(root)
+
+func _update_transporters(delta: float) -> void:
+	for child in transporters.get_children():
+		var root := child as Node2D
+		if not root: continue
+		if root.get_meta("transport_kind", "") == "train":
+			_update_train(root, delta)
+		else:
+			_update_ground_transporter(root, delta)
+
+func _update_ground_transporter(root: Node2D, delta: float) -> void:
+	if box_jammed: return
+	var state: String = root.get_meta("state", "to_pile")
+	var side: String = root.get_meta("side", active_side)
+	var speed := float(root.get_meta("speed", CART_SPEED))
+	var timer := maxf(0.0, float(root.get_meta("timer", 0.0)) - delta)
+	root.set_meta("timer", timer)
+	if state == "to_pile":
+		if _storage_claim_space() <= 0.0 or _nearest_fallen_wall_chunk(side):
+			return
+		var target := _pile_access_point(side) + Vector2(46.0, 14.0)
+		_move_transport_root(root, target, speed, delta)
+		if root.position.distance_to(target) <= 1.0:
+			var cargo := _claim_transport_cocaine(side, float(root.get_meta("capacity", 1.0)), false)
+			root.set_meta("cargo", cargo)
+			root.set_meta("state", "to_storage" if not cargo.is_empty() else "waiting")
+			root.set_meta("timer", 0.55)
+	elif state == "waiting":
+		if timer <= 0.0: root.set_meta("state", "to_pile")
+	else:
+		var depot := Vector2(_box_x(), _ground_y())
+		_move_transport_root(root, depot, speed, delta)
+		if root.position.distance_to(depot) <= 1.0:
+			_deliver_transport_cargo(root, depot)
+			root.set_meta("side", active_side)
+			root.set_meta("state", "to_pile")
+
+func _move_transport_root(root: Node2D, target: Vector2, speed: float, delta: float) -> void:
+	var direction := signf(target.x - root.position.x)
+	if not is_zero_approx(direction): root.scale.x = 1.0 if direction < 0.0 else -1.0
+	root.position = root.position.move_toward(target, speed * delta)
+	root.position.y = _ground_y()
+
+func _claim_transport_cocaine(side: String, capacity: float, take_all: bool) -> Array:
+	var cargo: Array = []
+	var remaining := minf(capacity, _storage_claim_space())
+	var candidates: Array = loose_chunks.duplicate() if take_all else _top_pieces(side)
+	for value in candidates:
+		var piece := value as Sprite2D
+		if not _piece_is_in_pile(piece, side) or piece.get_meta("kind", "grain") != "grain": continue
+		var piece_value := float(piece.get_meta("value", 1.0))
+		if piece_value > remaining + 0.001: continue
+		piece.set_meta("carried", true)
+		piece.visible = false
+		cargo.append(piece)
+		remaining -= piece_value
+		if remaining <= 0.001: break
+	_settle_surface(side, 5)
+	_restack_pile(side)
+	return cargo
+
+func _deliver_transport_cargo(root: Node2D, at: Vector2) -> void:
+	var delivered := 0.0
+	var side: String = root.get_meta("side", active_side)
+	for value in root.get_meta("cargo", []):
+		var piece := value as Sprite2D
+		if not is_instance_valid(piece): continue
+		var piece_value := float(piece.get_meta("value", 1.0))
+		var requested := piece_value * _box_yield_multiplier()
+		if requested <= _storage_space() + 0.001:
+			var accepted := _store_cocaine(requested)
+			delivered += accepted
+			var progress_value := piece_value * accepted / maxf(0.001, requested)
+			phase_work += progress_value
+			_improve_joe(progress_value)
+			loose_chunks.erase(piece)
+			piece.queue_free()
+		else:
+			piece.set_meta("carried", false)
+			piece.visible = true
+			piece.position = _landing_position(piece)
+	root.set_meta("cargo", [])
+	if delivered > 0.0:
+		var title := "EXPRESO" if root.get_meta("transport_kind", "") == "train" else ("MUGIDÓFILO" if root.get_meta("transport_kind", "") == "ox" else "CARRITO")
+		_float_text("%s  +%s" % [title, _number(delivered)], at - Vector2(0.0, 92.0))
+	_restack_pile(side)
+	_update_storage_visual()
+	_update_ui()
+
+func _release_transport_cargo(root: Node) -> void:
+	for value in root.get_meta("cargo", []):
+		var piece := value as Sprite2D
+		if not is_instance_valid(piece): continue
+		piece.set_meta("carried", false)
+		piece.visible = true
+		piece.position = _landing_position(piece)
+
+func _update_train(root: Node2D, delta: float) -> void:
+	if box_jammed: return
+	var state: String = root.get_meta("state", "waiting")
+	if state == "waiting":
+		var timer := maxf(0.0, float(root.get_meta("timer", 0.0)) - delta)
+		root.set_meta("timer", timer)
+		if timer > 0.0 or _storage_claim_space() <= 0.0: return
+		if _nearest_fallen_wall_chunk("right"): return
+		root.set_meta("side", "right")
+		root.set_meta("state", "empty_to_left_tunnel")
+		return
+	if state == "empty_to_left_tunnel":
+		if _move_train_ground(root, LEFT_TUNNEL_X, delta):
+			root.visible = false
+			root.set_meta("state", "empty_tunnel")
+			root.set_meta("timer", TRAIN_TUNNEL_TIME)
+		return
+	if state == "empty_tunnel":
+		var timer := maxf(0.0, float(root.get_meta("timer", 0.0)) - delta)
+		root.set_meta("timer", timer)
+		if timer <= 0.0:
+			root.position = Vector2(RIGHT_TUNNEL_X, _ground_y() - 10.0)
+			root.visible = true
+			root.set_meta("state", "to_pile")
+			_float_text("¡EXPRESO VACÍO!", root.position - Vector2(0.0, 80.0))
+		return
+	if state == "to_pile":
+		if _nearest_fallen_wall_chunk("right"): return
+		var target := _pile_access_point("right") + Vector2(72.0, 14.0)
+		if _move_train_ground(root, target.x, delta):
+			root.set_meta("state", "waiting_at_pile")
+			root.set_meta("timer", 0.0)
+		return
+	if state == "waiting_at_pile":
+		var timer := maxf(0.0, float(root.get_meta("timer", 0.0)) - delta)
+		root.set_meta("timer", timer)
+		if timer > 0.0 or _nearest_fallen_wall_chunk("right"): return
+		var cargo := _claim_transport_cocaine("right", _storage_claim_space(), true)
+		root.set_meta("cargo", cargo)
+		if cargo.is_empty():
+			root.set_meta("timer", 1.0)
+		else:
+			root.set_meta("state", "loaded_to_right_tunnel")
+		return
+	if state == "loaded_to_right_tunnel":
+		if _nearest_fallen_wall_chunk("right"): return
+		if _move_train_ground(root, RIGHT_TUNNEL_X, delta):
+			root.visible = false
+			root.set_meta("state", "loaded_tunnel")
+			root.set_meta("timer", TRAIN_TUNNEL_TIME)
+			_float_text("CARGAMENTO AL TÚNEL", root.position - Vector2(0.0, 80.0))
+		return
+	if state == "loaded_tunnel":
+		var timer := maxf(0.0, float(root.get_meta("timer", 0.0)) - delta)
+		root.set_meta("timer", timer)
+		if timer <= 0.0:
+			root.position = Vector2(LEFT_TUNNEL_X, _ground_y() - 10.0)
+			root.visible = true
+			root.set_meta("state", "to_plant")
+			_float_text("¡CARGAMENTO RECIBIDO!", root.position - Vector2(0.0, 80.0))
+		return
+	if state == "to_plant" and _move_train_ground(root, PLANT_X + 165.0, delta):
+		_deliver_transport_cargo(root, Vector2(PLANT_X + 165.0, _ground_y()))
+		root.set_meta("state", "waiting")
+		root.set_meta("timer", 1.2)
+
+func _move_train_ground(root: Node2D, target_x: float, delta: float) -> bool:
+	var direction := signf(target_x - root.position.x)
+	if not is_zero_approx(direction):
+		root.scale.x = 1.0 if direction < 0.0 else -1.0
+	root.rotation = 0.0
+	root.position.x = move_toward(root.position.x, target_x, TRAIN_SPEED * delta)
+	root.position.y = _ground_y() - 10.0
+	return is_equal_approx(root.position.x, target_x)
 
 func _rebuild_adaptations() -> void:
 	for child in adaptations.get_children(): child.queue_free()
@@ -2047,7 +3021,7 @@ func _pulse_adaptation(kind: String) -> void:
 		tween.tween_property(root, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_ELASTIC)
 
 func _update_crisis_visuals() -> void:
-	var bleeding := current_phase >= 4
+	var bleeding := current_phase >= 5
 	contamination_meter.visible = false
 	contamination_progress.value = contamination
 	contamination_label.text = "LECTURA INTERNA"
@@ -2067,11 +3041,11 @@ func _update_pressure_visuals() -> void:
 		pressure_label.text = "LA CAJA NO TRAGA  ·  NADIE SE MUEVE"
 		pressure_label.modulate = Color("ef5b57")
 	elif current_phase >= 5:
-		pressure_label.text = "INFECCIÓN %d%%  ·  BACTERIAS %d" % [roundi(infection), _kind_count("bacteria")]
-		pressure_label.modulate = Color("a9d38c") if infection < 35.0 else Color("e9a1a0")
+		pressure_label.text = "INFECCIÓN %d%%  ·  DAÑO %d%%  ·  BACTERIAS %d" % [roundi(infection), roundi(tissue_damage), _kind_count("bacteria")]
+		pressure_label.modulate = Color("a9d38c") if infection < 35.0 and tissue_damage < 35.0 else Color("e9a1a0")
 	elif current_phase >= 4:
-		pressure_label.text = "HEMORRAGIA ACTIVA  ·  PLAQUETAS %d" % platelets.get_child_count()
-		pressure_label.modulate = Color("82b9ad") if tissue_damage < 35.0 else Color("e9a1a0")
+		pressure_label.text = "SPRAY Y MOCO  ·  PARED BAJO CUSTODIA"
+		pressure_label.modulate = Color("77bf69")
 	elif current_phase >= 3:
 		pressure_label.text = "JOE JURA QUE ERA PURA"
 		pressure_label.modulate = Color("e8c694")
@@ -2108,16 +3082,16 @@ func _update_ui() -> void:
 	phase_label.text = "FASE %d/%d" % [current_phase, PHASES.size()]
 	world_subtitle.text = "FASE %d  ·  %s" % [current_phase, phase.title]
 	shop_subtitle.text = phase.joe
-	phase_progress.max_value = _phase_target()
-	phase_progress.value = minf(phase_work, _phase_target())
-	phase_hint.text = "ESTABILIDAD  %s / %s  ·  %s" % [_number(phase_work), _number(_phase_target()), _phase_requirement()]
+	phase_progress.max_value = 1.0
+	phase_progress.value = _phase_adaptation_progress()
+	phase_hint.text = "PRESIÓN SOBRE JOE  %d%%  ·  %s" % [roundi(_phase_adaptation_progress() * 100.0), _phase_requirement()]
 	joe_high_progress.value = joe_high_display
 	joe_high_progress.modulate = Color("7b67d8").lerp(Color("ffcc58"), joe_high_display / 100.0)
 	joe_high_label.text = "COLOCÓN DE JOE  %d%%  ·  %s" % [roundi(joe_high_display), _high_state()]
-	cells_label.text = "CÉLULAS  %s" % _number(cells)
-	rate_label.text = "+%s/s  ·  %s/clic  ·  AUTO %s/s" % [_number(_rate()), _number(_click_power()), _number(_auto_hit_rate())]
-	var tunnel_progress := clampf((1.0 - right_hp / right_max) / TUNNEL_UNLOCK_RATIO, 0.0, 1.0)
-	click_counter.text = "DOS FOSAS ACTIVAS" if septum_open else "TUNELADORA  %d%%" % roundi(tunnel_progress * 100.0)
+	cells_label.text = "COCAÍNA  %s / %s" % [_number(cells), _number(_storage_capacity())]
+	rate_label.text = "+%s/s  ·  %s/clic  ·  AUTO %s/s" % [_number(_rate()), _number(_click_power()), _number(_auto_hit_rate() + _special_extraction_rate())]
+	var tunnel_ready := current_phase >= TUNNEL_UNLOCK_PHASE
+	click_counter.text = "DOS FOSAS ACTIVAS" if septum_open else ("TUNELADORA DISPONIBLE" if tunnel_ready else "TUNELADORA  ·  TECNOLOGÍA BLOQUEADA")
 	var hp := left_hp if active_side == "left" else right_hp
 	wall_label.text = "PARED %s  ·  FALTAN %s" % ["IZQUIERDA" if active_side == "left" else "DERECHA", _number(maxf(0.0, hp))]
 	for upgrade in UPGRADES:
@@ -2133,32 +3107,43 @@ func _update_ui() -> void:
 		var effect := "CLIC %s → %s" % [_number(pow(2.0, level)), _number(pow(2.0, level + 1))]
 		if upgrade.kind == "pawn": effect = "+1 peón"
 		elif upgrade.kind == "speed": effect = "VELOCIDAD %s → %s" % [_number(BASE_PAWN_SPEED * pow(1.35, level)), _number(BASE_PAWN_SPEED * pow(1.35, level + 1))]
-		elif upgrade.kind == "capacity": effect = "CARGA %d → %d" % [BASE_CAPACITY * int(pow(2.0, level)), BASE_CAPACITY * int(pow(2.0, level + 1))]
+		elif upgrade.kind == "storage": effect = ("CAPACIDAD %s" if maxed else "NUEVO LÍMITE %s") % _number(float(upgrade.power))
+		elif upgrade.kind == "transport_cart": effect = "12 GRANOS POR VIAJE  ·  NO MINA"
+		elif upgrade.kind == "transport_ox": effect = "40 GRANOS POR VIAJE  ·  NO MINA"
+		elif upgrade.kind == "transport_train": effect = "RECOGE TODO EL POLVO SUELTO  ·  NO MINA"
 		elif upgrade.kind == "coordination": effect = "reparto entre fosas" if level == 0 else "prioridad a pedruscos"
-		elif upgrade.kind == "specialist": effect = "1 de cada %d peones especializado" % maxi(1, 3 - level)
-		elif upgrade.kind == "detector": effect = "menos viajes desperdiciados"
+		elif upgrade.kind == "specialist": effect = "CASCO ROMPE %d → %d RESISTENCIA" % [1 + level, 2 + level]
+		elif upgrade.kind == "detector": effect = "NORMALES IGNORAN BASURA  ·  +1 FILTRADOR"
 		elif upgrade.kind == "sorting": effect = "-8% de impurezas por nivel"
 		elif upgrade.kind == "platelet": effect = "+2 plaquetas visibles"
-		elif upgrade.kind == "repair": effect = "REPARACIÓN x%d → x%d" % [int(pow(2.0, level)), int(pow(2.0, level + 1))]
+		elif upgrade.kind == "repair": effect = "REPARACIÓN %s → %s TEJIDO/S" % [_number(_platelet_rate_for(level)), _number(_platelet_rate_for(level + 1))]
 		elif upgrade.kind == "handler": effect = "+1 cuidador con guantes"
 		elif upgrade.kind == "signals": effect = "+12% coordinación de crisis"
 		elif upgrade.kind == "autoclicker": effect = "+1 púgil automático"
-		elif upgrade.kind == "auto_power": effect = "GOLPE %d → %d GRANOS" % [int(pow(2.0, level)), int(pow(2.0, level + 1))]
-		elif upgrade.kind == "auto_speed": effect = "INTERVALO %.2f → %.2f S" % [PUNCH_BASE_INTERVAL * pow(0.72, level), PUNCH_BASE_INTERVAL * pow(0.72, level + 1)]
+		elif upgrade.kind == "auto_power": effect = "GOLPE %s → %s GRANOS" % [_number(float(PUGILIST_DAMAGE[clampi(level, 0, PUGILIST_DAMAGE.size() - 1)])), _number(float(PUGILIST_DAMAGE[clampi(level + 1, 0, PUGILIST_DAMAGE.size() - 1)]))]
+		elif upgrade.kind == "auto_speed":
+			var rank := clampi(int(levels.punch_power), 0, PUGILIST_INTERVALS.size() - 1)
+			effect = "INTERVALO %.2f → %.2f S" % [float(PUGILIST_INTERVALS[rank]) * pow(0.85, level), float(PUGILIST_INTERVALS[rank]) * pow(0.85, level + 1)]
 		elif upgrade.kind == "click_burst": effect = "+3 granos en cada ráfaga"
 		elif upgrade.kind == "click_rhythm": effect = "-1 clic para provocar la ráfaga"
 		elif upgrade.kind in ["umbrella", "umbrella_power"]:
 			var future_umbrellas := level + 1 if upgrade.kind == "umbrella" else int(levels.umbrella)
 			var future_fabric := level + 1 if upgrade.kind == "umbrella_power" else int(levels.umbrella_power)
-			effect = "SALVA %s DE CADA 10K ROBADOS" % _number(10000.0 * minf(0.90, float(future_umbrellas) * 0.05 + float(future_fabric) * 0.15))
+			effect = "PROTECCIÓN TOTAL  %d%%" % roundi(100.0 * minf(0.90, float(future_umbrellas) * 0.05 + float(future_fabric) * 0.15))
 		elif upgrade.kind in ["sponge", "sponge_power"]:
 			var future_sponges := level + 1 if upgrade.kind == "sponge" else int(levels.sponge)
 			var future_foam := level + 1 if upgrade.kind == "sponge_power" else int(levels.sponge_power)
-			effect = "ABSORBE %s DE %s" % [_number(SPRAY_RECOAT_UNITS * minf(0.90, float(future_sponges) * 0.10 + float(future_foam) * 0.14)), _number(SPRAY_RECOAT_UNITS)]
-		elif upgrade.kind == "catapult": effect = "+1 LANZAMIENTO DE %s" % _number(100.0 * pow(2.0, int(levels.catapult_power)))
-		elif upgrade.kind == "catapult_power": effect = "IMPACTO %s → %s" % [_number(100.0 * pow(2.0, level)), _number(100.0 * pow(2.0, level + 1))]
+			effect = "ABSORBE %s UNIDADES DE SPRAY/S" % _number(float(future_sponges) * 40.0 * pow(1.8, future_foam))
+		elif upgrade.kind == "elephant": effect = "CABEZAZO %s  ·  CADA 20 S" % _number(_future_special_damage("elephant", level + 1))
+		elif upgrade.kind == "elephant_power": effect = "CABEZAZO %s → %s" % [_number(120000.0 * pow(5.0, level)), _number(120000.0 * pow(5.0, level + 1))]
+		elif upgrade.kind == "pugilist_cannon": effect = "PROYECTIL %s  ·  CADA 14 S" % _number(_future_special_damage("cannon", level + 1))
+		elif upgrade.kind == "cannon_power": effect = "PROYECTIL %s → %s" % [_number(750000.0 * pow(6.0, level)), _number(750000.0 * pow(6.0, level + 1))]
+		elif upgrade.kind == "supersaiyan": effect = "KAMEHAMEHA %s  ·  CADA 50 S" % _number(_future_special_damage("supersaiyan", level + 1))
+		elif upgrade.kind == "supersaiyan_power": effect = "KAMEHAMEHA %s → %s" % [_number(50000000.0 * pow(10.0, level)), _number(50000000.0 * pow(10.0, level + 1))]
+		elif upgrade.kind == "catapult": effect = "+1 LANZAMIENTO DE %s" % _number(CATAPULT_BASE_DAMAGE * pow(2.0, int(levels.catapult_power)))
+		elif upgrade.kind == "catapult_power": effect = "IMPACTO %s → %s" % [_number(CATAPULT_BASE_DAMAGE * pow(2.0, level)), _number(CATAPULT_BASE_DAMAGE * pow(2.0, level + 1))]
 		var required_line := "★ NECESARIA PARA SUPERAR ESTA FASE\n" if required else ""
-		button.text = "%s%s  [NV. %d]\n%s\n%s  ·  %s células" % [required_line, upgrade.name, level, upgrade.desc, effect, _number(cost)]
+		button.text = "%s%s  [NV. %d]\n%s\n%s  ·  %s cocaína" % [required_line, upgrade.name, level, upgrade.desc, effect, _number(cost)]
 		button.disabled = cells < cost or maxed
 
 func _high_state() -> String:
@@ -2169,11 +3154,15 @@ func _high_state() -> String:
 	return "KO TÉCNICO"
 
 func _required_upgrade_id() -> String:
-	if current_phase == 1 and puncher_unlocked: return "puncher"
+	if current_phase == 1:
+		if puncher_unlocked and int(levels.puncher) == 0: return "puncher"
+		if int(levels.container) == 0 and phase_work >= 150.0: return "container"
+		if int(levels.container) > 0 and int(levels.cart) == 0: return "cart"
+		if int(levels.pawn) + int(levels.shift) == 0: return "pawn"
 	if current_phase == 2: return "breaker" if int(levels.breaker) == 0 else "umbrella"
-	if current_phase == 3: return "detector" if int(levels.detector) == 0 else "sponge"
-	if current_phase == 4: return "platelets"
-	if current_phase == 5: return "handlers" if int(levels.handlers) == 0 else "catapult"
+	if current_phase == 3: return "detector"
+	if current_phase == 4: return "sponge" if int(levels.sponge) == 0 else "catapult"
+	if current_phase == 5: return "platelets" if int(levels.platelets) == 0 else "handlers"
 	return ""
 
 func _set_upgrade_halo(button: Button, active: bool) -> void:
@@ -2208,29 +3197,16 @@ func _scroll_to_required_upgrade(button: Button) -> void:
 	var target := button.position.y + button.size.y - upgrade_scroll.size.y + 8.0
 	upgrade_scroll.scroll_vertical = maxi(0, roundi(target))
 
+func _phase_adaptation_progress() -> float:
+	if current_phase >= PHASES.size(): return 1.0
+	var phase_start := float(PHASE_HIGH_THRESHOLDS[current_phase - 1])
+	var next_threshold := float(PHASE_HIGH_THRESHOLDS[current_phase])
+	return clampf((phase_start - joe_high) / maxf(1.0, phase_start - next_threshold), 0.0, 1.0)
+
 func _phase_requirement() -> String:
-	if current_phase == 1:
-		if not puncher_unlocked: return "JOE TODAVÍA NO HA TRAÍDO REFUERZOS"
-		if int(levels.puncher) == 0: return "FALTA ESTRENAR AL PÚGIL"
-		if int(levels.pawn) + int(levels.shift) + int(levels.box) < 3: return "SIGUE MEJORANDO LA LOGÍSTICA"
-	if current_phase == 2 and int(levels.breaker) == 0: return "FALTA UN CASCO AZUL"
-	if current_phase == 2 and int(levels.umbrella) == 0: return "PULMONES DE DROGATA EXIGE UN PARAGUAS"
-	if current_phase == 2 and rocks_opened < 6: return "PEDRUSCOS ABIERTOS  %d / 6" % rocks_opened
-	if current_phase == 3:
-		if int(levels.detector) == 0: return "FALTAN QUIMIORRECEPTORES"
-		if int(levels.sponge) == 0: return "EL SPRAY EXIGE UN MACRÓFAGO ESPONJA"
-		if impurities_cleaned < 10: return "MUESTRAS FILTRADAS  %d / 10" % impurities_cleaned
-		if contamination >= 30.0: return "CAJA AÚN CONTAMINADA"
-	if current_phase == 4:
-		if int(levels.platelets) == 0: return "FALTAN PLAQUETAS"
-		if tissue_repaired < 18.0: return "TEJIDO REPARADO  %d / 18" % floori(tissue_repaired)
-		if tissue_damage >= 45.0: return "TEJIDO AÚN INESTABLE"
-	if current_phase == 5:
-		if int(levels.handlers) == 0: return "FALTAN CUIDADORES"
-		if int(levels.catapult) == 0: return "EL MOCO EXIGE UNA CATAPULTA"
-		if infection >= 35.0: return "INFECCIÓN AÚN INESTABLE"
-		if phase_work >= _phase_target(): return "JOE SIGUE VIVO. DE MOMENTO."
-	return "SISTEMA EN ADAPTACIÓN"
+	if current_phase >= PHASES.size(): return "JOE SIGUE VIVO. DE MOMENTO."
+	var threshold := float(PHASE_HIGH_THRESHOLDS[current_phase])
+	return "SIGUIENTE LOCURA AL %d%%  ·  FALTAN %d PUNTOS" % [roundi(threshold), maxi(0, ceili(joe_high - threshold))]
 
 func _float_text(value: String, world_pos: Vector2) -> void:
 	var label := Label.new()
@@ -2245,9 +3221,15 @@ func _float_text(value: String, world_pos: Vector2) -> void:
 	tween.chain().tween_callback(label.queue_free)
 
 func _box_bump() -> void:
-	var tween := create_tween()
-	tween.tween_property(box, "rotation", -0.025, 0.05)
-	tween.tween_property(box, "rotation", 0.0, 0.1)
+	var target: Node2D = infrastructure.get_child(0) as Node2D if infrastructure.get_child_count() > 0 else null
+	if target:
+		var tween := create_tween()
+		tween.tween_property(target, "scale", Vector2(1.04, 0.96), 0.05)
+		tween.tween_property(target, "scale", Vector2.ONE, 0.1)
+	else:
+		var tween := create_tween()
+		tween.tween_property(box, "rotation", -0.025, 0.05)
+		tween.tween_property(box, "rotation", 0.0, 0.1)
 
 func _show_toast(message: String) -> void:
 	toast.text = message
@@ -2335,7 +3317,7 @@ func _restore_pile(data: Variant) -> void:
 	_restack_pile()
 
 func _save() -> void:
-	if not playing and not phase_event_pending: return
+	if overdose_active or (not playing and not phase_event_pending): return
 	var file := FileAccess.open(save_path, FileAccess.WRITE)
 	if file:
 		file.store_string(JSON.stringify({
@@ -2345,12 +3327,13 @@ func _save() -> void:
 			"septum_open":septum_open, "active_side":active_side, "levels":levels,
 			"total_clicks":total_clicks, "pile":_serialize_pile(), "fallen_wall_chunks":_serialize_fallen_wall_chunks(),
 			"compaction_steps":compaction_steps, "compaction_announced":compaction_announced,
-			"current_phase":current_phase, "phase_work":phase_work, "joe_high":joe_high,
+			"current_phase":current_phase, "phase_work":phase_work, "phase_events":phase_events, "joe_high":joe_high,
 			"contamination":contamination, "box_jammed":box_jammed, "tissue_damage":tissue_damage, "infection":infection,
 			"impurities_handled":impurities_handled, "bacteria_handled":bacteria_handled,
 			"rocks_opened":rocks_opened, "impurities_cleaned":impurities_cleaned, "tissue_repaired":tissue_repaired,
 			"another_line_clock":another_line_clock, "another_line_wave":another_line_wave, "another_line_spawn_index":another_line_spawn_index, "another_line_events":another_line_events,
 			"lung_clock":lung_clock, "chalk_clock":chalk_clock, "spray_clock":spray_clock, "spray_pending":spray_pending, "spray_followup_clock":spray_followup_clock, "spray_side":spray_side,
+			"spray_film_hp":spray_film_hp, "spray_film_max":spray_film_max,
 			"scratch_clock":scratch_clock, "mucus_clock":mucus_clock, "mucus_hp":mucus_hp, "mucus_max_hp":mucus_max_hp, "catapult_clock":catapult_clock,
 			"puncher_unlocked":puncher_unlocked, "puncher_debut_pending":puncher_debut_pending,
 			"puncher_debut_clock":puncher_debut_clock, "manual_clicks_since_burst":manual_clicks_since_burst,
@@ -2372,8 +3355,22 @@ func _load() -> void:
 	septum_open = bool(data.get("septum_open", false))
 	active_side = str(data.get("active_side", "right"))
 	levels = _empty_levels()
-	for id in data.get("levels", {}):
-		if levels.has(id): levels[id] = int(data.levels[id])
+	var saved_levels: Dictionary = data.get("levels", {})
+	for id in saved_levels:
+		if levels.has(id): levels[id] = int(saved_levels[id])
+	if int(data.get("version", 0)) < SAVE_VERSION:
+		var legacy_box := int(saved_levels.get("box", 0))
+		if legacy_box >= 1 or cells > STORAGE_CAPACITIES[0]:
+			levels.container = 1
+			levels.cart = 1
+		if legacy_box >= 2 or cells > STORAGE_CAPACITIES[1]:
+			levels.silo = 1
+		if legacy_box >= 3:
+			levels.ox_convoy = 1
+		if septum_open and (legacy_box >= 4 or cells > STORAGE_CAPACITIES[2]):
+			levels.plant = 1
+		if septum_open and legacy_box >= 5:
+			levels.train = 1
 	if right_max < FIRST_WALL_HP:
 		var right_ratio := clampf(right_hp / maxf(1.0, right_max), 0.0, 1.0)
 		right_max = FIRST_WALL_HP
@@ -2395,6 +3392,11 @@ func _load() -> void:
 	if current_phase == 0:
 		current_phase = 2 if compaction_announced or int(levels.breaker) > 0 else 1
 	phase_work = float(data.get("phase_work", cells))
+	phase_events = {"line":0, "lungs":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
+	var saved_phase_events = data.get("phase_events", {})
+	if typeof(saved_phase_events) == TYPE_DICTIONARY:
+		for event_name in phase_events:
+			phase_events[event_name] = maxi(0, int(saved_phase_events.get(event_name, 0)))
 	var legacy_health := clampf(float(data.get("joe_health", 100.0 - JOE_STARTING_HIGH)), 0.0, 100.0)
 	joe_high = clampf(float(data.get("joe_high", 100.0 - legacy_health)), 0.0, 100.0)
 	joe_high_display = joe_high
@@ -2419,6 +3421,8 @@ func _load() -> void:
 	spray_pending = bool(data.get("spray_pending", false))
 	spray_followup_clock = clampf(float(data.get("spray_followup_clock", 0.0)), 0.0, SPRAY_FOLLOWUP)
 	spray_side = str(data.get("spray_side", active_side))
+	spray_film_hp = maxf(0.0, float(data.get("spray_film_hp", 0.0)))
+	spray_film_max = maxf(spray_film_hp, float(data.get("spray_film_max", spray_film_hp)))
 	scratch_clock = clampf(float(data.get("scratch_clock", SCRATCH_INTERVAL)), 0.0, SCRATCH_INTERVAL)
 	mucus_clock = clampf(float(data.get("mucus_clock", MUCUS_INTERVAL)), 0.0, MUCUS_INTERVAL)
 	mucus_hp = maxf(0.0, float(data.get("mucus_hp", 0.0)))
@@ -2434,6 +3438,7 @@ func _load() -> void:
 	blood_drop_clock = 0.0
 	punch_clock = 0.0
 	phase_event_pending = bool(data.get("phase_event_pending", false))
+	overdose_active = false
 
 func _continue_game() -> void:
 	_load()
@@ -2465,6 +3470,7 @@ func _new_game() -> void:
 	compaction_announced = false
 	current_phase = 1
 	phase_work = 0.0
+	phase_events = {"line":0, "lungs":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
 	joe_high = JOE_STARTING_HIGH
 	joe_high_display = joe_high
 	contamination = 0.0
@@ -2492,6 +3498,9 @@ func _new_game() -> void:
 	spray_clock = SPRAY_INTERVAL
 	spray_followup_clock = 0.0
 	spray_pending = false
+	spray_film_hp = 0.0
+	spray_film_max = 0.0
+	spray_feedback_clock = 0.0
 	scratch_clock = SCRATCH_INTERVAL
 	mucus_clock = MUCUS_INTERVAL
 	mucus_hp = 0.0
@@ -2501,6 +3510,7 @@ func _new_game() -> void:
 	puncher_debut_pending = false
 	puncher_debut_clock = 0.0
 	manual_clicks_since_burst = 0
+	overdose_active = false
 	phase_event_pending = true
 	_clear_pile()
 	_clear_fallen_wall_chunks()
@@ -2508,13 +3518,18 @@ func _new_game() -> void:
 	_begin_game()
 
 func _begin_game() -> void:
+	overdose_active = false
 	playing = not phase_event_pending
 	start_screen.hide()
+	options_menu.hide()
+	shop.show()
 	camera_x = _closed_camera_min()
 	_rebuild_pawns()
 	_rebuild_punchers()
 	_rebuild_platelets()
 	_rebuild_adaptations()
+	_rebuild_infrastructure()
+	_rebuild_transporters()
 	_rebuild_joe_event_visuals()
 	_update_world()
 	_update_crisis_visuals()
@@ -2534,6 +3549,12 @@ func _exit_game() -> void:
 	_save()
 	get_tree().quit()
 
+func _manual_save() -> void:
+	_save()
+	_play_sfx(SFX_SAVE, -8.0)
+	_update_start_screen()
+	_show_toast("PARTIDA GUARDADA  ·  JOE SIGUE VIVO DE MOMENTO")
+
 func _input(event: InputEvent) -> void:
 	if not playing or not event is InputEventMouseButton:
 		return
@@ -2545,6 +3566,11 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if playing and event.is_action_pressed("ui_cancel"):
+		if options_menu.visible: _close_options_menu()
+		else: _open_options_menu()
+		get_viewport().set_input_as_handled()
+		return
 	if playing and event.is_action_pressed("ui_accept"): _click_wall(active_side)
 
 func _notification(what: int) -> void:

@@ -15,9 +15,11 @@ func _capture() -> void:
 	game.current_phase = 2
 	game.joe_dialog.hide()
 	game.levels = game._empty_levels()
-	game.levels.merge({"nails":3, "pawn":3, "shift":2, "box":2, "coord":0, "breaker":1}, true)
+	game.levels.merge({"nails":3, "pawn":3, "shift":2, "container":1, "cart":1, "silo":1, "ox_convoy":1, "coord":0, "breaker":1}, true)
 	game.cells = 5200.0
 	game._rebuild_pawns()
+	game._rebuild_infrastructure()
+	game._rebuild_transporters()
 	seed(72426)
 	for index in range(118):
 		var column: int = game._choose_landing_column("right")
