@@ -58,6 +58,21 @@ func _run() -> void:
 	game._clear_pile()
 	game.cells = 0.0
 	game.levels.container = 0
+	game.cells = 457.0
+	var aggregated_grain: Sprite2D = game._create_piece("grain", "right", 1000.0, 0, 0, 0.072)
+	_check(game._manual_collect_at(aggregated_grain.position), "An aggregated rain grain must respond to a manual click while any real storage remains.")
+	var flying_portions: Array = game.loose_chunks.filter(func(piece: Sprite2D) -> bool: return bool(piece.get_meta("manual_flying", false)))
+	_check(flying_portions.size() == 1 and is_equal_approx(float((flying_portions[0] as Sprite2D).get_meta("value", 0.0)), 543.0), "Manual collection must take exactly the 543 units that still fit in a 1,000-unit box.")
+	_check(is_equal_approx(game._pile_load("right"), 457.0), "The uncollected 457 units of an aggregated grain must remain visible in the pile.")
+	game._clear_pile()
+	var worker_aggregate: Sprite2D = game._create_piece("grain", "right", 1000.0, 0, 0, 0.072)
+	var test_collector := Sprite2D.new()
+	var split_cargo: Array = game._claim_top_pieces("right", 1, test_collector)
+	_check(split_cargo.size() == 1 and is_equal_approx(float((split_cargo[0] as Sprite2D).get_meta("value", 0.0)), 543.0), "Automatic collectors must also split an aggregated grain to use all real remaining storage.")
+	_check(is_equal_approx(float(worker_aggregate.get_meta("value", 0.0)), 457.0), "Automatic collection must leave the oversized grain remainder in the pile.")
+	test_collector.free()
+	game._clear_pile()
+	game.cells = 0.0
 
 	_check(game.PHASE_HIGH_THRESHOLDS == [90.0, 70.0, 52.0, 34.0, 18.0] and not game.PHASES[0].has("survive"), "Phases must unlock when Joe's high crosses its descending thresholds, never through timers or delivery targets.")
 	_check(is_equal_approx(game.FIRST_WALL_HP, 10000000000.0) and is_equal_approx(game.FIRST_LEFT_WALL_HP, 10000000000.0), "Both fossae must begin with ten billion resistance.")

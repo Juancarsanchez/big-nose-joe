@@ -776,6 +776,27 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 	piece.position = _landing_position(piece)
 	return piece
 
+func _split_grain_piece(piece: Sprite2D, claimed_value: float) -> Sprite2D:
+	if not is_instance_valid(piece) or piece.get_meta("kind", "grain") != "grain":
+		return piece
+	var total := float(piece.get_meta("value", 1.0))
+	claimed_value = clampf(claimed_value, 0.0, total)
+	if claimed_value <= 0.001 or claimed_value >= total - 0.001:
+		return piece
+	piece.set_meta("value", total - claimed_value)
+	var portion := _create_piece(
+		"grain",
+		str(piece.get_meta("side", "right")),
+		claimed_value,
+		0,
+		int(piece.get_meta("column", 0)),
+		float(piece.get_meta("base_scale", 0.07))
+	)
+	portion.position = piece.position
+	portion.rotation = piece.rotation
+	portion.set_meta("x_jitter", float(piece.get_meta("x_jitter", 0.0)))
+	return portion
+
 func _mark_landed(piece: Variant) -> void:
 	if not is_instance_valid(piece): return
 	var sprite := piece as Sprite2D
@@ -903,7 +924,7 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 			if kind == "bacteria" and not handler: continue
 			if kind == "impurity" and int(levels.detector) > 0 and not bool(pawn.get_meta("detector", false)): continue
 			var stored_value := float(candidate.get_meta("value", 1.0)) * (_box_yield_multiplier() if kind == "grain" else 1.0)
-			if kind != "impurity" and stored_value > remaining_storage + 0.001: continue
+			if kind != "impurity" and stored_value > remaining_storage + 0.001 and (kind != "grain" or remaining_storage <= 0.001): continue
 			collectable.append(candidate)
 		if collectable.is_empty(): break
 		var preferred: Array[Sprite2D] = []
@@ -915,10 +936,15 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 			preferred = collectable.filter(func(item: Sprite2D) -> bool: return item.get_meta("kind", "grain") == "rock")
 		var source := preferred if not preferred.is_empty() else collectable
 		var piece := source[randi_range(0, mini(6, source.size() - 1))]
-		piece.set_meta("carried", true)
 		var piece_kind: String = piece.get_meta("kind", "grain")
+		var yield_multiplier := _box_yield_multiplier() if piece_kind == "grain" else 1.0
+		var piece_stored_value := float(piece.get_meta("value", 1.0)) * yield_multiplier
+		if piece_kind == "grain" and piece_stored_value > remaining_storage + 0.001:
+			piece = _split_grain_piece(piece, remaining_storage / maxf(0.001, yield_multiplier))
+			piece_stored_value = float(piece.get_meta("value", 1.0)) * yield_multiplier
+		piece.set_meta("carried", true)
 		if piece_kind != "impurity":
-			remaining_storage -= float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if piece_kind == "grain" else 1.0)
+			remaining_storage -= piece_stored_value
 		piece.z_index = 20
 		if handler and piece.get_meta("kind", "grain") == "bacteria":
 			piece.visible = false
@@ -1022,9 +1048,14 @@ func _manual_collect_at(world_pos: Vector2) -> bool:
 		_float_text("ESO SE MUEVE", world_pos)
 		return true
 	var stored_value := float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if kind == "grain" else 1.0)
-	if kind != "impurity" and stored_value > _manual_claim_space() + 0.001:
-		_float_text("ALMACÃ‰N LLENO", world_pos)
-		return true
+	if kind != "impurity":
+		var available := _manual_claim_space()
+		if available <= 0.001:
+			_float_text("ALMACÃ‰N LLENO", world_pos)
+			return true
+		if stored_value > available + 0.001:
+			var yield_multiplier := _box_yield_multiplier() if kind == "grain" else 1.0
+			piece = _split_grain_piece(piece, available / maxf(0.001, yield_multiplier))
 	var side: String = piece.get_meta("side", "right")
 	piece.set_meta("carried", true)
 	piece.set_meta("manual_flying", true)
@@ -2841,11 +2872,17 @@ func _claim_transport_cocaine(side: String, capacity: float, take_all: bool) -> 
 		var piece := value as Sprite2D
 		if not _piece_is_in_pile(piece, side) or piece.get_meta("kind", "grain") != "grain": continue
 		var piece_value := float(piece.get_meta("value", 1.0))
-		if piece_value > remaining + 0.001: continue
+		var yield_multiplier := _box_yield_multiplier()
+		var stored_value := piece_value * yield_multiplier
+		if stored_value > remaining + 0.001:
+			if remaining <= 0.001: continue
+			piece = _split_grain_piece(piece, remaining / maxf(0.001, yield_multiplier))
+			piece_value = float(piece.get_meta("value", 1.0))
+			stored_value = piece_value * yield_multiplier
 		piece.set_meta("carried", true)
 		piece.visible = false
 		cargo.append(piece)
-		remaining -= piece_value
+		remaining -= stored_value
 		if remaining <= 0.001: break
 	_settle_surface(side, 5)
 	_restack_pile(side)
