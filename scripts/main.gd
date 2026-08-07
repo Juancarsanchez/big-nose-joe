@@ -533,11 +533,31 @@ func _reserved_storage() -> float:
 func _storage_claim_space() -> float:
 	return maxf(0.0, _storage_space() - _reserved_storage())
 
+func _manual_reserved_storage() -> float:
+	var reserved := 0.0
+	for piece in loose_chunks:
+		if not is_instance_valid(piece) or not bool(piece.get_meta("manual_flying", false)):
+			continue
+		var kind: String = piece.get_meta("kind", "grain")
+		if kind == "impurity":
+			continue
+		var value := float(piece.get_meta("value", 1.0))
+		reserved += value * (_box_yield_multiplier() if kind == "grain" else 1.0)
+	return reserved
+
+func _manual_claim_space() -> float:
+	return maxf(0.0, _storage_space() - _manual_reserved_storage())
+
 func _store_cocaine(amount: float) -> float:
 	var accepted := minf(maxf(0.0, amount), _storage_space())
 	cells += accepted
 	_update_storage_visual()
 	return accepted
+
+func _store_automatic_cocaine(amount: float) -> float:
+	if amount > _manual_claim_space() + 0.001:
+		return 0.0
+	return _store_cocaine(amount)
 
 func _pawn_speed() -> float:
 	var crisis_factor := 1.0
@@ -1002,7 +1022,7 @@ func _manual_collect_at(world_pos: Vector2) -> bool:
 		_float_text("ESO SE MUEVE", world_pos)
 		return true
 	var stored_value := float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if kind == "grain" else 1.0)
-	if kind != "impurity" and stored_value > _storage_claim_space() + 0.001:
+	if kind != "impurity" and stored_value > _manual_claim_space() + 0.001:
 		_float_text("ALMACÃ‰N LLENO", world_pos)
 		return true
 	var side: String = piece.get_meta("side", "right")
@@ -1117,7 +1137,7 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 		if kind == "impurity":
 			impurities_handled += 1
 			if bool(pawn.get_meta("detector", false)):
-				delivered += _store_cocaine(value * 0.15 * float(levels.detector))
+				delivered += _store_automatic_cocaine(value * 0.15 * float(levels.detector))
 				phase_work += 1.25 * float(levels.detector)
 				contamination_delta -= 0.45 + float(levels.detector) * 0.15
 				impurities_cleaned += 1
@@ -1125,7 +1145,7 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 				contamination_delta += _impurity_contamination(str(piece.get_meta("material", "")), value)
 		elif kind == "bacteria":
 			if bool(pawn.get_meta("handler", false)):
-				var accepted := _store_cocaine(value)
+				var accepted := _store_automatic_cocaine(value)
 				if accepted > 0.0:
 					delivered += accepted
 					bacteria_handled += 1
@@ -1138,7 +1158,7 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 				consumed = false
 		else:
 			var requested := value * _box_yield_multiplier()
-			var accepted := _store_cocaine(requested)
+			var accepted := _store_automatic_cocaine(requested)
 			if accepted > 0.0:
 				delivered += accepted
 				var progress_value := value * accepted / maxf(0.001, requested)
@@ -2839,8 +2859,8 @@ func _deliver_transport_cargo(root: Node2D, at: Vector2) -> void:
 		if not is_instance_valid(piece): continue
 		var piece_value := float(piece.get_meta("value", 1.0))
 		var requested := piece_value * _box_yield_multiplier()
-		if requested <= _storage_space() + 0.001:
-			var accepted := _store_cocaine(requested)
+		if requested <= _manual_claim_space() + 0.001:
+			var accepted := _store_automatic_cocaine(requested)
 			delivered += accepted
 			var progress_value := piece_value * accepted / maxf(0.001, requested)
 			phase_work += progress_value

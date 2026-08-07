@@ -40,6 +40,24 @@ func _run() -> void:
 	_check(is_equal_approx(game._store_cocaine(1200.0), 1000.0) and is_equal_approx(game.cells, 1000.0), "The initial box must reject cocaine beyond its visible capacity.")
 	_check(is_zero_approx(game._store_cocaine(1.0)), "A full store must stop every additional clean delivery.")
 	game.cells = 0.0
+	game._clear_pile()
+	game.levels.container = 1
+	game.cells = 1000.0
+	var reserved_by_workers: Sprite2D = game._create_piece("grain", "right", 4000.0, 0, 0, 0.072)
+	reserved_by_workers.set_meta("carried", true)
+	var manual_priority_piece: Sprite2D = game._create_piece("grain", "right", 1000.0, 0, 1, 0.072)
+	_check(is_zero_approx(game._storage_claim_space()), "Worker cargo may reserve all newly unlocked storage while it is in transit.")
+	_check(game._manual_collect_at(manual_priority_piece.position) and bool(manual_priority_piece.get_meta("manual_flying", false)), "A manual click must ignore worker reservations when the upgraded store has real free space.")
+	_check(is_zero_approx(game._store_automatic_cocaine(4000.0)), "Automatic deliveries must preserve the space reserved by a manual flight.")
+	_check(is_equal_approx(game._store_cocaine(1000.0), 1000.0), "The reserved manual cargo must still fit when it reaches the upgraded store.")
+	manual_priority_piece.set_meta("manual_flying", false)
+	manual_priority_piece.set_meta("carried", false)
+	game.loose_chunks.erase(manual_priority_piece)
+	manual_priority_piece.queue_free()
+	_check(is_equal_approx(game.cells, 2000.0) and is_equal_approx(game._store_automatic_cocaine(3000.0), 3000.0), "Manual cargo must arrive first without losing later automatic deliveries that still fit.")
+	game._clear_pile()
+	game.cells = 0.0
+	game.levels.container = 0
 
 	_check(game.PHASE_HIGH_THRESHOLDS == [90.0, 70.0, 52.0, 34.0, 18.0] and not game.PHASES[0].has("survive"), "Phases must unlock when Joe's high crosses its descending thresholds, never through timers or delivery targets.")
 	_check(is_equal_approx(game.FIRST_WALL_HP, 10000000000.0) and is_equal_approx(game.FIRST_LEFT_WALL_HP, 10000000000.0), "Both fossae must begin with ten billion resistance.")
