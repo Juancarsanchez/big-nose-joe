@@ -687,7 +687,7 @@ func _update_pawns(delta: float) -> void:
 				pawn.set_meta("timer", 0.18 / (1.0 + float(levels.shift) * 0.12))
 				pawn.set_meta("did_mine", false)
 		elif state == "working":
-			pawn.flip_h = side == "right"
+			_set_pawn_facing(pawn, side == "left")
 			var timer: float = float(pawn.get_meta("timer", 0.0)) - delta
 			pawn.set_meta("timer", timer)
 			pawn.position.x = work_point.x + sin(Time.get_ticks_msec() * 0.018 + int(pawn.get_meta("index", 0))) * 1.8
@@ -734,8 +734,12 @@ func _update_pawns(delta: float) -> void:
 
 func _move_pawn_toward(pawn: Sprite2D, target: Vector2, speed: float, delta: float) -> void:
 	var direction := signf(target.x - pawn.position.x)
-	if not is_zero_approx(direction): pawn.flip_h = direction < 0.0
+	if not is_zero_approx(direction): _set_pawn_facing(pawn, direction > 0.0)
 	pawn.position = pawn.position.move_toward(target, speed * delta)
+
+func _set_pawn_facing(pawn: Sprite2D, faces_right: bool) -> void:
+	# Todos los sprites de glóbulo blanco se dibujaron mirando a la izquierda.
+	pawn.flip_h = faces_right
 
 func _choose_work_side(index: int) -> String:
 	if not septum_open or int(levels.coord) == 0: return active_side
@@ -1246,7 +1250,7 @@ func _cargo_position(pawn: Sprite2D, index: int, capacity: int) -> Vector2:
 	var columns := mini(3, capacity)
 	var row := index / columns
 	var column := index % columns
-	var front := -1.0 if pawn.flip_h else 1.0
+	var front := 1.0 if pawn.flip_h else -1.0
 	return pawn.position + Vector2(front * 9.0 + (float(column) - float(columns - 1) * 0.5) * 5.0, -13.0 - float(row) * 5.0)
 
 func _update_carried_pieces(pawn: Sprite2D) -> void:
@@ -1778,13 +1782,17 @@ func _rebuild_punchers() -> void:
 
 func _place_puncher(puncher: Sprite2D) -> void:
 	var side: String = puncher.get_meta("side", active_side)
-	puncher.flip_h = side == "left"
-	var glove := puncher.get_node_or_null("BoxingGlove") as Polygon2D
-	if glove:
-		glove.scale.x = -1.0 if side == "left" else 1.0
+	_set_puncher_facing(puncher, side == "left")
 	puncher.position = _puncher_home_position(puncher)
 	puncher.rotation = 0.0
 	puncher.set_meta("state", "idle")
+
+func _set_puncher_facing(puncher: Sprite2D, faces_right: bool) -> void:
+	_set_pawn_facing(puncher, faces_right)
+	var glove := puncher.get_node_or_null("BoxingGlove") as Polygon2D
+	if glove:
+		var width := absf(glove.scale.x)
+		glove.scale.x = -width if faces_right else width
 
 func _wall_free_x(side: String) -> float:
 	var visual := left_visual if side == "left" else right_visual
@@ -1880,10 +1888,14 @@ func _update_puncher_motion(delta: float) -> void:
 		var speed := PUNCHER_WALK_SPEED * (1.0 + float(levels.punch_speed) * 0.1)
 		puncher.position.y = _ground_y() - 14.0
 		if state == "idle":
-			puncher.position = puncher.position.move_toward(_puncher_home_position(puncher), speed * delta)
+			var home := _puncher_home_position(puncher)
+			if puncher.position.distance_to(home) > 0.5:
+				_set_puncher_facing(puncher, home.x > puncher.position.x)
+			puncher.position = puncher.position.move_toward(home, speed * delta)
 			puncher.rotation = move_toward(puncher.rotation, 0.0, delta * 0.8)
 		elif state == "to_wall":
 			var strike := _puncher_strike_position(puncher)
+			_set_puncher_facing(puncher, strike.x > puncher.position.x)
 			puncher.position = puncher.position.move_toward(strike, speed * delta)
 			if puncher.position.distance_to(strike) < 0.5:
 				puncher.position = strike
@@ -1900,9 +1912,11 @@ func _update_puncher_motion(delta: float) -> void:
 				puncher.set_meta("state", "returning")
 		elif state == "returning":
 			var home := _puncher_home_position(puncher)
+			_set_puncher_facing(puncher, home.x > puncher.position.x)
 			puncher.position = puncher.position.move_toward(home, speed * delta)
 			if puncher.position.distance_to(home) < 0.5:
 				puncher.position = home
+				_set_puncher_facing(puncher, puncher.get_meta("side", active_side) == "left")
 				puncher.set_meta("state", "idle")
 
 func _resolve_punch(puncher: Sprite2D) -> void:
@@ -2032,6 +2046,7 @@ func _update_elephant_extractor(root: Node2D, sprite: Sprite2D, delta: float, bl
 		if timer <= 0.0 and not blocked: root.set_meta("state", "to_wall")
 	elif state == "to_wall":
 		if blocked: return
+		sprite.flip_h = strike.x > root.position.x
 		root.position = root.position.move_toward(strike, 82.0 * delta)
 		var gait := Time.get_ticks_msec() * 0.025
 		sprite.rotation = sin(gait) * 0.025
@@ -2056,12 +2071,14 @@ func _update_elephant_extractor(root: Node2D, sprite: Sprite2D, delta: float, bl
 		root.set_meta("timer", timer)
 		if timer <= 0.0: root.set_meta("state", "returning")
 	elif state == "returning":
+		sprite.flip_h = home.x > root.position.x
 		root.position = root.position.move_toward(home, 105.0 * delta)
 		sprite.rotation = sin(Time.get_ticks_msec() * 0.021) * 0.018
 		_anchor_special_sprite("elephant", sprite, absf(sin(Time.get_ticks_msec() * 0.021)) * -2.0)
 		if root.position.distance_to(home) < 1.0:
 			root.position = home
 			sprite.rotation = 0.0
+			sprite.flip_h = side == "left"
 			root.set_meta("state", "idle")
 			root.set_meta("timer", ELEPHANT_INTERVAL)
 
@@ -2856,6 +2873,10 @@ func _update_platelets(delta: float) -> void:
 		if not wounds.is_empty():
 			var wound := wounds[index % wounds.size()] as Node2D
 			target = wound.position + Vector2(float(index % 3 - 1) * 9.0, -3.0)
+		var direction := signf(target.x - platelet.position.x)
+		if not is_zero_approx(direction):
+			# La plaqueta, a diferencia del peón, está dibujada mirando a la derecha.
+			platelet.flip_h = direction < 0.0
 		platelet.position = platelet.position.move_toward(target, (95.0 + float(levels.repair) * 12.0) * delta)
 		platelet.position.y = _ground_y() - 8.0
 		var working := platelet.position.distance_to(target) < 3.0 and not wounds.is_empty()
@@ -3011,7 +3032,6 @@ func _add_ground_transporter(kind: String, capacity: float, speed: float) -> voi
 		puller.offset = Vector2(0.0, PAWN_FOOT_DEPTH / puller.scale.y - PAWN_EMPTY.get_height() * 0.5)
 		# El conjunto está dibujado para avanzar hacia la izquierda; al volver,
 		# la escala del conjunto invierte a la vez célula, enganche y carro.
-		puller.flip_h = true
 		puller.position = Vector2(-38.0, -14.0)
 		puller.z_index = 2
 		root.add_child(puller)

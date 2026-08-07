@@ -175,9 +175,9 @@ func _run() -> void:
 	var facing_probe := Sprite2D.new()
 	facing_probe.position = Vector2(100.0, 100.0)
 	game._move_pawn_toward(facing_probe, Vector2(0.0, 100.0), 10.0, 0.1)
-	_check(facing_probe.flip_h and game._cargo_position(facing_probe, 0, 3).x < facing_probe.position.x, "A left-moving carrier must face left and hold its cargo in front of itself.")
+	_check(not facing_probe.flip_h and game._cargo_position(facing_probe, 0, 3).x < facing_probe.position.x, "A left-moving carrier must use the native left-facing pose and hold cargo in front.")
 	game._move_pawn_toward(facing_probe, Vector2(200.0, 100.0), 10.0, 0.1)
-	_check(not facing_probe.flip_h and game._cargo_position(facing_probe, 0, 3).x > facing_probe.position.x, "A right-moving carrier must face right and keep its cargo in front.")
+	_check(facing_probe.flip_h and game._cargo_position(facing_probe, 0, 3).x > facing_probe.position.x, "A right-moving carrier must mirror the native pose and keep cargo in front.")
 	facing_probe.free()
 
 	game.current_phase = 3

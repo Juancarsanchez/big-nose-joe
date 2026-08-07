@@ -219,6 +219,7 @@ func _run() -> void:
 	_check(debut_puncher.get_meta("state", "") == "to_wall" and game.loose_chunks.is_empty(), "The debut must begin with a real walk toward the wall, not a remote hit.")
 	game._update_punchers(0.10)
 	_check(debut_puncher.position.x < debut_home_x, "A right-side pugilist must physically approach the cocaine wall.")
+	_check(not debut_puncher.flip_h, "A right-side pugilist walking left toward the wall must visibly face left.")
 	var debut_safety := 80
 	while game.loose_chunks.size() < game.PUGILIST_GRAINS_PER_HIT and debut_safety > 0:
 		game._update_punchers(0.08)
@@ -248,10 +249,15 @@ func _run() -> void:
 	_check(game.loose_chunks.size() == chunks_before_round + 20, "Two federated pugilists must each create the same readable ten-particle impact.")
 	_check(game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), 10.0)), "Federated pugilists must release ten grains of ten units each.")
 	var return_safety := 120
+	var saw_puncher_facing_home := false
 	while not game._punchers_idle() and return_safety > 0:
 		game._update_punchers(0.08)
+		var returning_puncher := game.punchers.get_child(0) as Sprite2D
+		if returning_puncher.get_meta("state", "") == "returning" and returning_puncher.flip_h:
+			saw_puncher_facing_home = true
 		return_safety -= 1
 	_check(game._punchers_idle(), "Pugilists must return to their waiting positions after punching.")
+	_check(saw_puncher_facing_home, "A right-side pugilist must turn right before walking back home.")
 	var mirrored_glove := (game.punchers.get_child(0) as Sprite2D).get_node("BoxingGlove") as Polygon2D
 	(game.punchers.get_child(0) as Sprite2D).set_meta("side", "left")
 	game._place_puncher(game.punchers.get_child(0) as Sprite2D)
@@ -280,6 +286,9 @@ func _run() -> void:
 	elephant.position = Vector2(game._wall_free_x("right") + 76.0, game._ground_y())
 	game._update_special_extractors(0.02)
 	_check(is_equal_approx(game.right_hp, wall_before_elephant - 120000.0), "The elephant must deal its headbutt only after physically reaching the wall.")
+	game._update_special_extractors(0.60)
+	game._update_special_extractors(0.02)
+	_check((elephant.get_node("Sprite") as Sprite2D).flip_h, "The elephant must turn around before walking back from the right-side wall.")
 	game._clear_pile()
 	game.right_hp = game.right_max
 	var wall_before_cannon: float = game.right_hp
@@ -332,7 +341,7 @@ func _run() -> void:
 	_check(storage_readout.get_node_or_null("Fill") == null and storage_readout.get_node_or_null("Background") == null, "The redundant local storage bar must be removed while preserving the exact number.")
 	var cart: Node = game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart")[0]
 	_check(cart.get_node_or_null("LoadReadout") != null and (cart.get_node("LoadReadout") as Label).text.contains("0 / 12"), "The cart must visibly identify its own load and capacity.")
-	_check((cart.get_node("Puller") as Sprite2D).flip_h, "The cart puller must face the direction in which the cart composition advances.")
+	_check(not (cart.get_node("Puller") as Sprite2D).flip_h, "The cart puller must retain the native left-facing pose inside the left-authored composition.")
 	game._update_ui()
 	var upgrade_lines := (game.buttons.nails as Button).text.split("\n")
 	_check(upgrade_lines.size() >= 2 and upgrade_lines[1].begins_with("◆ COSTE"), "Every purchasable upgrade must place its prominent price on the same fixed second line.")
