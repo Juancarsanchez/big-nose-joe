@@ -51,7 +51,8 @@ const TRAIN_SPEED := 330.0
 const TRAIN_TUNNEL_TIME := 2.0
 const LEFT_TUNNEL_X := 120.0
 const RIGHT_TUNNEL_X := 7680.0
-const PUGILIST_DAMAGE := [50, 300, 1800, 12000]
+const PUGILIST_DAMAGE := [50, 100, 200, 500]
+const PUGILIST_GRAINS_PER_HIT := 10
 const PUGILIST_INTERVALS := [4.0, 3.2, 2.6, 2.2]
 const PUNCHER_WALK_SPEED := 235.0
 const PUNCHER_STRIKE_TIME := 0.18
@@ -65,8 +66,9 @@ const ANOTHER_LINE_INTERVAL := 120.0
 const ANOTHER_LINE_WARNING := 8.0
 const ANOTHER_LINE_HIGH_GAIN := 0.5
 const ANOTHER_LINE_MINING_THRESHOLDS := [1000.0, 5000.0, 20000.0, 100000.0, 500000.0, 2000000.0]
-const ANOTHER_LINE_GRAIN_TIERS := [80, 120, 200, 400, 800, 1600, 3000]
-const PHASE_ONE_CLEANING_EFFICIENCY := 0.00028
+const ANOTHER_LINE_GRAIN_TIERS := [240, 360, 600, 1000, 1600, 2600, 4000]
+const ANOTHER_LINE_DROP_INTERVAL := 0.035
+const PHASE_ONE_CLEANING_EFFICIENCY := 0.00036
 const LUNG_INTERVAL := 300.0
 const LUNG_WARNING := 150.0
 const LUNG_STEAL_RATIO := 0.20
@@ -643,11 +645,13 @@ func _set_pawn_carrying(pawn: Sprite2D, carrying: bool) -> void:
 				break
 		target = HANDLER_CARRY if carrying and holds_bacteria else HANDLER_EMPTY
 	elif detector:
-		target = DETECTOR_CARRY if carrying else DETECTOR_EMPTY
+		target = DETECTOR_EMPTY
 	elif specialist:
-		target = SPECIALIST_CARRY if carrying else SPECIALIST_EMPTY
+		target = SPECIALIST_EMPTY
 	else:
-		target = PAWN_CARRY if carrying else PAWN_EMPTY
+		# Los tres granos reales ya se dibujan sobre el peón. El antiguo sprite de
+		# carga añadía una cuarta bola decorativa y hacía parecer falsa la capacidad.
+		target = PAWN_EMPTY
 	if pawn.texture == target:
 		return
 	pawn.texture = target
@@ -1206,7 +1210,7 @@ func _finish_manual_delivery(piece: Variant) -> void:
 	if kind == "impurity":
 		impurities_handled += 1
 		contamination = clampf(contamination + _impurity_contamination(str(sprite.get_meta("material", "")), value), 0.0, 100.0)
-		_float_text("LA CAJA SE ENSUCIA", Vector2(_box_x(), _ground_y() - 22.0))
+		_float_text("LA CAJA SE ENSUCIA", _storage_feedback_position())
 	else:
 		var requested := value * _box_yield_multiplier()
 		delivered = _store_cocaine(requested)
@@ -1218,12 +1222,12 @@ func _finish_manual_delivery(piece: Variant) -> void:
 			_index_add_piece(sprite)
 			sprite.scale = Vector2.ONE * float(sprite.get_meta("base_scale", 0.07))
 			_restack_pile(str(sprite.get_meta("side", "right")))
-			_float_text("ALMACÃ‰N LLENO", Vector2(_box_x(), _ground_y() - 22.0))
+			_float_text("ALMACÉN LLENO", _storage_feedback_position())
 			return
 		var progress_value := value * delivered / maxf(0.001, requested)
 		phase_work += progress_value
 		_improve_joe(progress_value)
-		_float_text("+%s" % _number(delivered), Vector2(_box_x(), _ground_y() - 22.0))
+		_float_text("ALMACÉN  +%s" % _number(delivered), _storage_feedback_position())
 	loose_chunks.erase(sprite)
 	sprite.queue_free()
 	_update_contamination_warning(previous_contamination)
@@ -1318,11 +1322,11 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 			_index_add_piece(piece)
 	contamination = clampf(contamination + contamination_delta, 0.0, 100.0)
 	if contamination_delta > 0.0:
-		_float_text("LA CAJA SE ENSUCIA", pawn.position - Vector2(0.0, 22.0))
+		_float_text("LA CAJA SE ENSUCIA", _storage_feedback_position())
 	elif contamination_delta < 0.0:
-		_float_text("LIMPIANDO", pawn.position - Vector2(0.0, 22.0))
+		_float_text("LIMPIANDO", _storage_feedback_position())
 	elif delivered > 0.0:
-		_float_text("+%s" % _number(delivered), pawn.position - Vector2(0.0, 22.0))
+		_float_text("ALMACÉN  +%s" % _number(delivered), _storage_feedback_position())
 	_update_contamination_warning(previous_contamination)
 	pawn.set_meta("cargo", [])
 	pawn.set_meta("state", "to_pile")
@@ -1715,6 +1719,7 @@ func _rebuild_punchers() -> void:
 	for child in punchers.get_children():
 		child.queue_free()
 	for index in range(mini(8, int(levels.puncher))):
+		var rank := clampi(int(levels.punch_power), 0, PUGILIST_DAMAGE.size() - 1)
 		var puncher := Sprite2D.new()
 		puncher.texture = PAWN_EMPTY
 		puncher.scale = Vector2.ONE * 0.047
@@ -1728,15 +1733,38 @@ func _rebuild_punchers() -> void:
 		var glove := Polygon2D.new()
 		glove.name = "BoxingGlove"
 		glove.polygon = PackedVector2Array([Vector2(-270, 30), Vector2(-225, 15), Vector2(-181, 37), Vector2(-166, 75), Vector2(-190, 118), Vector2(-240, 120), Vector2(-274, 82)])
-		glove.color = Color("f05261")
+		glove.color = [Color("f05261"), Color("f58b45"), Color("9d63d5"), Color("ffd447")][rank]
+		glove.scale = Vector2.ONE * [1.0, 1.08, 1.18, 1.32][rank]
 		glove.z_index = 2
 		puncher.add_child(glove)
 		var headband := Polygon2D.new()
 		headband.name = "AutoHeadband"
 		headband.polygon = PackedVector2Array([Vector2(-150, -218), Vector2(136, -218), Vector2(158, -180), Vector2(-164, -180)])
-		headband.color = Color("51c8e8")
+		headband.color = [Color("51c8e8"), Color("f2d06b"), Color("ef5b57"), Color("fff1c7")][rank]
 		headband.z_index = 2
 		puncher.add_child(headband)
+		if rank >= 1:
+			var belt := Polygon2D.new()
+			belt.name = "RankBelt"
+			belt.polygon = PackedVector2Array([Vector2(-170, 100), Vector2(170, 100), Vector2(155, 148), Vector2(-155, 148)])
+			belt.color = Color("e8c96f") if rank < 3 else Color("fff1a8")
+			belt.z_index = 2
+			puncher.add_child(belt)
+		if rank >= 2:
+			var badge := Polygon2D.new()
+			badge.name = "RankBadge"
+			badge.polygon = PackedVector2Array([Vector2(0, 104), Vector2(32, 124), Vector2(0, 147), Vector2(-32, 124)])
+			badge.color = Color("472042")
+			badge.z_index = 3
+			puncher.add_child(badge)
+		if rank >= 3:
+			var aura := Line2D.new()
+			aura.name = "ChampionAura"
+			aura.points = PackedVector2Array([Vector2(-205, 100), Vector2(-245, 10), Vector2(-205, -80), Vector2(-105, -255), Vector2(0, -290), Vector2(115, -250), Vector2(205, -75), Vector2(245, 20), Vector2(205, 110)])
+			aura.width = 24.0
+			aura.default_color = Color("ffd447", 0.82)
+			aura.z_index = -1
+			puncher.add_child(aura)
 		punchers.add_child(puncher)
 		_place_puncher(puncher)
 	_add_special_extractors()
@@ -1781,6 +1809,12 @@ func _punch_interval() -> float:
 
 func _punch_output() -> int:
 	return int(PUGILIST_DAMAGE[clampi(int(levels.punch_power), 0, PUGILIST_DAMAGE.size() - 1)])
+
+func _punch_evolution_locked() -> bool:
+	# El púgil base pertenece a la fase 1. Cada descenso posterior del colocón
+	# autoriza exactamente una evolución adicional de toda la cuadrilla.
+	var allowed_level := clampi(current_phase - 1, 0, PUGILIST_DAMAGE.size() - 1)
+	return int(levels.punch_power) >= allowed_level
 
 func _wall_mining_blocked() -> bool:
 	return mucus_hp > 0.0 or spray_film_hp > 0.0
@@ -1874,11 +1908,13 @@ func _resolve_punch(puncher: Sprite2D) -> void:
 	total_clicks += output
 	var direction := -1.0 if side == "left" else 1.0
 	var impact_x := _wall_free_x(side) + direction * 4.0
-	_spawn_extraction_payload(side, float(output), impact_x, mini(18, maxi(1, ceili(sqrt(float(output))))))
+	_spawn_extraction_payload(side, float(output), impact_x, PUGILIST_GRAINS_PER_HIT)
 	_spawn_impact_dust(Vector2(impact_x, _ground_y() - 10.0), Color("d6b8bc"), 4)
 	_impact_shake(1.6 if not debut else 3.0)
 	_play_sfx(SFX_PUNCH, -9.0, randf_range(0.92, 1.08))
-	_float_text("¡¡PUM!!  +%d" % output if debut else "¡PUM!  +%d" % output, Vector2(impact_x, _ground_y() - 95.0))
+	var grain_value := float(output) / float(PUGILIST_GRAINS_PER_HIT)
+	var punch_math := "%d BOLAS × %s = %s" % [PUGILIST_GRAINS_PER_HIT, _number(grain_value), _number(output)]
+	_float_text(("¡¡PUM!!  " if debut else "¡PUM!  ") + punch_math, Vector2(impact_x, _ground_y() - 95.0))
 	if debut:
 		_show_toast("DEBUT DEL PÚGIL  ·  ESO SÍ HA SIDO UN PUÑETAZO")
 	puncher.set_meta("debut", false)
@@ -2135,6 +2171,7 @@ func _buy(id: String) -> void:
 	var upgrade := _upgrade(id)
 	var level: int = int(levels[id])
 	var cost: float = ceil(float(upgrade.base) * pow(float(upgrade.growth), level))
+	if upgrade.kind == "auto_power" and _punch_evolution_locked(): return
 	if cells < cost or level >= int(upgrade.get("max", 999)): return
 	cells -= cost
 	levels[id] = level + 1
@@ -2146,6 +2183,9 @@ func _buy(id: String) -> void:
 			puncher_debut_clock = 1.35
 			punch_clock = _punch_interval()
 			_show_toast("EL NUEVO PÚGIL ESTÁ CALENTANDO EL BRAZO...")
+	elif upgrade.kind == "auto_power":
+		_rebuild_punchers()
+		_show_toast("LA CUADRILLA PÚGIL HA EVOLUCIONADO")
 	elif upgrade.kind == "storage":
 		_rebuild_infrastructure()
 		_rebuild_transporters()
@@ -2261,7 +2301,7 @@ func _update_another_line(delta: float) -> void:
 		another_line_clock = maxf(0.0, another_line_clock - delta)
 		another_line_drop_clock -= delta
 		if another_line_drop_clock <= 0.0:
-			another_line_drop_clock = 0.08
+			another_line_drop_clock = ANOTHER_LINE_DROP_INTERVAL
 			var batch := mini(5, another_line_wave)
 			another_line_wave -= batch
 			for grain in range(batch):
@@ -2832,7 +2872,41 @@ func _rebuild_infrastructure() -> void:
 		_add_infrastructure_sprite(PLANT_TEXTURE, Vector2(PLANT_X, _ground_y() - 62.0), 0.17, "PLANTA DE NIEVE INDUSTRIAL")
 	if int(levels.get("train", 0)) > 0 and septum_open:
 		_add_train_tunnels()
+	_add_storage_readout()
 	_update_storage_visual()
+
+func _storage_feedback_position() -> Vector2:
+	var height: float = [82.0, 155.0, 200.0, 200.0][_storage_tier()]
+	return Vector2(_box_x(), _ground_y() - height)
+
+func _add_storage_readout() -> void:
+	var root := Node2D.new()
+	root.name = "StorageReadout"
+	root.position = _storage_feedback_position()
+	root.z_index = 24
+	root.set_meta("storage_readout", true)
+	var background := Polygon2D.new()
+	background.name = "Background"
+	background.polygon = PackedVector2Array([Vector2(-84.0, 0.0), Vector2(84.0, 0.0), Vector2(84.0, 13.0), Vector2(-84.0, 13.0)])
+	background.color = Color("1b1020")
+	root.add_child(background)
+	var fill := Polygon2D.new()
+	fill.name = "Fill"
+	fill.position = Vector2(-80.0, 3.0)
+	fill.polygon = PackedVector2Array([Vector2.ZERO, Vector2(160.0, 0.0), Vector2(160.0, 7.0), Vector2(0.0, 7.0)])
+	fill.color = Color("e8c96f")
+	root.add_child(fill)
+	var label := Label.new()
+	label.name = "Value"
+	label.position = Vector2(-110.0, -25.0)
+	label.size = Vector2(220.0, 23.0)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 13)
+	label.add_theme_color_override("font_color", Color("fff1c7"))
+	label.add_theme_color_override("font_outline_color", Color("160b1b"))
+	label.add_theme_constant_override("outline_size", 5)
+	root.add_child(label)
+	infrastructure.add_child(root)
 
 func _add_infrastructure_sprite(texture: Texture2D, position: Vector2, scale_factor: float, caption: String) -> void:
 	var root := Node2D.new()
@@ -2899,6 +2973,14 @@ func _update_storage_visual() -> void:
 	for child in infrastructure.get_children():
 		if bool(child.get_meta("storage_visual", false)):
 			child.modulate = tint
+		if bool(child.get_meta("storage_readout", false)):
+			var fill := child.get_node_or_null("Fill") as Polygon2D
+			var label := child.get_node_or_null("Value") as Label
+			if fill:
+				fill.scale.x = ratio
+				fill.color = Color("e8c96f").lerp(Color("ef5b57"), ratio)
+			if label:
+				label.text = "ALMACÉN  %s / %s" % [_number(cells), _number(_storage_capacity())]
 	box.modulate = tint
 
 func _rebuild_transporters() -> void:
@@ -2930,14 +3012,14 @@ func _add_ground_transporter(kind: String, capacity: float, speed: float) -> voi
 		cart.name = "Vehicle"
 		cart.texture = CART_TEXTURE
 		cart.scale = Vector2.ONE * 0.075
-		cart.position = Vector2(18.0, -16.5)
+		cart.position = Vector2(8.0, -16.5)
 		root.add_child(cart)
 		var puller := Sprite2D.new()
 		puller.name = "Puller"
 		puller.texture = PAWN_EMPTY
 		puller.scale = Vector2.ONE * 0.036
 		puller.offset = Vector2(0.0, PAWN_FOOT_DEPTH / puller.scale.y - PAWN_EMPTY.get_height() * 0.5)
-		puller.position = Vector2(-52.0, -14.0)
+		puller.position = Vector2(-38.0, -14.0)
 		puller.z_index = 2
 		root.add_child(puller)
 	else:
@@ -2954,7 +3036,31 @@ func _add_ground_transporter(kind: String, capacity: float, speed: float) -> voi
 		ox.position = Vector2(-82.0, -27.5)
 		ox.z_index = 2
 		root.add_child(ox)
+	_add_transport_load_readout(root)
 	transporters.add_child(root)
+
+func _add_transport_load_readout(root: Node2D) -> void:
+	var label := Label.new()
+	label.name = "LoadReadout"
+	label.position = Vector2(-70.0, -66.0)
+	label.size = Vector2(140.0, 22.0)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", Color("fff1c7"))
+	label.add_theme_color_override("font_outline_color", Color("160b1b"))
+	label.add_theme_constant_override("outline_size", 5)
+	root.add_child(label)
+	_update_transport_load_readout(root)
+
+func _update_transport_load_readout(root: Node2D) -> void:
+	var label := root.get_node_or_null("LoadReadout") as Label
+	if not label: return
+	var load := 0.0
+	for value in root.get_meta("cargo", []):
+		var piece := value as PilePiece
+		if is_instance_valid(piece): load += float(piece.get_meta("value", 1.0))
+	label.text = "CARGA  %s / %s" % [_number(load), _number(float(root.get_meta("capacity", 0.0)))]
+	label.scale.x = root.scale.x
 
 func _add_train() -> void:
 	var root := Node2D.new()
@@ -2984,6 +3090,7 @@ func _update_transporters(delta: float) -> void:
 			_update_ground_transporter(root, delta)
 
 func _update_ground_transporter(root: Node2D, delta: float) -> void:
+	_update_transport_load_readout(root)
 	if box_jammed: return
 	var state: String = root.get_meta("state", "to_pile")
 	var side: String = root.get_meta("side", active_side)
@@ -3013,6 +3120,8 @@ func _update_ground_transporter(root: Node2D, delta: float) -> void:
 func _move_transport_root(root: Node2D, target: Vector2, speed: float, delta: float) -> void:
 	var direction := signf(target.x - root.position.x)
 	if not is_zero_approx(direction): root.scale.x = 1.0 if direction < 0.0 else -1.0
+	var load_readout := root.get_node_or_null("LoadReadout") as Label
+	if load_readout: load_readout.scale.x = root.scale.x
 	root.position = root.position.move_toward(target, speed * delta)
 	root.position.y = _ground_y()
 
@@ -3321,7 +3430,8 @@ func _update_ui() -> void:
 	var tunnel_ready := current_phase >= TUNNEL_UNLOCK_PHASE
 	click_counter.text = "DOS FOSAS ACTIVAS" if septum_open else ("TUNELADORA DISPONIBLE" if tunnel_ready else "TUNELADORA  ·  TECNOLOGÍA BLOQUEADA")
 	var hp := left_hp if active_side == "left" else right_hp
-	wall_label.text = "PARED %s  ·  FALTAN %s" % ["IZQUIERDA" if active_side == "left" else "DERECHA", _number(maxf(0.0, hp))]
+	var wall_side := "IZQUIERDA" if active_side == "left" else "DERECHA"
+	wall_label.text = "PARED %s  ·  RESISTENCIA %s" % [wall_side, _number(maxf(0.0, hp)) if int(levels.wall_scan) > 0 else "???"]
 	for upgrade in UPGRADES:
 		var button := buttons[upgrade.id] as Button
 		button.visible = _upgrade_available(upgrade)
@@ -3332,6 +3442,7 @@ func _update_ui() -> void:
 		if not button.visible: continue
 		var cost: float = ceil(float(upgrade.base) * pow(float(upgrade.growth), level))
 		var maxed: bool = level >= int(upgrade.get("max", 999))
+		var evolution_locked: bool = upgrade.kind == "auto_power" and _punch_evolution_locked() and not maxed
 		var effect := "CLIC %s → %s" % [_number(pow(2.0, level)), _number(pow(2.0, level + 1))]
 		if upgrade.kind == "pawn": effect = "+1 peón"
 		elif upgrade.kind == "speed": effect = "VELOCIDAD %s → %s" % [_number(BASE_PAWN_SPEED * pow(1.35, level)), _number(BASE_PAWN_SPEED * pow(1.35, level + 1))]
@@ -3348,7 +3459,14 @@ func _update_ui() -> void:
 		elif upgrade.kind == "handler": effect = "+1 cuidador con guantes"
 		elif upgrade.kind == "signals": effect = "+12% coordinación de crisis"
 		elif upgrade.kind == "autoclicker": effect = "+1 púgil automático"
-		elif upgrade.kind == "auto_power": effect = "GOLPE %s → %s GRANOS" % [_number(float(PUGILIST_DAMAGE[clampi(level, 0, PUGILIST_DAMAGE.size() - 1)])), _number(float(PUGILIST_DAMAGE[clampi(level + 1, 0, PUGILIST_DAMAGE.size() - 1)]))]
+		elif upgrade.kind == "auto_power":
+			if evolution_locked:
+				effect = "SIGUIENTE EVOLUCIÓN EN FASE %d" % mini(PHASES.size(), level + 2)
+			else:
+				var current_ball := float(PUGILIST_DAMAGE[clampi(level, 0, PUGILIST_DAMAGE.size() - 1)]) / float(PUGILIST_GRAINS_PER_HIT)
+				var next_ball := float(PUGILIST_DAMAGE[clampi(level + 1, 0, PUGILIST_DAMAGE.size() - 1)]) / float(PUGILIST_GRAINS_PER_HIT)
+				effect = "%d BOLAS DE %s → %s" % [PUGILIST_GRAINS_PER_HIT, _number(current_ball), _number(next_ball)]
+		elif upgrade.kind == "wall_scan": effect = "REVELA LA RESISTENCIA EXACTA"
 		elif upgrade.kind == "auto_speed":
 			var rank := clampi(int(levels.punch_power), 0, PUGILIST_INTERVALS.size() - 1)
 			effect = "INTERVALO %.2f → %.2f S" % [float(PUGILIST_INTERVALS[rank]) * pow(0.85, level), float(PUGILIST_INTERVALS[rank]) * pow(0.85, level + 1)]
@@ -3372,7 +3490,7 @@ func _update_ui() -> void:
 		elif upgrade.kind == "catapult_power": effect = "IMPACTO %s → %s" % [_number(CATAPULT_BASE_DAMAGE * pow(2.0, level)), _number(CATAPULT_BASE_DAMAGE * pow(2.0, level + 1))]
 		var required_line := "★ NECESARIA PARA SUPERAR ESTA FASE\n" if required else ""
 		button.text = "%s%s  [NV. %d]\n%s\n%s  ·  %s cocaína" % [required_line, upgrade.name, level, upgrade.desc, effect, _number(cost)]
-		button.disabled = cells < cost or maxed
+		button.disabled = cells < cost or maxed or evolution_locked
 
 func _high_state() -> String:
 	if joe_high_display < 25.0: return "CASI SERENO"
@@ -3449,7 +3567,11 @@ func _float_text(value: String, world_pos: Vector2) -> void:
 	tween.chain().tween_callback(label.queue_free)
 
 func _box_bump() -> void:
-	var target: Node2D = infrastructure.get_child(0) as Node2D if infrastructure.get_child_count() > 0 else null
+	var target: Node2D
+	for child in infrastructure.get_children():
+		if bool(child.get_meta("storage_visual", false)):
+			target = child as Node2D
+			break
 	if target:
 		var tween := create_tween()
 		tween.tween_property(target, "scale", Vector2(1.04, 0.96), 0.05)

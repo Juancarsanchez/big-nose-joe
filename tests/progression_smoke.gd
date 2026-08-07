@@ -76,9 +76,11 @@ func _run() -> void:
 	_check(is_equal_approx(game.FIRST_WALL_HP, 10000000000.0) and is_equal_approx(game.FIRST_LEFT_WALL_HP, 10000000000.0), "Both fossae must begin with ten billion resistance.")
 	_check(is_equal_approx(game.joe_high, 90.0), "Joe must begin dangerously high at ninety percent.")
 	game._improve_joe(90000.0)
-	_check(game.joe_high <= 70.0, "About ninety thousand cleaned units must be enough to overcome Joe's opening high once his recurring gains are included.")
+	_check(game.joe_high <= 58.0, "The opening cleaning coefficient must make the first visible fall of Joe's high substantially faster.")
 	game.joe_high = 90.0
 	game.joe_high_display = 90.0
+	game._update_ui()
+	_check(game.wall_label.text.contains("???") and not game.wall_label.text.contains("10.0B"), "Wall resistance must remain unknown during the opening.")
 	_check(not game.levels.has("smart_clump"), "Normal-pawn smart clumping must be removed completely.")
 	game.right_hp = game.right_max * 0.01
 	game._update_world()
@@ -180,13 +182,13 @@ func _run() -> void:
 	var high_before_line: float = game.joe_high
 	game._update_another_line(0.01)
 	var expected_flood: int = game.another_line_wave
-	var safety := 100
+	var safety := 500
 	while game.another_line_wave > 0 and safety > 0:
 		game._update_another_line(0.20)
 		safety -= 1
-	_check(is_equal_approx(game.ANOTHER_LINE_INTERVAL, 120.0) and expected_flood == 80 and game.loose_chunks.size() == expected_flood, "The first Otra rayita must drop eighty real grains after a low-output opening.")
-	_check(is_equal_approx(game._pile_load("right"), 80.0) and game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), 1.0) and piece.get_meta("source", "") == "joe"), "Every Joe grain must be an indivisible one-unit nuisance rather than an aggregated transport shortcut.")
-	_check(game._another_line_grain_count(100000.0) == 800 and game._another_line_grain_count(2000000.0) == 3000, "Joe's line must keep scaling beyond four hundred grains when extraction reaches industrial levels.")
+	_check(is_equal_approx(game.ANOTHER_LINE_INTERVAL, 120.0) and expected_flood == 240 and game.loose_chunks.size() == expected_flood, "The first Otra rayita must be a clearly visible rain of 240 real grains.")
+	_check(is_equal_approx(game._pile_load("right"), 240.0) and game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), 1.0) and piece.get_meta("source", "") == "joe"), "Every Joe grain must remain an indivisible one-unit nuisance rather than an aggregated transport shortcut.")
+	_check(game._another_line_grain_count(100000.0) == 1600 and game._another_line_grain_count(2000000.0) == 4000, "Joe's line must scale into a real logistical storm at industrial extraction levels.")
 	_check(game.joe_high > high_before_line, "Joe's extra line must visibly increase his high.")
 	var wave_columns := {}
 	for piece in game.loose_chunks:
@@ -201,7 +203,7 @@ func _run() -> void:
 	_check((game.buttons.puncher as Button).has_theme_stylebox_override("normal"), "The newly mandatory pugilist must receive the blue halo.")
 	game._clear_pile()
 	var outlined_player_grain = game._create_piece("grain", "right", 4.0, 0, 0, 0.072)
-	_check(outlined_player_grain.material == game.PLAYER_GRAIN_MATERIAL, "Player-mined grains may differ from Joe's only through the subtle dedicated outline layer.")
+	_check(outlined_player_grain.material == game.PLAYER_GRAIN_MATERIAL, "Player-mined grains must differ from Joe's only through the dedicated pronounced outline layer.")
 	game._clear_pile()
 
 	# Pugilists keep their visible run while their numerical damage escalates hard.
@@ -209,6 +211,8 @@ func _run() -> void:
 	var clicks_before_debut: int = game.total_clicks
 	game._buy("puncher")
 	_check(game.puncher_debut_pending and game.punchers.get_child_count() == 1, "The first pugilist must visibly prepare its debut.")
+	game._buy("punch_power")
+	_check(int(game.levels.punch_power) == 0, "The first pugilist evolution must stay locked throughout phase one.")
 	var debut_puncher := game.punchers.get_child(0) as Sprite2D
 	var debut_home_x: float = debut_puncher.position.x
 	game._update_punchers(1.40)
@@ -216,10 +220,11 @@ func _run() -> void:
 	game._update_punchers(0.10)
 	_check(debut_puncher.position.x < debut_home_x, "A right-side pugilist must physically approach the cocaine wall.")
 	var debut_safety := 80
-	while game.loose_chunks.size() < 8 and debut_safety > 0:
+	while game.loose_chunks.size() < game.PUGILIST_GRAINS_PER_HIT and debut_safety > 0:
 		game._update_punchers(0.08)
 		debut_safety -= 1
-	_check(game.loose_chunks.size() == 8 and game.total_clicks == clicks_before_debut + 50, "The first pugilist rank must deal fifty real units without spawning fifty render nodes.")
+	_check(game.loose_chunks.size() == 10 and game.total_clicks == clicks_before_debut + 50, "The first pugilist rank must deal fifty units as exactly ten rendered grains.")
+	_check(game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), 5.0)), "Every opening pugilist grain must be worth five: ten times five equals the displayed fifty damage.")
 	_check(absf(debut_puncher.position.x - game._puncher_strike_position(debut_puncher).x) < 0.6, "The punch must resolve at the visible edge of the cocaine wall.")
 	_check(game.punchers.get_child(0).get_node_or_null("BoxingGlove") != null, "Pugilists must be distinguished by a separate boxing-glove layer.")
 	game._clear_pile()
@@ -235,10 +240,11 @@ func _run() -> void:
 	game._update_punchers(game._punch_interval())
 	_check(not game._punchers_idle() and game.loose_chunks.size() == chunks_before_round, "A regular automatic round must also travel before dealing damage.")
 	var round_safety := 120
-	while game.loose_chunks.size() < chunks_before_round + 36 and round_safety > 0:
+	while game.loose_chunks.size() < chunks_before_round + 20 and round_safety > 0:
 		game._update_punchers(0.08)
 		round_safety -= 1
-	_check(game.loose_chunks.size() == chunks_before_round + 36, "Two federated pugilists must each create an aggregated eighteen-particle impact.")
+	_check(game.loose_chunks.size() == chunks_before_round + 20, "Two federated pugilists must each create the same readable ten-particle impact.")
+	_check(game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), 10.0)), "Federated pugilists must release ten grains of ten units each.")
 	var return_safety := 120
 	while not game._punchers_idle() and return_safety > 0:
 		game._update_punchers(0.08)
@@ -318,6 +324,11 @@ func _run() -> void:
 	game._rebuild_transporters()
 	_check(is_equal_approx(game._storage_capacity(), 5000.0), "The emergency container must raise storage from 1,000 to 5,000 real units.")
 	_check(game.transporters.get_children().any(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart"), "Buying the container and cart must create a separate visible transporter.")
+	var storage_readouts: Array = game.infrastructure.get_children().filter(func(node: Node) -> bool: return bool(node.get_meta("storage_readout", false)) and not node.is_queued_for_deletion())
+	var storage_readout: Node = storage_readouts.back() if not storage_readouts.is_empty() else null
+	_check(storage_readout != null and (storage_readout.get_node("Value") as Label).text.contains("/ 5.0K"), "Every storage evolution must retain a local exact fill readout.")
+	var cart: Node = game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart")[0]
+	_check(cart.get_node_or_null("LoadReadout") != null and (cart.get_node("LoadReadout") as Label).text.contains("0 / 12"), "The cart must visibly identify its own load and capacity.")
 	game.joe_high = 70.0
 	game._check_phase_progress()
 	_check(game.current_phase == 2, "Pulmones de Drogata must unlock exactly when Joe falls to seventy percent high.")
@@ -326,6 +337,12 @@ func _run() -> void:
 	game._update_ui()
 	_check((game.buttons.breaker as Button).text.contains("NECESARIA"), "A new phase must explain which adaptation is mandatory.")
 	_check((game.buttons.breaker as Button).has_theme_stylebox_override("normal"), "The mandatory adaptation must receive a blue halo.")
+	game.cells = 10000.0
+	game._buy("punch_power")
+	_check(int(game.levels.punch_power) == 1, "Phase two must unlock exactly the federated pugilist evolution.")
+	_check((game.punchers.get_child(0) as Sprite2D).get_node_or_null("RankBelt") != null, "A pugilist evolution must change separate visible equipment layers, not only its numbers.")
+	game._buy("punch_power")
+	_check(int(game.levels.punch_power) == 1, "Phase two must not allow buying the phase-three pugilist evolution early.")
 	_check(not (game.buttons.coord as Button).visible, "Work in Chain must remain hidden before the septum is open.")
 	game.septum_open = true
 	game._update_ui()
@@ -372,6 +389,15 @@ func _run() -> void:
 	game.contamination = 0.0
 	game._update_ui()
 	_check((game.buttons.detector as Button).text.contains("NECESARIA"), "Phase 3 must point directly at the receptor adaptation.")
+	_check(not (game.buttons.wall_scan as Button).visible and game.wall_label.text.contains("???"), "Exact wall resistance must remain unavailable until the adulterant detector exists.")
+	game.levels.detector = 1
+	game.cells = 10000.0
+	game._update_ui()
+	_check((game.buttons.wall_scan as Button).visible, "The wall scan may appear only after the phase-three adulterant analysis.")
+	game._buy("wall_scan")
+	game._update_ui()
+	_check(game.wall_label.text.contains(game._number(game.right_hp)) and not game.wall_label.text.contains("???"), "Buying the nasal radiograph must reveal the exact remaining wall resistance.")
+	game.levels.detector = 0
 	var pawn := game.pawns.get_child(0) as Sprite2D
 	var rubbish = game._create_piece("impurity", "right", 1.0, 0, 0, 0.064, "serrín")
 	rubbish.set_meta("carried", true)

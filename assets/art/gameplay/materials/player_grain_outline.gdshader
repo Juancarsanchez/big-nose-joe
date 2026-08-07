@@ -1,7 +1,7 @@
 shader_type canvas_item;
 
 uniform vec4 outline_color : source_color = vec4(0.055, 0.025, 0.065, 1.0);
-uniform float outline_size = 2.0;
+uniform float outline_size = 3.5;
 
 void fragment() {
 	vec4 grain = texture(TEXTURE, UV);

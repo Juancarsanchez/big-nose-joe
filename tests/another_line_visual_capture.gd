@@ -33,7 +33,7 @@ func _capture() -> void:
 	game._buy("puncher")
 	game._update_punchers(1.40)
 	var punch_safety := 100
-	while game.loose_chunks.size() < pile_before_punch + 12 and punch_safety > 0:
+	while game.loose_chunks.size() < pile_before_punch + game.PUGILIST_GRAINS_PER_HIT and punch_safety > 0:
 		game._update_punchers(0.06)
 		punch_safety -= 1
 	game._update_ui()
