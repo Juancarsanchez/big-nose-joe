@@ -49,10 +49,10 @@ func _run() -> void:
 		(columns[key] as Array).append(piece)
 	for key in columns:
 		var pieces: Array = columns[key]
-		pieces.sort_custom(func(a: Sprite2D, b: Sprite2D) -> bool: return a.position.y > b.position.y)
+		pieces.sort_custom(func(a, b) -> bool: return a.position.y > b.position.y)
 		var accumulated := 0.0
 		for piece_value in pieces:
-			var piece := piece_value as Sprite2D
+			var piece = piece_value
 			var height: float = float(piece.get_meta("height", game.GRAIN_HEIGHT))
 			var expected_y: float = game._ground_y() - 5.0 - accumulated - height * 0.5
 			_check(absf(piece.position.y - expected_y) < 0.01, "A pile column contains a floating gap.")
@@ -85,7 +85,7 @@ func _run() -> void:
 		game._maybe_compact("right")
 	_check(game._rock_count("right") >= 4, "Dense powder must create compacted rocks frequently enough to matter.")
 
-	var rock: Sprite2D = null
+	var rock = null
 	for piece in game.loose_chunks:
 		if piece.get_meta("kind", "grain") == "rock":
 			rock = piece
@@ -124,11 +124,11 @@ func _run() -> void:
 	var pawn := game.pawns.get_child(0) as Sprite2D
 	game._clear_pile()
 	await process_frame
-	var treated_rock: Sprite2D = game._create_piece("rock", "right", 6.0, 0, 0, 0.18)
+	var treated_rock = game._create_piece("rock", "right", 6.0, 0, 0, 0.18)
 	_check(game._claim_top_pieces("right", 1, pawn).is_empty(), "A normal pawn must never carry a compacted rock.")
 	pawn.set_meta("specialist", true)
 	var rock_cargo: Array = game._claim_top_pieces("right", 1, pawn)
-	_check(rock_cargo.size() == 1 and (rock_cargo[0] as Sprite2D) == treated_rock, "Only a blue-helmet specialist may carry a treated rock.")
+	_check(rock_cargo.size() == 1 and rock_cargo[0] == treated_rock, "Only a blue-helmet specialist may carry a treated rock.")
 	game._finish_delivery(pawn)
 	pawn.set_meta("specialist", false)
 
@@ -138,12 +138,12 @@ func _run() -> void:
 	for index in range(6):
 		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), 0.072)
 	var cargo: Array = game._claim_top_pieces("right", 6, pawn)
-	_check(cargo.size() == 6 and cargo.all(func(piece: Sprite2D) -> bool: return piece.get_meta("kind", "") == "grain"), "Normal pawns must carry six separate grains without creating a safe clump.")
+	_check(cargo.size() == 6 and cargo.all(func(piece) -> bool: return piece.get_meta("kind", "") == "grain"), "Normal pawns must carry six separate grains without creating a safe clump.")
 
 	# Cargo becomes currency only after the physical deposit finishes.
 	var cargo_value := 0.0
 	for piece_value in cargo:
-		cargo_value += float((piece_value as Sprite2D).get_meta("value", 0.0))
+		cargo_value += float(piece_value.get_meta("value", 0.0))
 	var cells_before_delivery: float = game.cells
 	pawn.set_meta("cargo", cargo)
 	pawn.set_meta("state", "to_box")
@@ -163,7 +163,7 @@ func _run() -> void:
 	game.cells = 0.0
 	game.joe_high = 70.0
 	game.joe_high_display = 70.0
-	var manual_grain: Sprite2D = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
+	var manual_grain = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
 	var manual_point := Vector2(manual_grain.position.x, game._ground_y() - 2.0)
 	_check(game._manual_collect_at(manual_point), "Clicking the visible pile must start a manual collection.")
 	_check(bool(manual_grain.get_meta("manual_flying", false)) and bool(manual_grain.get_meta("carried", false)), "A manually collected grain must leave the pile immediately.")
@@ -172,23 +172,23 @@ func _run() -> void:
 	_check(game.joe_high < 70.0, "Removing clean cocaine from the nose must reduce Joe's high.")
 
 	game.current_phase = 3
-	var manual_impurity: Sprite2D = game._create_piece("impurity", "right", 1.0, 0, 0, 0.064, "yeso")
+	var manual_impurity = game._create_piece("impurity", "right", 1.0, 0, 0, 0.064, "yeso")
 	_check(game._manual_collect_at(Vector2(manual_impurity.position.x, game._ground_y() - 2.0)), "An exposed impurity may be sent manually.")
 	await create_timer(0.85).timeout
 	_check(game.contamination > 0.0, "Manually delivering an impurity must still contaminate the box.")
 
-	var blocked_rock: Sprite2D = game._create_piece("rock", "right", 6.0, 0, 0, 0.18)
+	var blocked_rock = game._create_piece("rock", "right", 6.0, 0, 0, 0.18)
 	var cells_before_blocked_click: float = game.cells
 	_check(game._manual_collect_at(Vector2(blocked_rock.position.x, game._ground_y() - 2.0)), "A compacted rock must visibly acknowledge a manual click.")
 	_check(not bool(blocked_rock.get_meta("carried", false)) and is_equal_approx(game.cells, cells_before_blocked_click), "Manual collection must never bypass blue-helmet specialists.")
 	game._clear_pile()
 	await process_frame
-	var blocked_bacterium: Sprite2D = game._create_piece("bacteria", "right", 2.0, 0, 0, 0.08)
+	var blocked_bacterium = game._create_piece("bacteria", "right", 2.0, 0, 0, 0.08)
 	_check(game._manual_collect_at(Vector2(blocked_bacterium.position.x, game._ground_y() - 2.0)), "A bacterium must visibly acknowledge a manual click.")
 	_check(not bool(blocked_bacterium.get_meta("carried", false)), "Manual collection must never bypass bacteria handlers.")
 	game._clear_pile()
 	await process_frame
-	var input_grain: Sprite2D = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
+	var input_grain = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
 	var input_world_point := Vector2(input_grain.position.x, game._ground_y() - 2.0)
 	var manual_click := InputEventMouseButton.new()
 	manual_click.button_index = MOUSE_BUTTON_LEFT

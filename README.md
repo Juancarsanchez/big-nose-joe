@@ -25,7 +25,7 @@ Cada cambio de fase abre un diálogo que explica el nuevo problema. La adaptaci�
 4. `SPRAY NASAL DEL BAZAR` — 34%: el spray bloquea y reconstruye pared; el moco verde empieza a repetirse en esta misma fase. Los `MACRÓFAGOS ESPONJA` y las `CATAPULTAS MUCOLÍTICAS` resuelven ambos problemas.
 5. `VOLCÁN ZOOLÓGICO` — 18%: comienzan hemorragia, daño tisular, bacterias, plaquetas y cuidadores mientras todas las locuras anteriores continúan activas.
 
-Las fases ya no avanzan por tiempo ni por entregas. Joe empieza al 90% y cada tramo se desbloquea cuando el jugador logra reducir su colocón hasta 70%, 52%, 34% y 18%. Cada umbral provoca inmediatamente la nueva barbaridad y añade su temporizador al repertorio permanente. La barra lateral representa la presión ejercida sobre Joe hasta su siguiente reacción. La versión 15 del guardado conserva los umbrales, las crisis, las paredes y todos los temporizadores; las partidas anteriores se migran al cargar.
+Las fases ya no avanzan por tiempo ni por entregas. Joe empieza al 90% y cada tramo se desbloquea cuando el jugador logra reducir su colocón hasta 70%, 52%, 34% y 18%. Cada umbral provoca inmediatamente la nueva barbaridad y añade su temporizador al repertorio permanente. La barra lateral representa la presión ejercida sobre Joe hasta su siguiente reacción. La versión 16 inaugura el modelo masivo de partículas; todos los guardados anteriores quedan invalidados y se eliminan en vez de migrarse.
 
 El panel `PRUEBA DE FASES`, fijado al extremo derecho, permite saltar inmediatamente a cualquiera de las cinco fases. Conserva células, mejoras y paredes, reinicia los indicadores de esa crisis y elimina los recursos futuros al volver hacia atrás.
 
@@ -42,6 +42,14 @@ Solo los peones blancos rascan la pared. La logística crece como una cadena vis
 El Expreso se desbloquea al final, después de abrir la segunda fosa y construir la planta. Recoge en la fosa derecha, sale cargado por un túnel del extremo derecho y reaparece por el extremo izquierdo para descargar en la planta. El viaje vacío hace el circuito inverso. No existen vías sobre el tabique ni cruces visibles entre fosas. La caja y cada edificio tienen límite real; cuando se llenan, las entregas se detienen hasta que el jugador gasta cocaína o amplía el almacén.
 
 El jugador también puede intervenir directamente en la logística. Al pulsar sobre cualquier parte ocupada del montón, la pieza superior más cercana describe un arco hasta la caja y sólo se entrega al llegar. Las piezas que aún caen o están enterradas no responden. Los pedruscos siguen necesitando cascos azules, las bacterias necesitan cuidadores y enviar una impureza manualmente ensucia la caja igual que cualquier otra entrega.
+
+## Arquitectura para partículas masivas
+
+El polvo jugable ya no crea un `Sprite2D` por bolita. Cada grano es un objeto de datos ligero y se dibuja mediante `RenderingServer` en `MultiMesh` separados por fosa, textura y material. Veinte mil granos equivalentes ocupan un solo lote de renderizado y añaden cero nodos de partícula al árbol de escenas. Los pedruscos conservan únicamente sus grietas como nodos escasos e interactivos.
+
+Las alturas, superficies, cargas y pedruscos se indexan por fosa y columna. Colocar o consultar una bola no recorre el montón completo; el apelmazado construye una cuadrícula local y solo compara celdas vecinas. Todas las caídas y vuelos manuales comparten un único actualizador, sin un `Tween` por partícula. El tren reclama y deposita cargas masivas por lotes y el guardado agrupa secuencias equivalentes dentro de cada columna.
+
+La prueba de regresión fija veinte mil partículas individuales como carga de referencia: exige cero nodos de polvo, un único lote para una textura común, búsqueda espacial acotada, transporte sin borrado cuadrático y un guardado compacto inferior a 500 KB.
 
 ## Pared y colocón de Joe
 

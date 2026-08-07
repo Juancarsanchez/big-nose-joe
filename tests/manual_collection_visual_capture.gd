@@ -25,8 +25,8 @@ func _capture() -> void:
 	game._restack_pile("right")
 	game._update_ui()
 	for launch in range(5):
-		var surface: Array[Sprite2D] = game._top_pieces("right")
-		var piece := surface[(launch * 3) % surface.size()]
+		var surface: Array = game._top_pieces("right")
+		var piece = surface[(launch * 3) % surface.size()]
 		game._manual_collect_at(Vector2(piece.position.x, game._ground_y() - 2.0))
 		await create_timer(0.055).timeout
 	await create_timer(0.18).timeout

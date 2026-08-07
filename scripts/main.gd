@@ -2,8 +2,10 @@ extends Control
 
 const SAVE := "user://big_nose_joe.save"
 const SETTINGS := "user://big_nose_joe_settings.cfg"
-const SAVE_VERSION := 15
+const SAVE_VERSION := 16
 const ProgressionData = preload("res://scripts/progression_data.gd")
+const PilePieceData = preload("res://scripts/pile_piece.gd")
+const PileBatchRenderer = preload("res://scripts/pile_renderer.gd")
 const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
 const PHASE_SHORT_NAMES := ["DESAYUNO", "ASPIRADO", "ADULTERADA", "SPRAY", "COLAPSO"]
@@ -200,8 +202,18 @@ var active_side := "right"
 var levels := _empty_levels()
 var buttons := {}
 var phase_debug_buttons := {}
-var loose_chunks: Array[Sprite2D] = []
+var loose_chunks: Array[PilePiece] = []
 var fallen_wall_chunks: Array[Sprite2D] = []
+var pile_renderer: PileRenderer
+var particle_motions: Array[Dictionary] = []
+var pile_columns := {"left":{}, "right":{}}
+var pile_heights := {"left":{}, "right":{}}
+var reserved_heights := {"left":{}, "right":{}}
+var pile_load_cache := {"left":0.0, "right":0.0}
+var rock_count_cache := {"left":0, "right":0}
+var untreated_rock_count_cache := {"left":0, "right":0}
+var kind_count_cache := {"grain":0, "rock":0, "impurity":0, "bacteria":0}
+var manual_reserved_units := 0.0
 var compaction_steps := {"left":0, "right":0}
 var compaction_announced := false
 var manual_mining_click_times: Array[float] = []
@@ -268,6 +280,11 @@ var music_volume := 0.75
 var sfx_volume := 0.85
 
 func _ready() -> void:
+	pile_renderer = PileBatchRenderer.new()
+	pile_renderer.name = "PileRenderer"
+	add_child(pile_renderer)
+	pile_renderer.setup(chunks)
+	_discard_obsolete_save()
 	_setup_audio()
 	_start_music()
 	overdose_dialog = ConfirmationDialog.new()
@@ -448,6 +465,7 @@ func _finish_layout() -> void:
 	_update_pressure_visuals()
 
 func _process(delta: float) -> void:
+	_update_particle_motions(delta)
 	if not playing:
 		return
 	_update_camera(delta)
@@ -543,19 +561,21 @@ func _storage_claim_space() -> float:
 	return maxf(0.0, _storage_space() - _reserved_storage())
 
 func _manual_reserved_storage() -> float:
-	var reserved := 0.0
-	for piece in loose_chunks:
-		if not is_instance_valid(piece) or not bool(piece.get_meta("manual_flying", false)):
-			continue
-		var kind: String = piece.get_meta("kind", "grain")
-		if kind == "impurity":
-			continue
-		var value := float(piece.get_meta("value", 1.0))
-		reserved += value * (_box_yield_multiplier() if kind == "grain" else 1.0)
-	return reserved
+	return manual_reserved_units
 
 func _manual_claim_space() -> float:
 	return maxf(0.0, _storage_space() - _manual_reserved_storage())
+
+func _reserve_manual_piece(piece: PilePiece, stored_value: float) -> void:
+	if piece.get_meta("kind", "grain") == "impurity":
+		return
+	piece.set_meta("manual_reservation", stored_value)
+	manual_reserved_units += stored_value
+
+func _release_manual_reservation(piece: PilePiece) -> void:
+	var reserved := float(piece.get_meta("manual_reservation", 0.0))
+	manual_reserved_units = maxf(0.0, manual_reserved_units - reserved)
+	piece.set_meta("manual_reservation", 0.0)
 
 func _store_cocaine(amount: float) -> float:
 	var accepted := minf(maxf(0.0, amount), _storage_space())
@@ -604,9 +624,8 @@ func _update_box_jam(delta: float) -> void:
 
 func _pile_access_point(side: String) -> Vector2:
 	var rightmost_column := 2
-	for piece in loose_chunks:
-		if _piece_is_in_pile(piece, side):
-			rightmost_column = maxi(rightmost_column, int(piece.get_meta("column", 0)))
+	for column in (pile_columns[side] as Dictionary).keys():
+		rightmost_column = maxi(rightmost_column, int(column))
 	var edge := maxf(34.0, float(rightmost_column) * GRAIN_SPACING + 22.0)
 	return Vector2(_pile_center(side) + edge, _ground_y() - 14.0)
 
@@ -618,7 +637,7 @@ func _set_pawn_carrying(pawn: Sprite2D, carrying: bool) -> void:
 	if handler:
 		var holds_bacteria := false
 		for piece_value in pawn.get_meta("cargo", []):
-			var piece := piece_value as Sprite2D
+			var piece := piece_value as PilePiece
 			if is_instance_valid(piece) and piece.get_meta("kind", "grain") == "bacteria":
 				holds_bacteria = true
 				break
@@ -739,19 +758,42 @@ func _spawn_special_piece(kind: String, side: String, material: String = "") -> 
 	var piece := _create_piece(kind, side, value, 0, _choose_landing_column(side), scale, material)
 	_drop_piece(piece, Vector2(_mine_x(side) + randf_range(-18.0, 18.0), _ground_y() - randf_range(210.0, 350.0)))
 
-func _drop_piece(piece: Sprite2D, origin: Vector2) -> void:
+func _drop_piece(piece: PilePiece, origin: Vector2) -> void:
+	_index_remove_piece(piece)
 	piece.position = origin + Vector2(randf_range(-10.0, 10.0), 0.0)
 	piece.rotation = randf_range(-0.18, 0.18)
 	piece.set_meta("landed", false)
 	var landing := _landing_position(piece)
+	_index_add_piece(piece)
 	var duration := randf_range(0.82, 1.18)
-	var tween := create_tween().set_parallel()
-	tween.tween_property(piece, "position", landing, duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tween.tween_property(piece, "rotation", piece.rotation + randf_range(-0.42, 0.42), duration)
-	tween.chain().tween_callback(_mark_landed.bind(piece))
+	particle_motions.append({"kind":"drop", "piece":piece, "elapsed":0.0, "duration":duration, "start":piece.position, "target":landing, "start_rotation":piece.rotation, "target_rotation":piece.rotation + randf_range(-0.42, 0.42)})
 
-func _create_piece(kind: String, side: String, value: float, hardness: int, column: int, piece_scale: float, material: String = "", source: String = "player") -> Sprite2D:
-	var piece := Sprite2D.new()
+func _update_particle_motions(delta: float) -> void:
+	for index in range(particle_motions.size() - 1, -1, -1):
+		var motion: Dictionary = particle_motions[index]
+		var piece := motion.piece as PilePiece
+		if not piece or not piece.alive:
+			particle_motions.remove_at(index)
+			continue
+		motion.elapsed = float(motion.elapsed) + delta
+		var progress := clampf(float(motion.elapsed) / maxf(0.001, float(motion.duration)), 0.0, 1.0)
+		if motion.kind == "drop":
+			var eased := progress * progress
+			piece.position = (motion.start as Vector2).lerp(motion.target as Vector2, eased)
+			piece.rotation = lerpf(float(motion.start_rotation), float(motion.target_rotation), progress)
+		else:
+			_animate_manual_flight(smoothstep(0.0, 1.0, progress), piece, motion.start, motion.control, motion.target)
+		if progress < 1.0:
+			continue
+		particle_motions.remove_at(index)
+		if motion.kind == "drop":
+			_mark_landed(piece)
+		else:
+			_finish_manual_delivery(piece)
+
+func _create_piece(kind: String, side: String, value: float, hardness: int, column: int, piece_scale: float, material: String = "", source: String = "player") -> PilePiece:
+	var piece := PilePieceData.new() as PilePiece
+	piece.renderer = pile_renderer
 	piece.texture = BACTERIA_TEXTURE if kind == "bacteria" else GRAIN_TEXTURE
 	if kind == "grain" and source == "player":
 		piece.material = PLAYER_GRAIN_MATERIAL
@@ -783,37 +825,127 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 		if material == "serrín": piece.modulate = Color("db8730")
 		elif material == "yeso": piece.modulate = Color("8ea8c4")
 		else: piece.modulate = Color("e5c744")
-	chunks.add_child(piece)
 	loose_chunks.append(piece)
 	piece.position = _landing_position(piece)
+	_index_add_piece(piece)
+	pile_renderer.add_piece(piece)
 	return piece
 
 func _mark_landed(piece: Variant) -> void:
 	if not is_instance_valid(piece): return
-	var sprite := piece as Sprite2D
+	var sprite := piece as PilePiece
 	if not sprite: return
+	_index_remove_piece(sprite)
 	sprite.set_meta("landed", true)
+	_index_add_piece(sprite)
 	var side: String = sprite.get_meta("side", "right")
 	_restack_pile(side)
 	compaction_steps[side] = int(compaction_steps.get(side, 0)) + 1
 	_maybe_compact(side)
 
-func _piece_is_in_pile(piece: Sprite2D, side: String = "") -> bool:
-	return is_instance_valid(piece) and not bool(piece.get_meta("carried", false)) and (side.is_empty() or piece.get_meta("side", "right") == side)
+func _piece_is_in_pile(piece: PilePiece, side: String = "") -> bool:
+	return is_instance_valid(piece) and piece.alive and not bool(piece.get_meta("carried", false)) and (side.is_empty() or piece.get_meta("side", "right") == side)
 
-func _column_height(side: String, column: int, ignore: Sprite2D = null) -> float:
-	var height := 0.0
-	for piece in loose_chunks:
-		if _piece_is_in_pile(piece, side) and bool(piece.get_meta("landed", false)) and piece != ignore and int(piece.get_meta("column", 0)) == column:
-			height += float(piece.get_meta("height", GRAIN_HEIGHT))
-	return height
+func _reset_pile_index() -> void:
+	pile_columns = {"left":{}, "right":{}}
+	pile_heights = {"left":{}, "right":{}}
+	reserved_heights = {"left":{}, "right":{}}
+	pile_load_cache = {"left":0.0, "right":0.0}
+	rock_count_cache = {"left":0, "right":0}
+	untreated_rock_count_cache = {"left":0, "right":0}
+	kind_count_cache = {"grain":0, "rock":0, "impurity":0, "bacteria":0}
 
-func _reserved_column_height(side: String, column: int, ignore: Sprite2D = null) -> float:
-	var height := 0.0
+func _index_add_piece(piece: PilePiece) -> void:
+	if not _piece_is_in_pile(piece):
+		return
+	var side: String = piece.get_meta("side", "right")
+	var column := int(piece.get_meta("column", 0))
+	var height := float(piece.get_meta("height", GRAIN_HEIGHT))
+	pile_load_cache[side] = float(pile_load_cache[side]) + float(piece.get_meta("value", 1.0))
+	var kind := str(piece.get_meta("kind", "grain"))
+	kind_count_cache[kind] = int(kind_count_cache.get(kind, 0)) + 1
+	if kind == "rock":
+		rock_count_cache[side] = int(rock_count_cache[side]) + 1
+		if int(piece.get_meta("hardness", 0)) > 0:
+			untreated_rock_count_cache[side] = int(untreated_rock_count_cache[side]) + 1
+	if bool(piece.get_meta("landed", false)):
+		var side_columns: Dictionary = pile_columns[side]
+		if not side_columns.has(column):
+			side_columns[column] = []
+		(side_columns[column] as Array).append(piece)
+		var heights: Dictionary = pile_heights[side]
+		heights[column] = float(heights.get(column, 0.0)) + height
+	else:
+		var reserved: Dictionary = reserved_heights[side]
+		reserved[column] = float(reserved.get(column, 0.0)) + height
+
+func _index_remove_piece(piece: PilePiece) -> void:
+	if not is_instance_valid(piece) or not piece.alive or bool(piece.get_meta("carried", false)):
+		return
+	var side: String = piece.get_meta("side", "right")
+	var column := int(piece.get_meta("column", 0))
+	var height := float(piece.get_meta("height", GRAIN_HEIGHT))
+	pile_load_cache[side] = maxf(0.0, float(pile_load_cache[side]) - float(piece.get_meta("value", 1.0)))
+	var kind := str(piece.get_meta("kind", "grain"))
+	kind_count_cache[kind] = maxi(0, int(kind_count_cache.get(kind, 0)) - 1)
+	if kind == "rock":
+		rock_count_cache[side] = maxi(0, int(rock_count_cache[side]) - 1)
+		if int(piece.get_meta("hardness", 0)) > 0:
+			untreated_rock_count_cache[side] = maxi(0, int(untreated_rock_count_cache[side]) - 1)
+	if bool(piece.get_meta("landed", false)):
+		var side_columns: Dictionary = pile_columns[side]
+		if side_columns.has(column):
+			(side_columns[column] as Array).erase(piece)
+			if (side_columns[column] as Array).is_empty():
+				side_columns.erase(column)
+		var heights: Dictionary = pile_heights[side]
+		heights[column] = maxf(0.0, float(heights.get(column, 0.0)) - height)
+	else:
+		var reserved: Dictionary = reserved_heights[side]
+		reserved[column] = maxf(0.0, float(reserved.get(column, 0.0)) - height)
+
+func _index_move_column(piece: PilePiece, target_column: int) -> void:
+	_index_remove_piece(piece)
+	piece.set_meta("column", target_column)
+	_index_add_piece(piece)
+
+func _rebuild_pile_index(side_filter: String = "") -> void:
+	if side_filter.is_empty():
+		_reset_pile_index()
+	else:
+		pile_columns[side_filter] = {}
+		pile_heights[side_filter] = {}
+		reserved_heights[side_filter] = {}
+		pile_load_cache[side_filter] = 0.0
+		rock_count_cache[side_filter] = 0
+		untreated_rock_count_cache[side_filter] = 0
+		kind_count_cache = {"grain":0, "rock":0, "impurity":0, "bacteria":0}
+		for other_side in ["left", "right"]:
+			if other_side == side_filter:
+				continue
+			for stack_value in (pile_columns[other_side] as Dictionary).values():
+				for piece_value in stack_value:
+					var existing := piece_value as PilePiece
+					var existing_kind := str(existing.get_meta("kind", "grain"))
+					kind_count_cache[existing_kind] = int(kind_count_cache.get(existing_kind, 0)) + 1
 	for piece in loose_chunks:
-		if _piece_is_in_pile(piece, side) and not bool(piece.get_meta("landed", false)) and piece != ignore and int(piece.get_meta("column", 0)) == column:
-			height += float(piece.get_meta("height", GRAIN_HEIGHT))
-	return height
+		if not is_instance_valid(piece) or not piece.alive:
+			continue
+		if side_filter.is_empty() or piece.get_meta("side", "right") == side_filter:
+			_index_add_piece(piece)
+
+func _column_height(side: String, column: int, ignore: PilePiece = null) -> float:
+	var height := float((pile_heights[side] as Dictionary).get(column, 0.0))
+	var stack: Array = (pile_columns[side] as Dictionary).get(column, [])
+	if ignore and stack.has(ignore):
+		height -= float(ignore.get_meta("height", GRAIN_HEIGHT))
+	return maxf(0.0, height)
+
+func _reserved_column_height(side: String, column: int, ignore: PilePiece = null) -> float:
+	var height := float((reserved_heights[side] as Dictionary).get(column, 0.0))
+	if ignore and not bool(ignore.get_meta("landed", false)) and int(ignore.get_meta("column", 0)) == column and height > 0.0:
+		height -= float(ignore.get_meta("height", GRAIN_HEIGHT))
+	return maxf(0.0, height)
 
 func _terrain_height(side: String, column: int) -> float:
 	return _column_height(side, column) + _reserved_column_height(side, column)
@@ -828,7 +960,7 @@ func _constrain_column(side: String, column: int) -> int:
 func _column_bounds(side: String, radius: int) -> Vector2i:
 	return Vector2i(-radius, LEFT_WALL_COLUMN) if side == "left" else Vector2i(RIGHT_WALL_COLUMN, radius)
 
-func _landing_position(piece: Sprite2D) -> Vector2:
+func _landing_position(piece: PilePiece) -> Vector2:
 	var side: String = piece.get_meta("side", "right")
 	var column: int = int(piece.get_meta("column", 0))
 	var piece_height: float = float(piece.get_meta("height", GRAIN_HEIGHT))
@@ -854,13 +986,9 @@ func _choose_landing_column(side: String, preferred_column: int = 999) -> int:
 		column = clampi(column, bounds.x, bounds.y)
 	return column
 
-func _movable_top_piece(side: String, column: int) -> Sprite2D:
-	var top: Sprite2D = null
-	for piece in loose_chunks:
-		if not _piece_is_in_pile(piece, side) or not bool(piece.get_meta("landed", false)) or int(piece.get_meta("column", 0)) != column:
-			continue
-		if not top or piece.position.y < top.position.y:
-			top = piece
+func _movable_top_piece(side: String, column: int) -> PilePiece:
+	var stack: Array = (pile_columns[side] as Dictionary).get(column, [])
+	var top: PilePiece = stack.back() if not stack.is_empty() else null
 	if top and top.get_meta("kind", "grain") == "rock":
 		return null
 	return top
@@ -888,26 +1016,24 @@ func _settle_surface(side: String, max_moves: int) -> void:
 		var grain := _movable_top_piece(side, source_column)
 		if not grain:
 			break
-		grain.set_meta("column", target_column)
+		_index_move_column(grain, target_column)
 
-func _top_pieces(side: String) -> Array[Sprite2D]:
-	var by_column := {}
-	for piece in loose_chunks:
-		if not _piece_is_in_pile(piece, side) or not bool(piece.get_meta("landed", false)): continue
-		var column: int = int(piece.get_meta("column", 0))
-		if not by_column.has(column) or piece.position.y < (by_column[column] as Sprite2D).position.y:
-			by_column[column] = piece
-	var result: Array[Sprite2D] = []
-	for piece in by_column.values():
-		result.append(piece)
-	result.sort_custom(func(a: Sprite2D, b: Sprite2D) -> bool: return a.position.y < b.position.y)
+func _top_pieces(side: String) -> Array[PilePiece]:
+	var result: Array[PilePiece] = []
+	for stack_value in (pile_columns[side] as Dictionary).values():
+		var stack: Array = stack_value
+		if not stack.is_empty():
+			var piece := stack.back() as PilePiece
+			if _piece_is_in_pile(piece, side):
+				result.append(piece)
+	result.sort_custom(func(a: PilePiece, b: PilePiece) -> bool: return a.position.y < b.position.y)
 	return result
 
 func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 	var cargo: Array = []
 	var remaining_storage := _storage_claim_space()
 	while cargo.size() < capacity:
-		var collectable: Array[Sprite2D] = []
+		var collectable: Array[PilePiece] = []
 		var handler := bool(pawn.get_meta("handler", false))
 		for candidate in _top_pieces(side):
 			var kind: String = candidate.get_meta("kind", "grain")
@@ -918,16 +1044,17 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 			if kind != "impurity" and stored_value > remaining_storage + 0.001: continue
 			collectable.append(candidate)
 		if collectable.is_empty(): break
-		var preferred: Array[Sprite2D] = []
+		var preferred: Array[PilePiece] = []
 		if handler:
-			preferred = collectable.filter(func(item: Sprite2D) -> bool: return item.get_meta("kind", "grain") == "bacteria")
+			preferred = collectable.filter(func(item: PilePiece) -> bool: return item.get_meta("kind", "grain") == "bacteria")
 		elif bool(pawn.get_meta("detector", false)):
-			preferred = collectable.filter(func(item: Sprite2D) -> bool: return item.get_meta("kind", "grain") == "impurity")
+			preferred = collectable.filter(func(item: PilePiece) -> bool: return item.get_meta("kind", "grain") == "impurity")
 		elif bool(pawn.get_meta("specialist", false)):
-			preferred = collectable.filter(func(item: Sprite2D) -> bool: return item.get_meta("kind", "grain") == "rock")
+			preferred = collectable.filter(func(item: PilePiece) -> bool: return item.get_meta("kind", "grain") == "rock")
 		var source := preferred if not preferred.is_empty() else collectable
 		var piece := source[randi_range(0, mini(6, source.size() - 1))]
 		var piece_kind: String = piece.get_meta("kind", "grain")
+		_index_remove_piece(piece)
 		piece.set_meta("carried", true)
 		if piece_kind != "impurity":
 			remaining_storage -= float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if piece_kind == "grain" else 1.0)
@@ -942,11 +1069,11 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 	_restack_pile(side)
 	return cargo
 
-func _surface_piece_at(world_pos: Vector2) -> Sprite2D:
+func _surface_piece_at(world_pos: Vector2) -> PilePiece:
 	var side := "left" if world_pos.x < SEPTUM_X else "right"
 	if side == "left" and not septum_open:
 		return null
-	var nearest: Sprite2D = null
+	var nearest: PilePiece = null
 	var nearest_x := INF
 	for piece in _top_pieces(side):
 		var visual_height := maxf(6.0, float(piece.get_meta("height", GRAIN_HEIGHT)))
@@ -1038,8 +1165,10 @@ func _manual_collect_at(world_pos: Vector2) -> bool:
 		_float_text("ALMACÃ‰N LLENO", world_pos)
 		return true
 	var side: String = piece.get_meta("side", "right")
+	_index_remove_piece(piece)
 	piece.set_meta("carried", true)
 	piece.set_meta("manual_flying", true)
+	_reserve_manual_piece(piece, stored_value)
 	piece.z_index = 30
 	_settle_surface(side, 3)
 	_restack_pile(side)
@@ -1047,17 +1176,16 @@ func _manual_collect_at(world_pos: Vector2) -> bool:
 	var target := Vector2(_box_x() + 8.0, _ground_y() - 24.0)
 	var control := (start + target) * 0.5 - Vector2(0.0, 85.0 + absf(target.x - start.x) * 0.08)
 	var duration := MANUAL_DELIVERY_BASE_TIME + minf(0.28, start.distance_to(target) / 1500.0)
-	var tween := create_tween()
-	tween.tween_method(_animate_manual_flight.bind(piece, start, control, target), 0.0, 1.0, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tween.tween_callback(_finish_manual_delivery.bind(piece))
+	particle_motions.append({"kind":"manual", "piece":piece, "elapsed":0.0, "duration":duration, "start":start, "control":control, "target":target})
 	return true
 
 func _animate_manual_flight(progress: float, piece: Variant, start: Vector2, control: Vector2, target: Vector2) -> void:
 	if not is_instance_valid(piece):
 		return
-	var sprite := piece as Sprite2D
+	var sprite := piece as PilePiece
 	if not sprite:
 		return
+	_release_manual_reservation(sprite)
 	var inverse := 1.0 - progress
 	sprite.position = start * inverse * inverse + control * 2.0 * inverse * progress + target * progress * progress
 	sprite.rotation += 0.055
@@ -1068,7 +1196,7 @@ func _animate_manual_flight(progress: float, piece: Variant, start: Vector2, con
 func _finish_manual_delivery(piece: Variant) -> void:
 	if not is_instance_valid(piece):
 		return
-	var sprite := piece as Sprite2D
+	var sprite := piece as PilePiece
 	if not sprite:
 		return
 	var kind: String = sprite.get_meta("kind", "grain")
@@ -1087,6 +1215,7 @@ func _finish_manual_delivery(piece: Variant) -> void:
 			sprite.set_meta("manual_flying", false)
 			sprite.visible = true
 			sprite.position = _landing_position(sprite)
+			_index_add_piece(sprite)
 			sprite.scale = Vector2.ONE * float(sprite.get_meta("base_scale", 0.07))
 			_restack_pile(str(sprite.get_meta("side", "right")))
 			_float_text("ALMACÃ‰N LLENO", Vector2(_box_x(), _ground_y() - 22.0))
@@ -1112,13 +1241,13 @@ func _cargo_position(pawn: Sprite2D, index: int, capacity: int) -> Vector2:
 func _update_carried_pieces(pawn: Sprite2D) -> void:
 	var cargo: Array = pawn.get_meta("cargo", [])
 	for index in range(cargo.size()):
-		var piece := cargo[index] as Sprite2D
+		var piece := cargo[index] as PilePiece
 		if is_instance_valid(piece): piece.position = _cargo_position(pawn, index, _transport_capacity())
 
 func _begin_deposit(pawn: Sprite2D) -> void:
 	var cargo: Array = pawn.get_meta("cargo", [])
 	for piece_value in cargo:
-		var piece := piece_value as Sprite2D
+		var piece := piece_value as PilePiece
 		if is_instance_valid(piece): piece.set_meta("deposit_start", piece.position)
 	pawn.set_meta("state", "deposit")
 	pawn.set_meta("timer", 0.0)
@@ -1127,7 +1256,7 @@ func _update_deposit(pawn: Sprite2D, progress: float) -> void:
 	var cargo: Array = pawn.get_meta("cargo", [])
 	var target := Vector2(_box_x() + 8.0, _ground_y() - 24.0)
 	for index in range(cargo.size()):
-		var piece := cargo[index] as Sprite2D
+		var piece := cargo[index] as PilePiece
 		if not is_instance_valid(piece): continue
 		var start: Vector2 = piece.get_meta("deposit_start", piece.position)
 		var delayed := clampf(progress * 1.35 - float(index) * 0.08, 0.0, 1.0)
@@ -1141,7 +1270,7 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 	var previous_contamination := contamination
 	var cargo: Array = pawn.get_meta("cargo", [])
 	for piece_value in cargo:
-		var piece := piece_value as Sprite2D
+		var piece := piece_value as PilePiece
 		if not is_instance_valid(piece): continue
 		var value := float(piece.get_meta("value", 0.0))
 		var kind: String = piece.get_meta("kind", "grain")
@@ -1186,6 +1315,7 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 			piece.visible = true
 			piece.scale = Vector2.ONE * float(piece.get_meta("base_scale", 0.08))
 			piece.position = _landing_position(piece)
+			_index_add_piece(piece)
 	contamination = clampf(contamination + contamination_delta, 0.0, 100.0)
 	if contamination_delta > 0.0:
 		_float_text("LA CAJA SE ENSUCIA", pawn.position - Vector2(0.0, 22.0))
@@ -1225,18 +1355,20 @@ func _update_contamination_warning(previous: float) -> void:
 	else:
 		_show_toast("LA CAJA EMPIEZA A ESTAR PEGAJOSA")
 
-func _top_untreated_rock(side: String) -> Sprite2D:
+func _top_untreated_rock(side: String) -> PilePiece:
 	for piece in _top_pieces(side):
 		if piece.get_meta("kind", "grain") == "rock" and int(piece.get_meta("hardness", 0)) > 0: return piece
 	return null
 
-func _chip_rock(rock: Sprite2D, power: int = 1) -> void:
+func _chip_rock(rock: PilePiece, power: int = 1) -> void:
 	if not is_instance_valid(rock): return
 	var previous_hardness := int(rock.get_meta("hardness", 0))
 	var hardness := maxi(0, previous_hardness - maxi(1, power))
 	rock.set_meta("hardness", hardness)
 	if previous_hardness > 0 and hardness == 0:
 		rocks_opened += 1
+		var side := str(rock.get_meta("side", "right"))
+		untreated_rock_count_cache[side] = maxi(0, int(untreated_rock_count_cache[side]) - 1)
 	var crack := rock.get_node_or_null("Crack") as Line2D
 	if crack:
 		crack.visible = true
@@ -1262,6 +1394,7 @@ func _maybe_compact(side: String) -> void:
 	var value := 0.0
 	for grain in grains:
 		value += float(grain.get_meta("value", 1.0))
+		_index_remove_piece(grain)
 		loose_chunks.erase(grain)
 		grain.queue_free()
 	compaction_steps[side] = 0
@@ -1302,40 +1435,44 @@ func _prune_manual_mining_clicks() -> void:
 	while not manual_mining_click_times.is_empty() and manual_mining_click_times[0] < cutoff:
 		manual_mining_click_times.pop_front()
 
-func _dense_grain_cluster(side: String) -> Array[Sprite2D]:
-	var grains: Array[Sprite2D] = []
-	for piece in loose_chunks:
-		if _piece_is_in_pile(piece, side) and bool(piece.get_meta("landed", false)) and piece.get_meta("kind", "grain") == "grain":
-			grains.append(piece)
+func _dense_grain_cluster(side: String) -> Array[PilePiece]:
+	var grains: Array[PilePiece] = []
+	for stack_value in (pile_columns[side] as Dictionary).values():
+		var stack: Array = stack_value
+		for index in range(maxi(0, stack.size() - 4), stack.size()):
+			var piece := stack[index] as PilePiece
+			if piece.get_meta("kind", "grain") == "grain":
+				grains.append(piece)
+	var spatial := {}
+	for grain in grains:
+		var cell := Vector2i(floori(grain.position.x / 22.0), floori(grain.position.y / 22.0))
+		if not spatial.has(cell):
+			spatial[cell] = []
+		(spatial[cell] as Array).append(grain)
 	for center in grains:
-		var neighbours: Array[Sprite2D] = []
-		for candidate in grains:
-			if candidate != center and center.position.distance_to(candidate.position) <= 22.0:
-				neighbours.append(candidate)
+		var neighbours: Array[PilePiece] = []
+		var center_cell := Vector2i(floori(center.position.x / 22.0), floori(center.position.y / 22.0))
+		for offset_y in range(-1, 2):
+			for offset_x in range(-1, 2):
+				for candidate_value in spatial.get(center_cell + Vector2i(offset_x, offset_y), []):
+					var candidate := candidate_value as PilePiece
+					if candidate != center and center.position.distance_squared_to(candidate.position) <= 484.0:
+						neighbours.append(candidate)
 		if neighbours.size() >= COMPACTION_GRAINS - 1:
-			neighbours.sort_custom(func(a: Sprite2D, b: Sprite2D) -> bool: return center.position.distance_squared_to(a.position) < center.position.distance_squared_to(b.position))
-			var cluster: Array[Sprite2D] = [center]
+			neighbours.sort_custom(func(a: PilePiece, b: PilePiece) -> bool: return center.position.distance_squared_to(a.position) < center.position.distance_squared_to(b.position))
+			var cluster: Array[PilePiece] = [center]
 			cluster.append_array(neighbours.slice(0, COMPACTION_GRAINS - 1))
 			return cluster
 	return []
 
 func _pile_load(side: String) -> float:
-	var total := 0.0
-	for piece in loose_chunks:
-		if _piece_is_in_pile(piece, side): total += float(piece.get_meta("value", 1.0))
-	return total
+	return float(pile_load_cache.get(side, 0.0))
 
 func _untreated_rock_count(side: String) -> int:
-	var count := 0
-	for piece in loose_chunks:
-		if _piece_is_in_pile(piece, side) and piece.get_meta("kind", "grain") == "rock" and int(piece.get_meta("hardness", 0)) > 0: count += 1
-	return count
+	return int(untreated_rock_count_cache.get(side, 0))
 
 func _rock_count(side: String) -> int:
-	var count := 0
-	for piece in loose_chunks:
-		if _piece_is_in_pile(piece, side) and piece.get_meta("kind", "grain") == "rock": count += 1
-	return count
+	return int(rock_count_cache.get(side, 0))
 
 func _click_wall(side: String) -> void:
 	if (side == "left" and not septum_open) or _wall_hp(side) <= 0.0: return
@@ -1548,6 +1685,7 @@ func _rebuild_pawns() -> void:
 			piece.visible = true
 			piece.position = _landing_position(piece)
 			piece.scale = Vector2.ONE * float(piece.get_meta("base_scale", 0.07))
+	_rebuild_pile_index()
 	_restack_pile()
 	var count: int = mini(2 + int(levels.pawn), 18)
 	var handler_count := mini(int(levels.handlers), count)
@@ -1620,10 +1758,8 @@ func _wall_free_x(side: String) -> float:
 
 func _pile_outer_x(side: String) -> float:
 	var outer_column := -2 if side == "left" else 2
-	for piece in loose_chunks:
-		if not _piece_is_in_pile(piece, side):
-			continue
-		var column := int(piece.get_meta("column", 0))
+	for column_value in (pile_columns[side] as Dictionary).keys():
+		var column := int(column_value)
 		outer_column = mini(outer_column, column) if side == "left" else maxi(outer_column, column)
 	var direction := -1.0 if side == "left" else 1.0
 	return _pile_center(side) + float(outer_column) * GRAIN_SPACING + direction * 22.0
@@ -2095,37 +2231,30 @@ func _debug_set_phase(next_phase: int) -> void:
 	_save()
 
 func _remove_future_crisis_pieces() -> void:
+	var removed: Array[PilePiece] = []
 	for piece in loose_chunks.duplicate():
 		if not is_instance_valid(piece): continue
 		var kind: String = piece.get_meta("kind", "grain")
 		var remove := (current_phase < 2 and kind == "rock") or (current_phase < 3 and kind == "impurity") or (current_phase < 5 and kind == "bacteria")
 		if remove:
-			loose_chunks.erase(piece)
-			piece.queue_free()
+			removed.append(piece)
+	_erase_loose_pieces(removed)
 	_restack_pile()
 
 func _restack_pile(side_filter: String = "") -> void:
-	var columns := {}
-	for piece in loose_chunks:
-		if not is_instance_valid(piece) or bool(piece.get_meta("carried", false)) or not bool(piece.get_meta("landed", false)): continue
-		var side: String = piece.get_meta("side", "right")
-		if not side_filter.is_empty() and side != side_filter: continue
-		var column := _constrain_column(side, int(piece.get_meta("column", 0)))
-		piece.set_meta("column", column)
-		var key := "%s:%d" % [side, column]
-		if not columns.has(key): columns[key] = []
-		(columns[key] as Array).append(piece)
-	for stack_value in columns.values():
-		var stack: Array = stack_value
-		stack.sort_custom(func(a: Sprite2D, b: Sprite2D) -> bool: return a.position.y > b.position.y)
-		var accumulated := 0.0
-		for piece_value in stack:
-			var piece := piece_value as Sprite2D
-			var height := float(piece.get_meta("height", GRAIN_HEIGHT))
-			var side: String = piece.get_meta("side", "right")
-			var column := int(piece.get_meta("column", 0))
-			piece.position = Vector2(_pile_center(side) + float(column) * GRAIN_SPACING + float(piece.get_meta("x_jitter", 0.0)), _ground_y() - 5.0 - accumulated - height * 0.5)
-			accumulated += height
+	var sides := [side_filter] if not side_filter.is_empty() else ["left", "right"]
+	for side_value in sides:
+		var side := str(side_value)
+		for column_value in (pile_columns[side] as Dictionary).keys():
+			var column := int(column_value)
+			var stack: Array = (pile_columns[side] as Dictionary)[column]
+			stack.sort_custom(func(a: PilePiece, b: PilePiece) -> bool: return a.position.y > b.position.y)
+			var accumulated := 0.0
+			for piece_value in stack:
+				var piece := piece_value as PilePiece
+				var height := float(piece.get_meta("height", GRAIN_HEIGHT))
+				piece.position = Vector2(_pile_center(side) + float(column) * GRAIN_SPACING + float(piece.get_meta("x_jitter", 0.0)), _ground_y() - 5.0 - accumulated - height * 0.5)
+				accumulated += height
 
 func _update_another_line(delta: float) -> void:
 	if another_line_wave > 0:
@@ -2590,11 +2719,7 @@ func _spawn_blood_drop() -> void:
 	tween.chain().tween_callback(drop.queue_free)
 
 func _kind_count(kind: String) -> int:
-	var count := 0
-	for piece in loose_chunks:
-		if _piece_is_in_pile(piece) and piece.get_meta("kind", "grain") == kind:
-			count += 1
-	return count
+	return int(kind_count_cache.get(kind, 0))
 
 func _check_phase_progress() -> void:
 	if phase_event_pending or current_phase >= PHASES.size(): return
@@ -2896,7 +3021,7 @@ func _claim_transport_cocaine(side: String, capacity: float, take_all: bool) -> 
 	var remaining := minf(capacity, _storage_claim_space())
 	var candidates: Array = loose_chunks.duplicate() if take_all else _top_pieces(side)
 	for value in candidates:
-		var piece := value as Sprite2D
+		var piece := value as PilePiece
 		if not _piece_is_in_pile(piece, side) or piece.get_meta("kind", "grain") != "grain": continue
 		var piece_value := float(piece.get_meta("value", 1.0))
 		if piece_value > remaining + 0.001: continue
@@ -2905,30 +3030,39 @@ func _claim_transport_cocaine(side: String, capacity: float, take_all: bool) -> 
 		cargo.append(piece)
 		remaining -= piece_value
 		if remaining <= 0.001: break
+	_rebuild_pile_index(side)
 	_settle_surface(side, 5)
 	_restack_pile(side)
 	return cargo
 
 func _deliver_transport_cargo(root: Node2D, at: Vector2) -> void:
 	var delivered := 0.0
+	var clean_progress := 0.0
+	var available_storage := _manual_claim_space()
 	var side: String = root.get_meta("side", active_side)
+	var consumed_pieces: Array[PilePiece] = []
 	for value in root.get_meta("cargo", []):
-		var piece := value as Sprite2D
+		var piece := value as PilePiece
 		if not is_instance_valid(piece): continue
 		var piece_value := float(piece.get_meta("value", 1.0))
 		var requested := piece_value * _box_yield_multiplier()
-		if requested <= _manual_claim_space() + 0.001:
-			var accepted := _store_automatic_cocaine(requested)
-			delivered += accepted
-			var progress_value := piece_value * accepted / maxf(0.001, requested)
-			phase_work += progress_value
-			_improve_joe(progress_value)
-			loose_chunks.erase(piece)
-			piece.queue_free()
+		if requested <= available_storage + 0.001:
+			delivered += requested
+			available_storage -= requested
+			clean_progress += piece_value
+			consumed_pieces.append(piece)
 		else:
 			piece.set_meta("carried", false)
 			piece.visible = true
 			piece.position = _landing_position(piece)
+	if consumed_pieces.is_empty():
+		_rebuild_pile_index(side)
+	else:
+		_erase_loose_pieces(consumed_pieces)
+	if delivered > 0.0:
+		cells += delivered
+		phase_work += clean_progress
+		_improve_joe(clean_progress)
 	root.set_meta("cargo", [])
 	if delivered > 0.0:
 		var title := "EXPRESO" if root.get_meta("transport_kind", "") == "train" else ("MUGIDÓFILO" if root.get_meta("transport_kind", "") == "ox" else "CARRITO")
@@ -2939,11 +3073,27 @@ func _deliver_transport_cargo(root: Node2D, at: Vector2) -> void:
 
 func _release_transport_cargo(root: Node) -> void:
 	for value in root.get_meta("cargo", []):
-		var piece := value as Sprite2D
+		var piece := value as PilePiece
 		if not is_instance_valid(piece): continue
 		piece.set_meta("carried", false)
 		piece.visible = true
 		piece.position = _landing_position(piece)
+	_rebuild_pile_index()
+
+func _erase_loose_pieces(pieces: Array[PilePiece]) -> void:
+	if pieces.is_empty():
+		return
+	var removed := {}
+	for piece in pieces:
+		if is_instance_valid(piece):
+			removed[piece.get_instance_id()] = true
+			piece.queue_free()
+	var survivors: Array[PilePiece] = []
+	for piece in loose_chunks:
+		if is_instance_valid(piece) and not removed.has(piece.get_instance_id()):
+			survivors.append(piece)
+	loose_chunks = survivors
+	_rebuild_pile_index()
 
 func _update_train(root: Node2D, delta: float) -> void:
 	if box_jammed: return
@@ -3331,11 +3481,30 @@ func _number(value: float) -> String:
 	if index == 0 and value > 0.0 and value < 10.0 and not is_equal_approx(value, floor(value)): return "%.1f" % value
 	return ("%.1f%s" % [value, units[index]]) if index else ("%d" % floor(value))
 
-func _serialize_pile() -> Array:
-	var data: Array = []
+func _serialize_pile_compact() -> Array:
+	var columns := {}
 	for piece in loose_chunks:
-		if not is_instance_valid(piece): continue
-		data.append({"kind":piece.get_meta("kind", "grain"), "material":piece.get_meta("material", ""), "source":piece.get_meta("source", "player"), "side":piece.get_meta("side", "right"), "value":float(piece.get_meta("value", 1.0)), "hardness":int(piece.get_meta("hardness", 0)), "max_hardness":int(piece.get_meta("max_hardness", 0)), "column":int(piece.get_meta("column", 0)), "scale":float(piece.get_meta("base_scale", 0.07)), "x_jitter":float(piece.get_meta("x_jitter", 0.0))})
+		if not is_instance_valid(piece) or not piece.alive:
+			continue
+		var key := "%s:%d" % [piece.get_meta("side", "right"), int(piece.get_meta("column", 0))]
+		if not columns.has(key):
+			columns[key] = []
+		(columns[key] as Array).append(piece)
+	var data: Array = []
+	for pieces_value in columns.values():
+		var pieces: Array = pieces_value
+		pieces.sort_custom(func(a: PilePiece, b: PilePiece) -> bool: return a.position.y > b.position.y)
+		var first := pieces[0] as PilePiece
+		var runs: Array = []
+		for piece_value in pieces:
+			var piece := piece_value as PilePiece
+			var signature := [str(piece.get_meta("kind", "grain")), str(piece.get_meta("material", "")), str(piece.get_meta("source", "player")), float(piece.get_meta("value", 1.0)), int(piece.get_meta("hardness", 0)), int(piece.get_meta("max_hardness", 0))]
+			if not runs.is_empty() and (runs.back() as Array).slice(0, 6) == signature:
+				(runs.back() as Array)[6] = int((runs.back() as Array)[6]) + 1
+			else:
+				signature.append(1)
+				runs.append(signature)
+		data.append([str(first.get_meta("side", "right")), int(first.get_meta("column", 0)), runs])
 	return data
 
 func _serialize_fallen_wall_chunks() -> Array:
@@ -3346,9 +3515,12 @@ func _serialize_fallen_wall_chunks() -> Array:
 	return data
 
 func _clear_pile() -> void:
+	particle_motions.clear()
+	manual_reserved_units = 0.0
 	for piece in loose_chunks:
 		if is_instance_valid(piece): piece.queue_free()
 	loose_chunks.clear()
+	_reset_pile_index()
 
 func _clear_fallen_wall_chunks() -> void:
 	for chunk in fallen_wall_chunks:
@@ -3375,23 +3547,31 @@ func _restore_fallen_wall_chunks(data: Variant) -> void:
 			chunk.set_meta("mass", mass)
 			chunk.set_meta("max_mass", maxf(mass, float(entry.get("max_mass", WALL_CHUNK_MASS))))
 
-func _restore_pile(data: Variant) -> void:
+func _restore_pile_compact(data: Variant) -> void:
 	_clear_pile()
-	if typeof(data) != TYPE_ARRAY: return
-	for entry_value in data:
-		if typeof(entry_value) != TYPE_DICTIONARY: continue
-		var entry: Dictionary = entry_value
-		var kind := str(entry.get("kind", "grain"))
-		if kind == "smart_clump": kind = "grain"
-		var hardness := int(entry.get("hardness", 0))
-		var piece := _create_piece(kind, str(entry.get("side", "right")), float(entry.get("value", 1.0)), int(entry.get("max_hardness", hardness)), int(entry.get("column", 0)), float(entry.get("scale", 0.18 if kind == "rock" else 0.07)), str(entry.get("material", "")), str(entry.get("source", "player")))
-		piece.set_meta("hardness", hardness)
-		piece.set_meta("x_jitter", float(entry.get("x_jitter", 0.0)))
-		piece.position = _landing_position(piece)
-		if kind == "rock" and hardness == 0:
-			piece.modulate = Color("eef4e7")
-			var crack := piece.get_node_or_null("Crack") as Line2D
-			if crack: crack.visible = true
+	if typeof(data) != TYPE_ARRAY:
+		return
+	for column_value in data:
+		if typeof(column_value) != TYPE_ARRAY or (column_value as Array).size() < 3:
+			continue
+		var column_data: Array = column_value
+		var side := str(column_data[0])
+		var column := int(column_data[1])
+		for run_value in column_data[2]:
+			if typeof(run_value) != TYPE_ARRAY or (run_value as Array).size() < 7:
+				continue
+			var run: Array = run_value
+			var kind := str(run[0])
+			var hardness := int(run[4])
+			var scale := 0.18 if kind == "rock" else (0.084 if kind == "impurity" else (0.078 if kind == "bacteria" else 0.072))
+			for amount in range(maxi(0, int(run[6]))):
+				var piece := _create_piece(kind, side, float(run[3]), int(run[5]), column, scale, str(run[1]), str(run[2]))
+				piece.set_meta("hardness", hardness)
+				if kind == "rock" and hardness == 0:
+					piece.modulate = Color("eef4e7")
+					var crack := piece.get_node_or_null("Crack") as Line2D
+					if crack: crack.visible = true
+	_rebuild_pile_index()
 	_restack_pile()
 
 func _save() -> void:
@@ -3403,7 +3583,7 @@ func _save() -> void:
 			"right_hp":right_hp, "right_max":right_max, "left_hp":left_hp, "left_max":left_max,
 			"right_cleared":right_cleared, "left_cleared":left_cleared,
 			"septum_open":septum_open, "active_side":active_side, "levels":levels,
-			"total_clicks":total_clicks, "pile":_serialize_pile(), "fallen_wall_chunks":_serialize_fallen_wall_chunks(),
+			"total_clicks":total_clicks, "pile_compact":_serialize_pile_compact(), "fallen_wall_chunks":_serialize_fallen_wall_chunks(),
 			"compaction_steps":compaction_steps, "compaction_announced":compaction_announced,
 			"current_phase":current_phase, "phase_work":phase_work, "phase_events":phase_events, "joe_high":joe_high,
 			"contamination":contamination, "box_jammed":box_jammed, "tissue_damage":tissue_damage, "infection":infection,
@@ -3422,8 +3602,9 @@ func _save() -> void:
 func _load() -> void:
 	if not FileAccess.file_exists(save_path): return
 	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
-	if typeof(data) != TYPE_DICTIONARY: return
-	var saved_version := int(data.get("version", 0))
+	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 0)) != SAVE_VERSION:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
+		return
 	cells = float(data.get("cells", 0.0))
 	right_hp = float(data.get("right_hp", FIRST_WALL_HP))
 	right_max = float(data.get("right_max", FIRST_WALL_HP))
@@ -3438,38 +3619,7 @@ func _load() -> void:
 	var saved_levels: Dictionary = data.get("levels", {})
 	for id in saved_levels:
 		if levels.has(id): levels[id] = int(saved_levels[id])
-	if saved_version < SAVE_VERSION:
-		var legacy_box := int(saved_levels.get("box", 0))
-		if legacy_box >= 1 or cells > STORAGE_CAPACITIES[0]:
-			levels.container = 1
-			levels.cart = 1
-		if legacy_box >= 2 or cells > STORAGE_CAPACITIES[1]:
-			levels.silo = 1
-		if legacy_box >= 3:
-			levels.ox_convoy = 1
-		if septum_open and (legacy_box >= 4 or cells > STORAGE_CAPACITIES[2]):
-			levels.plant = 1
-		if septum_open and legacy_box >= 5:
-			levels.train = 1
-	if right_max < FIRST_WALL_HP:
-		var right_ratio := clampf(right_hp / maxf(1.0, right_max), 0.0, 1.0)
-		right_max = FIRST_WALL_HP
-		right_hp = right_max * right_ratio
-		right_cleared = 1 if right_hp <= 0.0 else 0
-	if left_max < FIRST_LEFT_WALL_HP:
-		var left_ratio := clampf(left_hp / maxf(1.0, left_max), 0.0, 1.0)
-		left_max = FIRST_LEFT_WALL_HP
-		left_hp = left_max * left_ratio
-		left_cleared = 1 if left_hp <= 0.0 else 0
-	var saved_pile: Array = data.get("pile", [])
-	if saved_version < 15:
-		for entry_value in saved_pile:
-			if typeof(entry_value) != TYPE_DICTIONARY: continue
-			var entry: Dictionary = entry_value
-			if entry.get("kind", "grain") in ["grain", "impurity"] and is_equal_approx(float(entry.get("value", 1.0)), 1000.0):
-				entry.value = 1.0
-				entry.source = "joe"
-	_restore_pile(saved_pile)
+	_restore_pile_compact(data.get("pile_compact", []))
 	_restore_fallen_wall_chunks(data.get("fallen_wall_chunks", []))
 	var saved_steps = data.get("compaction_steps", {})
 	if typeof(saved_steps) == TYPE_DICTIONARY:
@@ -3536,6 +3686,13 @@ func _load() -> void:
 func _continue_game() -> void:
 	_load()
 	_begin_game()
+
+func _discard_obsolete_save() -> void:
+	if not FileAccess.file_exists(save_path):
+		return
+	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
+	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 0)) != SAVE_VERSION:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
 
 func _request_new_game() -> void:
 	if FileAccess.file_exists(save_path): $NewGameDialog.popup_centered()
