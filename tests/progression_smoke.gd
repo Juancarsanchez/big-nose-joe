@@ -225,6 +225,8 @@ func _run() -> void:
 		debut_safety -= 1
 	_check(game.loose_chunks.size() == 10 and game.total_clicks == clicks_before_debut + 50, "The first pugilist rank must deal fifty units as exactly ten rendered grains.")
 	_check(game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), 5.0)), "Every opening pugilist grain must be worth five: ten times five equals the displayed fifty damage.")
+	var punch_labels: Array = game.effects.get_children().filter(func(node: Node) -> bool: return node is Label and (node as Label).text.contains("PUM"))
+	_check(not punch_labels.is_empty() and (punch_labels.back() as Label).text.contains("-50") and not (punch_labels.back() as Label).text.contains("BOLAS"), "The impact feedback must show only total damage, never the internal ten-ball formula.")
 	_check(absf(debut_puncher.position.x - game._puncher_strike_position(debut_puncher).x) < 0.6, "The punch must resolve at the visible edge of the cocaine wall.")
 	_check(game.punchers.get_child(0).get_node_or_null("BoxingGlove") != null, "Pugilists must be distinguished by a separate boxing-glove layer.")
 	game._clear_pile()
@@ -327,8 +329,13 @@ func _run() -> void:
 	var storage_readouts: Array = game.infrastructure.get_children().filter(func(node: Node) -> bool: return bool(node.get_meta("storage_readout", false)) and not node.is_queued_for_deletion())
 	var storage_readout: Node = storage_readouts.back() if not storage_readouts.is_empty() else null
 	_check(storage_readout != null and (storage_readout.get_node("Value") as Label).text.contains("/ 5.0K"), "Every storage evolution must retain a local exact fill readout.")
+	_check(storage_readout.get_node_or_null("Fill") == null and storage_readout.get_node_or_null("Background") == null, "The redundant local storage bar must be removed while preserving the exact number.")
 	var cart: Node = game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart")[0]
 	_check(cart.get_node_or_null("LoadReadout") != null and (cart.get_node("LoadReadout") as Label).text.contains("0 / 12"), "The cart must visibly identify its own load and capacity.")
+	_check((cart.get_node("Puller") as Sprite2D).flip_h, "The cart puller must face the direction in which the cart composition advances.")
+	game._update_ui()
+	var upgrade_lines := (game.buttons.nails as Button).text.split("\n")
+	_check(upgrade_lines.size() >= 2 and upgrade_lines[1].begins_with("◆ COSTE"), "Every purchasable upgrade must place its prominent price on the same fixed second line.")
 	game.joe_high = 70.0
 	game._check_phase_progress()
 	_check(game.current_phase == 2, "Pulmones de Drogata must unlock exactly when Joe falls to seventy percent high.")

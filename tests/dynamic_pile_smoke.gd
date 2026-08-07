@@ -170,6 +170,15 @@ func _run() -> void:
 	await create_timer(0.85).timeout
 	_check(is_equal_approx(game.cells, 1.0) and game.loose_chunks.is_empty(), "Manual cargo must become currency only after reaching the box.")
 	_check(game.joe_high < 70.0, "Removing clean cocaine from the nose must reduce Joe's high.")
+	var deposit_labels: Array = game.effects.get_children().filter(func(node: Node) -> bool: return node is Label)
+	_check(deposit_labels.any(func(node: Node) -> bool: return (node as Label).text == "+1") and not deposit_labels.any(func(node: Node) -> bool: return (node as Label).text.contains("ALMACÉN  +")), "A deposited grain must display only +1, without the redundant storage prefix.")
+	var facing_probe := Sprite2D.new()
+	facing_probe.position = Vector2(100.0, 100.0)
+	game._move_pawn_toward(facing_probe, Vector2(0.0, 100.0), 10.0, 0.1)
+	_check(facing_probe.flip_h and game._cargo_position(facing_probe, 0, 3).x < facing_probe.position.x, "A left-moving carrier must face left and hold its cargo in front of itself.")
+	game._move_pawn_toward(facing_probe, Vector2(200.0, 100.0), 10.0, 0.1)
+	_check(not facing_probe.flip_h and game._cargo_position(facing_probe, 0, 3).x > facing_probe.position.x, "A right-moving carrier must face right and keep its cargo in front.")
+	facing_probe.free()
 
 	game.current_phase = 3
 	var manual_impurity = game._create_piece("impurity", "right", 1.0, 0, 0, 0.064, "yeso")

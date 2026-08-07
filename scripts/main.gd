@@ -676,10 +676,10 @@ func _update_pawns(delta: float) -> void:
 			if obstruction:
 				var queue_offset := float(int(pawn.get_meta("index", 0))) * 13.0
 				var stop := Vector2(obstruction.position.x + 43.0 + queue_offset, floor_y)
-				pawn.position = pawn.position.move_toward(stop, speed * delta)
+				_move_pawn_toward(pawn, stop, speed, delta)
 				_set_pawn_carrying(pawn, false)
 				continue
-			pawn.position = pawn.position.move_toward(work_point, speed * delta)
+			_move_pawn_toward(pawn, work_point, speed, delta)
 			_set_pawn_carrying(pawn, false)
 			if pawn.position.distance_to(work_point) < 1.0:
 				pawn.position = work_point
@@ -687,6 +687,7 @@ func _update_pawns(delta: float) -> void:
 				pawn.set_meta("timer", 0.18 / (1.0 + float(levels.shift) * 0.12))
 				pawn.set_meta("did_mine", false)
 		elif state == "working":
+			pawn.flip_h = side == "right"
 			var timer: float = float(pawn.get_meta("timer", 0.0)) - delta
 			pawn.set_meta("timer", timer)
 			pawn.position.x = work_point.x + sin(Time.get_ticks_msec() * 0.018 + int(pawn.get_meta("index", 0))) * 1.8
@@ -717,7 +718,7 @@ func _update_pawns(delta: float) -> void:
 			_set_pawn_carrying(pawn, true)
 			if timer <= 0.0: pawn.set_meta("state", "to_box")
 		elif state == "to_box":
-			pawn.position = pawn.position.move_toward(depot, speed * delta)
+			_move_pawn_toward(pawn, depot, speed, delta)
 			_set_pawn_carrying(pawn, true)
 			_update_carried_pieces(pawn)
 			if pawn.position.distance_to(depot) < 1.0:
@@ -730,6 +731,11 @@ func _update_pawns(delta: float) -> void:
 			var deposit_time := _deposit_duration()
 			_update_deposit(pawn, clampf(timer / deposit_time, 0.0, 1.0))
 			if timer >= deposit_time: _finish_delivery(pawn)
+
+func _move_pawn_toward(pawn: Sprite2D, target: Vector2, speed: float, delta: float) -> void:
+	var direction := signf(target.x - pawn.position.x)
+	if not is_zero_approx(direction): pawn.flip_h = direction < 0.0
+	pawn.position = pawn.position.move_toward(target, speed * delta)
 
 func _choose_work_side(index: int) -> String:
 	if not septum_open or int(levels.coord) == 0: return active_side
@@ -1227,7 +1233,7 @@ func _finish_manual_delivery(piece: Variant) -> void:
 		var progress_value := value * delivered / maxf(0.001, requested)
 		phase_work += progress_value
 		_improve_joe(progress_value)
-		_float_text("ALMACÉN  +%s" % _number(delivered), _storage_feedback_position())
+		_float_text("+%s" % _number(delivered), _storage_feedback_position())
 	loose_chunks.erase(sprite)
 	sprite.queue_free()
 	_update_contamination_warning(previous_contamination)
@@ -1240,7 +1246,8 @@ func _cargo_position(pawn: Sprite2D, index: int, capacity: int) -> Vector2:
 	var columns := mini(3, capacity)
 	var row := index / columns
 	var column := index % columns
-	return pawn.position + Vector2((float(column) - float(columns - 1) * 0.5) * 6.0, -14.0 - float(row) * 5.0)
+	var front := -1.0 if pawn.flip_h else 1.0
+	return pawn.position + Vector2(front * 9.0 + (float(column) - float(columns - 1) * 0.5) * 5.0, -13.0 - float(row) * 5.0)
 
 func _update_carried_pieces(pawn: Sprite2D) -> void:
 	var cargo: Array = pawn.get_meta("cargo", [])
@@ -1326,7 +1333,7 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 	elif contamination_delta < 0.0:
 		_float_text("LIMPIANDO", _storage_feedback_position())
 	elif delivered > 0.0:
-		_float_text("ALMACÉN  +%s" % _number(delivered), _storage_feedback_position())
+		_float_text("+%s" % _number(delivered), _storage_feedback_position())
 	_update_contamination_warning(previous_contamination)
 	pawn.set_meta("cargo", [])
 	pawn.set_meta("state", "to_pile")
@@ -1912,9 +1919,7 @@ func _resolve_punch(puncher: Sprite2D) -> void:
 	_spawn_impact_dust(Vector2(impact_x, _ground_y() - 10.0), Color("d6b8bc"), 4)
 	_impact_shake(1.6 if not debut else 3.0)
 	_play_sfx(SFX_PUNCH, -9.0, randf_range(0.92, 1.08))
-	var grain_value := float(output) / float(PUGILIST_GRAINS_PER_HIT)
-	var punch_math := "%d BOLAS × %s = %s" % [PUGILIST_GRAINS_PER_HIT, _number(grain_value), _number(output)]
-	_float_text(("¡¡PUM!!  " if debut else "¡PUM!  ") + punch_math, Vector2(impact_x, _ground_y() - 95.0))
+	_float_text(("¡¡PUM!!  -" if debut else "¡PUM!  -") + _number(output), Vector2(impact_x, _ground_y() - 95.0))
 	if debut:
 		_show_toast("DEBUT DEL PÚGIL  ·  ESO SÍ HA SIDO UN PUÑETAZO")
 	puncher.set_meta("debut", false)
@@ -2885,20 +2890,9 @@ func _add_storage_readout() -> void:
 	root.position = _storage_feedback_position()
 	root.z_index = 24
 	root.set_meta("storage_readout", true)
-	var background := Polygon2D.new()
-	background.name = "Background"
-	background.polygon = PackedVector2Array([Vector2(-84.0, 0.0), Vector2(84.0, 0.0), Vector2(84.0, 13.0), Vector2(-84.0, 13.0)])
-	background.color = Color("1b1020")
-	root.add_child(background)
-	var fill := Polygon2D.new()
-	fill.name = "Fill"
-	fill.position = Vector2(-80.0, 3.0)
-	fill.polygon = PackedVector2Array([Vector2.ZERO, Vector2(160.0, 0.0), Vector2(160.0, 7.0), Vector2(0.0, 7.0)])
-	fill.color = Color("e8c96f")
-	root.add_child(fill)
 	var label := Label.new()
 	label.name = "Value"
-	label.position = Vector2(-110.0, -25.0)
+	label.position = Vector2(-110.0, -12.0)
 	label.size = Vector2(220.0, 23.0)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 13)
@@ -2974,11 +2968,7 @@ func _update_storage_visual() -> void:
 		if bool(child.get_meta("storage_visual", false)):
 			child.modulate = tint
 		if bool(child.get_meta("storage_readout", false)):
-			var fill := child.get_node_or_null("Fill") as Polygon2D
 			var label := child.get_node_or_null("Value") as Label
-			if fill:
-				fill.scale.x = ratio
-				fill.color = Color("e8c96f").lerp(Color("ef5b57"), ratio)
 			if label:
 				label.text = "ALMACÉN  %s / %s" % [_number(cells), _number(_storage_capacity())]
 	box.modulate = tint
@@ -3019,6 +3009,9 @@ func _add_ground_transporter(kind: String, capacity: float, speed: float) -> voi
 		puller.texture = PAWN_EMPTY
 		puller.scale = Vector2.ONE * 0.036
 		puller.offset = Vector2(0.0, PAWN_FOOT_DEPTH / puller.scale.y - PAWN_EMPTY.get_height() * 0.5)
+		# El conjunto está dibujado para avanzar hacia la izquierda; al volver,
+		# la escala del conjunto invierte a la vez célula, enganche y carro.
+		puller.flip_h = true
 		puller.position = Vector2(-38.0, -14.0)
 		puller.z_index = 2
 		root.add_child(puller)
@@ -3437,8 +3430,9 @@ func _update_ui() -> void:
 		button.visible = _upgrade_available(upgrade)
 		var level: int = int(levels[upgrade.id])
 		var required: bool = str(upgrade.id) == _required_upgrade_id() and level == 0
-		button.custom_minimum_size.y = 82.0 if required else 64.0
+		button.custom_minimum_size.y = 82.0
 		_set_upgrade_halo(button, required)
+		if not required: button.add_theme_color_override("font_disabled_color", Color("c4b1c2"))
 		if not button.visible: continue
 		var cost: float = ceil(float(upgrade.base) * pow(float(upgrade.growth), level))
 		var maxed: bool = level >= int(upgrade.get("max", 999))
@@ -3488,8 +3482,13 @@ func _update_ui() -> void:
 		elif upgrade.kind == "supersaiyan_power": effect = "KAMEHAMEHA %s → %s" % [_number(50000000.0 * pow(10.0, level)), _number(50000000.0 * pow(10.0, level + 1))]
 		elif upgrade.kind == "catapult": effect = "+1 LANZAMIENTO DE %s" % _number(CATAPULT_BASE_DAMAGE * pow(2.0, int(levels.catapult_power)))
 		elif upgrade.kind == "catapult_power": effect = "IMPACTO %s → %s" % [_number(CATAPULT_BASE_DAMAGE * pow(2.0, level)), _number(CATAPULT_BASE_DAMAGE * pow(2.0, level + 1))]
-		var required_line := "★ NECESARIA PARA SUPERAR ESTA FASE\n" if required else ""
-		button.text = "%s%s  [NV. %d]\n%s\n%s  ·  %s cocaína" % [required_line, upgrade.name, level, upgrade.desc, effect, _number(cost)]
+		var price_line := "◆ COSTE  %s COCAÍNA" % _number(cost)
+		if maxed:
+			price_line = "✓ MEJORA COMPLETA"
+		elif cells < cost:
+			price_line += "  ·  FALTAN %s" % _number(cost - cells)
+		var title_prefix := "★ NECESARIA  ·  " if required else ""
+		button.text = "%s%s  [NV. %d]\n%s\n%s\n%s" % [title_prefix, upgrade.name, level, price_line, upgrade.desc, effect]
 		button.disabled = cells < cost or maxed or evolution_locked
 
 func _high_state() -> String:
