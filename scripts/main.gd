@@ -19,11 +19,11 @@ const FIRST_LEFT_WALL_HP := 10000000000.0
 const TUNNEL_UNLOCK_PHASE := 4
 const EDGE_SIZE := 34.0
 const PAN_SPEED := 1050.0
-const GRAIN_SPACING := 10.0
+const GRAIN_SPACING := 9.2
 const GRAIN_HEIGHT := 7.4
 const ROCK_HEIGHT := 18.0
 const MAX_PILE_RADIUS := 46
-const MAX_SURFACE_STEP := 1.7
+const MAX_SURFACE_STEP := 1.35
 const TERRAIN_BAND_SIZE := 30
 const TERRAIN_ANCHORS := [0.16, 0.68, 0.38, 0.84, 0.53]
 const ANOTHER_LINE_ANCHORS := [0.10, 0.52, 0.90]
@@ -152,6 +152,8 @@ const SFX_OVERDOSE := preload("res://assets/audio/overdose.wav")
 @onready var joe_high_label: Label = $World/JoeHigh/Margin/Content/Label
 @onready var joe_high_progress: ProgressBar = $World/JoeHigh/Margin/Content/Progress
 @onready var joe_portrait: TextureRect = $World/JoeHigh/Margin/Content/Portrait
+@onready var joe_high_panel: PanelContainer = $World/JoeHigh
+@onready var joe_high_feedback: Label = $World/JoeHigh/Margin/Content/Feedback
 @onready var contamination_meter: PanelContainer = $World/ContaminationMeter
 @onready var contamination_label: Label = $World/ContaminationMeter/Margin/Content/Label
 @onready var contamination_progress: ProgressBar = $World/ContaminationMeter/Margin/Content/Progress
@@ -278,6 +280,8 @@ var settings_path := SETTINGS
 var platelet_feedback_clock := 0.0
 var music_player: AudioStreamPlayer
 var impact_shake_tween: Tween
+var joe_high_feedback_tween: Tween
+var joe_high_feedback_clock := 0.0
 var music_volume := 0.75
 var sfx_volume := 0.85
 
@@ -818,7 +822,7 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 	piece.set_meta("value", value)
 	piece.set_meta("side", side)
 	piece.set_meta("column", column)
-	piece.set_meta("x_jitter", randf_range(-3.8, 3.8))
+	piece.set_meta("x_jitter", randf_range(-1.8, 1.8))
 	piece.set_meta("height", ROCK_HEIGHT if kind == "rock" else (10.0 if kind == "bacteria" else GRAIN_HEIGHT))
 	piece.set_meta("material", material)
 	piece.set_meta("source", source)
@@ -853,12 +857,19 @@ func _mark_landed(piece: Variant) -> void:
 	sprite.set_meta("landed", true)
 	_index_add_piece(sprite)
 	var side: String = sprite.get_meta("side", "right")
+	_settle_surface(side, 6)
 	_restack_pile(side)
 	compaction_steps[side] = int(compaction_steps.get(side, 0)) + 1
 	_maybe_compact(side)
 
 func _piece_is_in_pile(piece: PilePiece, side: String = "") -> bool:
 	return is_instance_valid(piece) and piece.alive and not bool(piece.get_meta("carried", false)) and (side.is_empty() or piece.get_meta("side", "right") == side)
+
+func _set_piece_carried(piece: PilePiece, carried: bool) -> void:
+	if not is_instance_valid(piece) or bool(piece.get_meta("carried", false)) == carried:
+		return
+	piece.set_meta("carried", carried)
+	pile_renderer.refresh_group(piece)
 
 func _reset_pile_index() -> void:
 	pile_columns = {"left":{}, "right":{}}
@@ -1069,12 +1080,12 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 		var piece := source[randi_range(0, mini(6, source.size() - 1))]
 		var piece_kind: String = piece.get_meta("kind", "grain")
 		_index_remove_piece(piece)
-		piece.set_meta("carried", true)
+		if handler and piece_kind == "bacteria":
+			piece.visible = false
+		_set_piece_carried(piece, true)
 		if piece_kind != "impurity":
 			remaining_storage -= float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if piece_kind == "grain" else 1.0)
 		piece.z_index = 20
-		if handler and piece.get_meta("kind", "grain") == "bacteria":
-			piece.visible = false
 		cargo.append(piece)
 		var tween := create_tween().set_parallel()
 		tween.tween_property(piece, "position", _cargo_position(pawn, cargo.size() - 1, capacity), 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -1142,7 +1153,7 @@ func _mine_fallen_wall_chunk(chunk: Sprite2D, amount: float) -> void:
 	chunk.set_meta("mass", maxf(0.0, mass - released))
 	var column := roundi((chunk.position.x - _pile_center(side)) / GRAIN_SPACING)
 	if released > 0.0:
-		_spawn_chunk(chunk.position - Vector2(0.0, 34.0), released, side, column)
+		_spawn_chunk(chunk.position - Vector2(0.0, 34.0), released, side, column, "detached")
 	var crack := chunk.get_node_or_null("Crack") as Line2D
 	if crack:
 		crack.visible = true
@@ -1180,7 +1191,7 @@ func _manual_collect_at(world_pos: Vector2) -> bool:
 		return true
 	var side: String = piece.get_meta("side", "right")
 	_index_remove_piece(piece)
-	piece.set_meta("carried", true)
+	_set_piece_carried(piece, true)
 	piece.set_meta("manual_flying", true)
 	_reserve_manual_piece(piece, stored_value)
 	piece.z_index = 30
@@ -1225,7 +1236,7 @@ func _finish_manual_delivery(piece: Variant) -> void:
 		var requested := value * _box_yield_multiplier()
 		delivered = _store_cocaine(requested)
 		if delivered <= 0.0:
-			sprite.set_meta("carried", false)
+			_set_piece_carried(sprite, false)
 			sprite.set_meta("manual_flying", false)
 			sprite.visible = true
 			sprite.position = _landing_position(sprite)
@@ -1236,7 +1247,8 @@ func _finish_manual_delivery(piece: Variant) -> void:
 			return
 		var progress_value := value * delivered / maxf(0.001, requested)
 		phase_work += progress_value
-		_improve_joe(progress_value)
+		if sprite.get_meta("source", "player") != "player":
+			_improve_joe(progress_value)
 		_float_text("+%s" % _number(delivered), _storage_feedback_position())
 	loose_chunks.erase(sprite)
 	sprite.queue_free()
@@ -1251,7 +1263,7 @@ func _cargo_position(pawn: Sprite2D, index: int, capacity: int) -> Vector2:
 	var row := index / columns
 	var column := index % columns
 	var front := 1.0 if pawn.flip_h else -1.0
-	return pawn.position + Vector2(front * 9.0 + (float(column) - float(columns - 1) * 0.5) * 5.0, -13.0 - float(row) * 5.0)
+	return pawn.position + Vector2(front * 15.0 + (float(column) - float(columns - 1) * 0.5) * 5.0, -15.0 - float(row) * 5.0)
 
 func _update_carried_pieces(pawn: Sprite2D) -> void:
 	var cargo: Array = pawn.get_meta("cargo", [])
@@ -1319,15 +1331,16 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 				delivered += accepted
 				var progress_value := value * accepted / maxf(0.001, requested)
 				phase_work += progress_value
-				_improve_joe(progress_value)
+				if piece.get_meta("source", "player") != "player":
+					_improve_joe(progress_value)
 			else:
 				consumed = false
 		if consumed:
 			loose_chunks.erase(piece)
 			piece.queue_free()
 		else:
-			piece.set_meta("carried", false)
 			piece.visible = true
+			_set_piece_carried(piece, false)
 			piece.scale = Vector2.ONE * float(piece.get_meta("base_scale", 0.08))
 			piece.position = _landing_position(piece)
 			_index_add_piece(piece)
@@ -1407,15 +1420,18 @@ func _maybe_compact(side: String) -> void:
 	var grains := _dense_grain_cluster(side)
 	if grains.size() < COMPACTION_GRAINS: return
 	var value := 0.0
+	var source := "player"
 	for grain in grains:
 		value += float(grain.get_meta("value", 1.0))
+		if grain.get_meta("source", "player") != "player":
+			source = "joe"
 		_index_remove_piece(grain)
 		loose_chunks.erase(grain)
 		grain.queue_free()
 	compaction_steps[side] = 0
 	_restack_pile(side)
 	var hardness := clampi(2 + floori(log(maxf(1.0, pressure_rate + 1.0)) / log(4.0)), 2, 9)
-	var rock := _create_piece("rock", side, value, hardness, _choose_landing_column(side), randf_range(0.17, 0.205))
+	var rock := _create_piece("rock", side, value, hardness, _choose_landing_column(side), randf_range(0.17, 0.205), "", source)
 	rock.rotation = randf_range(-0.18, 0.18)
 	rock.scale = Vector2.ZERO
 	create_tween().tween_property(rock, "scale", Vector2.ONE * float(rock.get_meta("base_scale", 0.18)), 0.24).set_trans(Tween.TRANS_BACK)
@@ -1523,7 +1539,11 @@ func _click_wall(side: String) -> void:
 			_float_text("¡RÁFAGA!  +%d" % burst, Vector2(_mine_x(side), _ground_y() - 245.0))
 
 func _damage_wall(amount: float, side: String = active_side) -> void:
-	mined_since_line += minf(maxf(0.0, amount), _wall_hp(side))
+	var extracted := minf(maxf(0.0, amount), _wall_hp(side))
+	if extracted <= 0.0:
+		return
+	mined_since_line += extracted
+	_improve_joe(extracted, true)
 	if side == "left":
 		if left_hp <= 0.0: return
 		var previous_ratio := clampf(left_hp / left_max, 0.0, 1.0)
@@ -1696,7 +1716,7 @@ func _rebuild_pawns() -> void:
 	for child in pawns.get_children(): child.queue_free()
 	for piece in loose_chunks:
 		if is_instance_valid(piece) and bool(piece.get_meta("carried", false)):
-			piece.set_meta("carried", false)
+			_set_piece_carried(piece, false)
 			piece.visible = true
 			piece.position = _landing_position(piece)
 			piece.scale = Vector2.ONE * float(piece.get_meta("base_scale", 0.07))
@@ -1708,7 +1728,7 @@ func _rebuild_pawns() -> void:
 	for index in range(count):
 		var pawn := Sprite2D.new()
 		pawn.scale = Vector2(0.047, 0.047)
-		pawn.z_index = index % 3
+		pawn.z_index = 8 + index % 3
 		pawn.set_meta("index", index)
 		pawn.set_meta("lane_x", float(index % 5 - 2) * 7.0)
 		var specialist_stride := maxi(1, 4 - int(levels.breaker))
@@ -1840,7 +1860,12 @@ func _auto_hit_rate() -> float:
 	return float(levels.puncher) * float(_punch_output()) / _punch_interval()
 
 func _update_punchers(delta: float) -> void:
-	if int(levels.puncher) == 0 or box_jammed or _wall_mining_blocked() or _nearest_fallen_wall_chunk(active_side):
+	if int(levels.puncher) == 0:
+		return
+	if box_jammed:
+		return
+	if _wall_mining_blocked() or _nearest_fallen_wall_chunk(active_side):
+		_recall_punchers(delta)
 		return
 	if puncher_debut_pending:
 		puncher_debut_clock -= delta
@@ -1859,6 +1884,18 @@ func _update_punchers(delta: float) -> void:
 		return
 	punch_clock = _punch_interval()
 	_perform_punch_round(false)
+
+func _recall_punchers(delta: float) -> void:
+	for node in punchers.get_children():
+		var puncher := node as Sprite2D
+		if not puncher:
+			continue
+		var state: String = puncher.get_meta("state", "idle")
+		if state != "idle" and state != "returning":
+			puncher.rotation = 0.0
+			puncher.set_meta("state", "returning")
+	_update_puncher_motion(delta)
+	punch_clock = maxf(punch_clock, 0.35)
 
 func _perform_punch_round(debut: bool) -> void:
 	for node in punchers.get_children():
@@ -1918,6 +1955,8 @@ func _update_puncher_motion(delta: float) -> void:
 				puncher.position = home
 				_set_puncher_facing(puncher, puncher.get_meta("side", active_side) == "left")
 				puncher.set_meta("state", "idle")
+		else:
+			_place_puncher(puncher)
 
 func _resolve_punch(puncher: Sprite2D) -> void:
 	var side: String = puncher.get_meta("side", active_side)
@@ -2705,9 +2744,28 @@ func _future_special_damage(kind: String, owned_level: int) -> float:
 	if kind == "cannon": return 750000.0 * pow(6.0, int(levels.cannon_power))
 	return 50000000.0 * pow(10.0, int(levels.supersaiyan_power))
 
-func _improve_joe(clean_units: float) -> void:
+func _improve_joe(clean_units: float, mining_feedback := false) -> void:
 	var efficiency := PHASE_ONE_CLEANING_EFFICIENCY if current_phase == 1 else JOE_HIGH_PER_COCAINE_UNIT
-	_change_joe_high(-clean_units * efficiency)
+	var reduction := clean_units * efficiency
+	_change_joe_high(-reduction, mining_feedback)
+	if mining_feedback:
+		_show_mining_feedback(clean_units, reduction)
+
+func _show_mining_feedback(extracted: float, reduction: float) -> void:
+	joe_high_feedback_clock = 0.9
+	var decimals := 4 if reduction < 0.01 else 2
+	var reduction_text := ("%." + str(decimals) + "f") % reduction
+	joe_high_feedback.text = "-%s COCAÍNA  ·  -%s%%" % [_number(extracted), reduction_text]
+	joe_high_feedback.modulate = Color("79d5e8")
+	joe_high_panel.pivot_offset = joe_high_panel.size * 0.5
+	if joe_high_feedback_tween and joe_high_feedback_tween.is_valid():
+		joe_high_feedback_tween.kill()
+	joe_high_panel.scale = Vector2(1.012, 1.08)
+	joe_high_progress.modulate = Color("79d5e8")
+	joe_high_feedback_tween = create_tween().set_parallel()
+	joe_high_feedback_tween.tween_property(joe_high_panel, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_BACK)
+	joe_high_feedback_tween.tween_property(joe_high_progress, "modulate", Color.WHITE, 0.46)
+	joe_high_feedback_tween.tween_property(joe_high_feedback, "modulate", Color("d9f8ff"), 0.46)
 
 func _change_joe_high(amount: float, pulse: bool = false) -> void:
 	joe_high = clampf(joe_high + amount, 0.0, 100.0)
@@ -2745,6 +2803,7 @@ func _return_to_menu_after_overdose() -> void:
 	_update_start_screen()
 
 func _update_joe_high(delta: float) -> void:
+	joe_high_feedback_clock = maxf(0.0, joe_high_feedback_clock - delta)
 	var pile_burden := _pile_load("left") + _pile_load("right") + _fallen_wall_chunk_load()
 	var pile_rise := clampf((pile_burden - 900.0) / 9000.0, 0.0, 1.0) * 0.018
 	var contamination_rise := contamination / 100.0 * 0.010 if current_phase >= 3 else 0.0
@@ -3147,8 +3206,8 @@ func _claim_transport_cocaine(side: String, capacity: float, take_all: bool) -> 
 		if not _piece_is_in_pile(piece, side) or piece.get_meta("kind", "grain") != "grain": continue
 		var piece_value := float(piece.get_meta("value", 1.0))
 		if piece_value > remaining + 0.001: continue
-		piece.set_meta("carried", true)
 		piece.visible = false
+		_set_piece_carried(piece, true)
 		cargo.append(piece)
 		remaining -= piece_value
 		if remaining <= 0.001: break
@@ -3160,6 +3219,7 @@ func _claim_transport_cocaine(side: String, capacity: float, take_all: bool) -> 
 func _deliver_transport_cargo(root: Node2D, at: Vector2) -> void:
 	var delivered := 0.0
 	var clean_progress := 0.0
+	var joe_clean_progress := 0.0
 	var available_storage := _manual_claim_space()
 	var side: String = root.get_meta("side", active_side)
 	var consumed_pieces: Array[PilePiece] = []
@@ -3172,10 +3232,12 @@ func _deliver_transport_cargo(root: Node2D, at: Vector2) -> void:
 			delivered += requested
 			available_storage -= requested
 			clean_progress += piece_value
+			if piece.get_meta("source", "player") != "player":
+				joe_clean_progress += piece_value
 			consumed_pieces.append(piece)
 		else:
-			piece.set_meta("carried", false)
 			piece.visible = true
+			_set_piece_carried(piece, false)
 			piece.position = _landing_position(piece)
 	if consumed_pieces.is_empty():
 		_rebuild_pile_index(side)
@@ -3184,7 +3246,8 @@ func _deliver_transport_cargo(root: Node2D, at: Vector2) -> void:
 	if delivered > 0.0:
 		cells += delivered
 		phase_work += clean_progress
-		_improve_joe(clean_progress)
+		if joe_clean_progress > 0.0:
+			_improve_joe(joe_clean_progress)
 	root.set_meta("cargo", [])
 	if delivered > 0.0:
 		var title := "EXPRESO" if root.get_meta("transport_kind", "") == "train" else ("MUGIDÓFILO" if root.get_meta("transport_kind", "") == "ox" else "CARRITO")
@@ -3197,8 +3260,8 @@ func _release_transport_cargo(root: Node) -> void:
 	for value in root.get_meta("cargo", []):
 		var piece := value as PilePiece
 		if not is_instance_valid(piece): continue
-		piece.set_meta("carried", false)
 		piece.visible = true
+		_set_piece_carried(piece, false)
 		piece.position = _landing_position(piece)
 	_rebuild_pile_index()
 
@@ -3436,8 +3499,11 @@ func _update_ui() -> void:
 	phase_progress.value = _phase_adaptation_progress()
 	phase_hint.text = "PRESIÓN SOBRE JOE  %d%%  ·  %s" % [roundi(_phase_adaptation_progress() * 100.0), _phase_requirement()]
 	joe_high_progress.value = joe_high_display
-	joe_high_progress.modulate = Color("7b67d8").lerp(Color("ffcc58"), joe_high_display / 100.0)
-	joe_high_label.text = "COLOCÓN DE JOE  %d%%  ·  %s" % [roundi(joe_high_display), _high_state()]
+	if joe_high_feedback_clock <= 0.0:
+		joe_high_progress.modulate = Color("7b67d8").lerp(Color("ffcc58"), joe_high_display / 100.0)
+		joe_high_feedback.text = "PICA LA PARED  →  BAJA EL COLOCÓN"
+		joe_high_feedback.modulate = Color("8bcbd1")
+	joe_high_label.text = "COLOCÓN DE JOE  %.1f%%  ·  %s" % [joe_high_display, _high_state()]
 	cells_label.text = "COCAÍNA  %s / %s" % [_number(cells), _number(_storage_capacity())]
 	rate_label.text = "+%s/s  ·  %s/clic  ·  AUTO %s/s" % [_number(_rate()), _number(_click_power()), _number(_auto_hit_rate() + _special_extraction_rate())]
 	var tunnel_ready := current_phase >= TUNNEL_UNLOCK_PHASE

@@ -139,6 +139,11 @@ func _run() -> void:
 		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), 0.072)
 	var cargo: Array = game._claim_top_pieces("right", 6, pawn)
 	_check(cargo.size() == 6 and cargo.all(func(piece) -> bool: return piece.get_meta("kind", "") == "grain"), "Normal pawns must carry six separate grains without creating a safe clump.")
+	_check(pawn.z_index >= 8 and cargo.all(func(piece) -> bool: return piece.render_key.ends_with(":cargo")), "Carriers must stay above every storage prop and carried grains must move to the foreground render batch.")
+	pawn.set_meta("cargo", cargo)
+	game._set_pawn_facing(pawn, true)
+	game._update_carried_pieces(pawn)
+	_check(cargo.all(func(piece) -> bool: return piece.position.x > pawn.position.x), "Every visible grain must remain in front of a right-facing carrier, never behind its body.")
 
 	# Cargo becomes currency only after the physical deposit finishes.
 	var cargo_value := 0.0
@@ -163,13 +168,16 @@ func _run() -> void:
 	game.cells = 0.0
 	game.joe_high = 70.0
 	game.joe_high_display = 70.0
+	game._damage_wall(10.0, "right")
+	var high_after_mining: float = game.joe_high
+	_check(high_after_mining < 70.0 and game.joe_high_feedback.text.contains("-10"), "Wall mining must immediately lower Joe's high and show the exact extracted amount.")
 	var manual_grain = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
 	var manual_point := Vector2(manual_grain.position.x, game._ground_y() - 2.0)
 	_check(game._manual_collect_at(manual_point), "Clicking the visible pile must start a manual collection.")
 	_check(bool(manual_grain.get_meta("manual_flying", false)) and bool(manual_grain.get_meta("carried", false)), "A manually collected grain must leave the pile immediately.")
 	await create_timer(0.85).timeout
 	_check(is_equal_approx(game.cells, 1.0) and game.loose_chunks.is_empty(), "Manual cargo must become currency only after reaching the box.")
-	_check(game.joe_high < 70.0, "Removing clean cocaine from the nose must reduce Joe's high.")
+	_check(is_equal_approx(game.joe_high, high_after_mining), "Player-mined cocaine must not reduce Joe's high a second time when it reaches storage.")
 	var deposit_labels: Array = game.effects.get_children().filter(func(node: Node) -> bool: return node is Label)
 	_check(deposit_labels.any(func(node: Node) -> bool: return (node as Label).text == "+1") and not deposit_labels.any(func(node: Node) -> bool: return (node as Label).text.contains("ALMACÉN  +")), "A deposited grain must display only +1, without the redundant storage prefix.")
 	var facing_probe := Sprite2D.new()

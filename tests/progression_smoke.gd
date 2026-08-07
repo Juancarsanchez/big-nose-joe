@@ -97,6 +97,9 @@ func _run() -> void:
 	_check(game.fallen_wall_chunks.size() == 1, "Every ten resistance points must detach one large, separately layered wall block.")
 	_check(float(game.WALL_CHUNK_SCALE) <= 0.12, "Detached blocks must remain substantially smaller than the wall section they visibly remove.")
 	_check(is_equal_approx(game.right_hp, game.right_max * 0.90 - game.WALL_CHUNK_MASS), "A detached block must reserve real wall mass instead of duplicating cocaine.")
+	_check(game.joe_high < 90.0 and game.joe_high_feedback.text.contains("COCAÍNA"), "Damage to the wall must immediately move and annotate Joe's central high meter.")
+	game.joe_high = 90.0
+	game.joe_high_display = 90.0
 	var fallen := game.fallen_wall_chunks[0] as Sprite2D
 	game._land_fallen_wall_chunk(fallen)
 	var detached_hp := float(fallen.get_meta("hp", 0.0))
@@ -125,8 +128,12 @@ func _run() -> void:
 	_check(blocking_chunk.get_parent() == game.wall_chunks_layer and game.wall_chunks_layer.get_index() > game.chunks.get_index(), "Fallen wall blocks must stay in a foreground layer above loose powder.")
 	game.levels.puncher = 1
 	game._rebuild_punchers()
+	var recalled_puncher := game.punchers.get_child(0) as Sprite2D
+	recalled_puncher.set_meta("state", "to_wall")
+	recalled_puncher.position.x -= 36.0
 	game._update_punchers(30.0)
-	_check(is_equal_approx(float(blocking_chunk.get_meta("hp", 0.0)), block_hp_before_pawn) and is_zero_approx(game._auto_hit_rate()), "Pugilists must pause and leave the obstruction exclusively to the player.")
+	_check(is_equal_approx(float(blocking_chunk.get_meta("hp", 0.0)), block_hp_before_pawn) and is_zero_approx(game._auto_hit_rate()), "Pugilists must leave the obstruction exclusively to the player.")
+	_check(recalled_puncher.get_meta("state", "") == "idle", "A blocked pugilist must return home instead of freezing halfway through its route.")
 	game.levels.puncher = 0
 	game._rebuild_punchers()
 	await process_frame

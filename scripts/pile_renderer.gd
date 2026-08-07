@@ -27,6 +27,15 @@ func add_piece(piece: PilePiece) -> void:
 	if is_instance_valid(piece.crack):
 		attach_auxiliary(piece.crack)
 
+func refresh_group(piece: PilePiece) -> void:
+	if not piece.alive or piece.render_slot < 0:
+		return
+	var next_key := _piece_key(piece)
+	if next_key == piece.render_key:
+		return
+	remove_piece(piece)
+	add_piece(piece)
+
 func remove_piece(piece: PilePiece) -> void:
 	dirty.erase(piece.get_instance_id())
 	if piece.render_key.is_empty() or not groups.has(piece.render_key):
@@ -79,7 +88,7 @@ func _piece_key(piece: PilePiece) -> String:
 		kind += "_player" if piece.get_meta("source", "player") == "player" else "_joe"
 	elif kind == "impurity":
 		kind += "_" + str(piece.get_meta("material", "unknown"))
-	return side + ":" + kind
+	return side + ":" + kind + (":cargo" if bool(piece.get_meta("carried", false)) else ":pile")
 
 func _create_group(piece: PilePiece, key: String) -> Dictionary:
 	var mesh := QuadMesh.new()
@@ -90,6 +99,7 @@ func _create_group(piece: PilePiece, key: String) -> Dictionary:
 	RenderingServer.multimesh_set_visible_instances(multimesh, 0)
 	var canvas_item := RenderingServer.canvas_item_create()
 	RenderingServer.canvas_item_set_parent(canvas_item, layer.get_canvas_item())
+	RenderingServer.canvas_item_set_z_index(canvas_item, 12 if bool(piece.get_meta("carried", false)) else 0)
 	RenderingServer.canvas_item_add_multimesh(canvas_item, multimesh, piece.texture.get_rid())
 	RenderingServer.canvas_item_set_custom_rect(canvas_item, true, Rect2(-1000.0, -1000.0, 10000.0, 4000.0))
 	if piece.material:

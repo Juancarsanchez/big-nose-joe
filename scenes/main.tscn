@@ -86,25 +86,25 @@ grow_horizontal = 2
 [node name="JoeHigh" type="PanelContainer" parent="World"]
 layout_mode = 1
 anchors_preset = 10
-anchor_left = 0.02
-anchor_right = 0.32
-offset_top = 128.0
-offset_bottom = 160.0
+anchor_left = 0.25
+anchor_right = 0.75
+offset_top = 126.0
+offset_bottom = 162.0
 grow_horizontal = 2
 
 [node name="Margin" type="MarginContainer" parent="World/JoeHigh"]
 layout_mode = 2
-theme_override_constants/margin_left = 7
-theme_override_constants/margin_top = 2
-theme_override_constants/margin_right = 10
-theme_override_constants/margin_bottom = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 3
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 3
 
 [node name="Content" type="HBoxContainer" parent="World/JoeHigh/Margin"]
 layout_mode = 2
-theme_override_constants/separation = 7
+theme_override_constants/separation = 10
 
 [node name="Portrait" type="TextureRect" parent="World/JoeHigh/Margin/Content"]
-custom_minimum_size = Vector2(27, 27)
+custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 mouse_filter = 2
 texture = ExtResource("11")
@@ -114,23 +114,31 @@ stretch_mode = 5
 [node name="Label" type="Label" parent="World/JoeHigh/Margin/Content"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.88, 0.74, 0.62, 1)
-theme_override_font_sizes/font_size = 9
+theme_override_font_sizes/font_size = 12
 text = "COLOCÓN DE JOE  70%"
 vertical_alignment = 1
 
 [node name="Progress" type="ProgressBar" parent="World/JoeHigh/Margin/Content"]
-custom_minimum_size = Vector2(78, 12)
+custom_minimum_size = Vector2(230, 18)
 layout_mode = 2
 size_flags_horizontal = 3
 value = 70.0
 show_percentage = false
 
+[node name="Feedback" type="Label" parent="World/JoeHigh/Margin/Content"]
+custom_minimum_size = Vector2(210, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.8, 0.82, 1)
+theme_override_font_sizes/font_size = 10
+text = "PICA LA PARED  →  BAJA EL COLOCÓN"
+vertical_alignment = 1
+
 [node name="DamageMeter" type="PanelContainer" parent="World"]
 visible = false
 layout_mode = 1
 anchors_preset = 10
-anchor_left = 0.34
-anchor_right = 0.66
+anchor_left = 0.76
+anchor_right = 0.98
 offset_top = 128.0
 offset_bottom = 158.0
 grow_horizontal = 2
