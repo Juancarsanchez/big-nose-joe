@@ -62,9 +62,18 @@ func _run() -> void:
 	game.levels.puncher = 0
 	game.levels.elephant = 0
 	_check(game._compaction_interval() == game.COMPACTION_INTERVAL_MAX, "Low extraction must leave generous time between compacted rocks.")
+	var now := Time.get_ticks_msec() * 0.001
+	for index in range(25):
+		game.manual_mining_click_times.append(now - float(24 - index) * 0.35)
+	_check(game._compaction_interval() == 18, "Sustained manual mining above two clicks per second must accelerate compaction to eighteen landings.")
+	game.manual_mining_click_times.clear()
+	for index in range(45):
+		game.manual_mining_click_times.append(now - float(44 - index) * 0.20)
+	_check(game._compaction_interval() == 12, "Manual mining above four clicks per second must accelerate compaction to twelve landings.")
+	game.manual_mining_click_times.clear()
 	game.levels.puncher = 4
 	game.levels.punch_power = 3
-	_check(game._compaction_interval() == game.COMPACTION_INTERVAL_MIN, "Explosive extraction must compact powder at the minimum twelve-landings cadence.")
+	_check(game._compaction_interval() == game.COMPACTION_INTERVAL_MIN, "Explosive extraction must compact powder at the minimum eight-landings cadence.")
 	game.levels.puncher = 0
 	game.compaction_steps.right = game.COMPACTION_INTERVAL_MAX
 	var load_before: float = game._pile_load("right")
@@ -89,6 +98,27 @@ func _run() -> void:
 		while int(rock.get_meta("hardness", 0)) > 0:
 			game._chip_rock(rock)
 		_check(int(rock.get_meta("hardness", 0)) == 0, "A treated rock must become transportable.")
+
+	game._clear_pile()
+	await process_frame
+	for index in range(180):
+		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), 0.072)
+	for attempt in range(12):
+		game.compaction_steps.right = game.COMPACTION_INTERVAL_MAX
+		game._maybe_compact("right")
+	_check(game._rock_count("right") == game.COMPACTION_ROCK_LIMIT, "Compaction must stop at exactly eight simultaneous rocks per fossa.")
+
+	# The seventy-percent high threshold unlocks compaction permanently; Joe rebounding must not disable it.
+	game.current_phase = 1
+	_check(not game._compaction_unlocked(), "Compaction must not burden the opening before Joe first reaches seventy percent high.")
+	game.joe_high = 70.0
+	game._check_phase_progress()
+	_check(game.current_phase == 2 and game._compaction_unlocked(), "Crossing seventy percent high must permanently unlock compaction.")
+	game.joe_high = 90.0
+	_check(game._compaction_unlocked(), "Joe's high rebounding after Pulmones de Drogata must not disable compaction.")
+	game.phase_event_pending = false
+	game.playing = false
+	await process_frame
 
 	# Treated rocks remain exclusive to blue-helmet specialists.
 	var pawn := game.pawns.get_child(0) as Sprite2D

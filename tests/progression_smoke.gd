@@ -60,16 +60,13 @@ func _run() -> void:
 	game.levels.container = 0
 	game.cells = 457.0
 	var aggregated_grain: Sprite2D = game._create_piece("grain", "right", 1000.0, 0, 0, 0.072)
-	_check(game._manual_collect_at(aggregated_grain.position), "An aggregated rain grain must respond to a manual click while any real storage remains.")
-	var flying_portions: Array = game.loose_chunks.filter(func(piece: Sprite2D) -> bool: return bool(piece.get_meta("manual_flying", false)))
-	_check(flying_portions.size() == 1 and is_equal_approx(float((flying_portions[0] as Sprite2D).get_meta("value", 0.0)), 543.0), "Manual collection must take exactly the 543 units that still fit in a 1,000-unit box.")
-	_check(is_equal_approx(game._pile_load("right"), 457.0), "The uncollected 457 units of an aggregated grain must remain visible in the pile.")
+	_check(game._manual_collect_at(aggregated_grain.position) and not bool(aggregated_grain.get_meta("carried", false)), "An indivisible grain that does not fit must report full storage and remain in the pile.")
+	_check(is_equal_approx(float(aggregated_grain.get_meta("value", 0.0)), 1000.0) and is_equal_approx(game._pile_load("right"), 1000.0), "Storage pressure must never split a valuable grain into fractions.")
 	game._clear_pile()
 	var worker_aggregate: Sprite2D = game._create_piece("grain", "right", 1000.0, 0, 0, 0.072)
 	var test_collector := Sprite2D.new()
 	var split_cargo: Array = game._claim_top_pieces("right", 1, test_collector)
-	_check(split_cargo.size() == 1 and is_equal_approx(float((split_cargo[0] as Sprite2D).get_meta("value", 0.0)), 543.0), "Automatic collectors must also split an aggregated grain to use all real remaining storage.")
-	_check(is_equal_approx(float(worker_aggregate.get_meta("value", 0.0)), 457.0), "Automatic collection must leave the oversized grain remainder in the pile.")
+	_check(split_cargo.is_empty() and is_equal_approx(float(worker_aggregate.get_meta("value", 0.0)), 1000.0), "Automatic collectors must also leave an indivisible grain untouched when it does not fit.")
 	test_collector.free()
 	game._clear_pile()
 	game.cells = 0.0
@@ -77,6 +74,10 @@ func _run() -> void:
 	_check(game.PHASE_HIGH_THRESHOLDS == [90.0, 70.0, 52.0, 34.0, 18.0] and not game.PHASES[0].has("survive"), "Phases must unlock when Joe's high crosses its descending thresholds, never through timers or delivery targets.")
 	_check(is_equal_approx(game.FIRST_WALL_HP, 10000000000.0) and is_equal_approx(game.FIRST_LEFT_WALL_HP, 10000000000.0), "Both fossae must begin with ten billion resistance.")
 	_check(is_equal_approx(game.joe_high, 90.0), "Joe must begin dangerously high at ninety percent.")
+	game._improve_joe(90000.0)
+	_check(game.joe_high <= 70.0, "About ninety thousand cleaned units must be enough to overcome Joe's opening high once his recurring gains are included.")
+	game.joe_high = 90.0
+	game.joe_high_display = 90.0
 	_check(not game.levels.has("smart_clump"), "Normal-pawn smart clumping must be removed completely.")
 	game.right_hp = game.right_max * 0.01
 	game._update_world()
@@ -170,9 +171,10 @@ func _run() -> void:
 	_check(game.loose_chunks.size() == pile_before_scrape + 1, "The basal scrape must create one visible grain.")
 	game._clear_pile()
 
-	# The unavoidable two-minute line delivers exactly one percent of the initial wall.
+	# The unavoidable two-minute line is low-value logistical sabotage scaled from recent mining.
 	game._update_ui()
 	_check(not (game.buttons.puncher as Button).visible, "The pugilist must not be available at the beginning.")
+	game.mined_since_line = 500.0
 	game.another_line_clock = 0.0
 	var high_before_line: float = game.joe_high
 	game._update_another_line(0.01)
@@ -181,8 +183,9 @@ func _run() -> void:
 	while game.another_line_wave > 0 and safety > 0:
 		game._update_another_line(0.20)
 		safety -= 1
-	_check(is_equal_approx(game.ANOTHER_LINE_INTERVAL, 120.0) and expected_flood == game.ANOTHER_LINE_VISUALS and game.loose_chunks.size() == expected_flood, "Otra rayita must repeat every 120 seconds with a bounded visual particle count.")
-	_check(is_equal_approx(game._pile_load("right"), game.ANOTHER_LINE_UNITS) and is_equal_approx(game.ANOTHER_LINE_UNITS, 200000.0), "Otra rayita must keep its calibrated 200,000-unit load after the walls grow to billions.")
+	_check(is_equal_approx(game.ANOTHER_LINE_INTERVAL, 120.0) and expected_flood == 80 and game.loose_chunks.size() == expected_flood, "The first Otra rayita must drop eighty real grains after a low-output opening.")
+	_check(is_equal_approx(game._pile_load("right"), 80.0) and game.loose_chunks.all(func(piece: Sprite2D) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), 1.0) and piece.get_meta("source", "") == "joe"), "Every Joe grain must be an indivisible one-unit nuisance rather than an aggregated transport shortcut.")
+	_check(game._another_line_grain_count(100000.0) == 800 and game._another_line_grain_count(2000000.0) == 3000, "Joe's line must keep scaling beyond four hundred grains when extraction reaches industrial levels.")
 	_check(game.joe_high > high_before_line, "Joe's extra line must visibly increase his high.")
 	var wave_columns := {}
 	for piece in game.loose_chunks:
@@ -195,6 +198,9 @@ func _run() -> void:
 	_check(wave_columns.size() <= 44 and tallest_wave_column >= 5, "Otra rayita must retain meaningful vertical relief instead of becoming a flat flood.")
 	_check(game.puncher_unlocked and (game.buttons.puncher as Button).visible, "The first extra line must unlock the pugilist adaptation.")
 	_check((game.buttons.puncher as Button).has_theme_stylebox_override("normal"), "The newly mandatory pugilist must receive the blue halo.")
+	game._clear_pile()
+	var outlined_player_grain: Sprite2D = game._create_piece("grain", "right", 4.0, 0, 0, 0.072)
+	_check(outlined_player_grain.material == game.PLAYER_GRAIN_MATERIAL, "Player-mined grains may differ from Joe's only through the subtle dedicated outline layer.")
 	game._clear_pile()
 
 	# Pugilists keep their visible run while their numerical damage escalates hard.
@@ -545,6 +551,9 @@ func _run() -> void:
 	game.contamination = 17.0
 	game.another_line_clock = 77.0
 	game.another_line_events = 4
+	game.mined_since_line = 123456.0
+	game.pending_line_grains = 800
+	game.last_line_grains = 400
 	game.joe_high = 63.0
 	game.lung_clock = 123.0
 	game.spray_clock = 111.0
@@ -565,12 +574,13 @@ func _run() -> void:
 	game.joe_high = 0.0
 	game._clear_fallen_wall_chunks()
 	game._load()
-	_check(game.current_phase == 5 and is_equal_approx(game.phase_work, 321.0), "Save version 14 must preserve Joe's crisis progression.")
-	_check(int(game.phase_events.line) == 3 and int(game.phase_events.scratch) == 2, "Save version 14 must preserve the crises survived in the current phase.")
-	_check(is_equal_approx(game.contamination, 17.0) and is_equal_approx(game.another_line_clock, 77.0), "Save version 14 must preserve hidden contamination and Joe's line clock.")
-	_check(game.another_line_events == 4 and is_equal_approx(game.joe_high, 63.0) and is_equal_approx(game.lung_clock, 123.0) and is_equal_approx(game.spray_clock, 111.0), "Save version 14 must preserve the high and every independent Joe timer.")
-	_check(is_equal_approx(game.spray_film_hp, 500.0) and is_equal_approx(game.spray_film_max, 2400.0), "Save version 14 must preserve the persistent spray film.")
-	_check(game.fallen_wall_chunks.size() == 1 and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), game.WALL_CHUNK_HEALTH) and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("mass", 0.0)), 11.0), "Save version 14 must preserve wall-block health and mass independently.")
+	_check(game.current_phase == 5 and is_equal_approx(game.phase_work, 321.0), "Save version 15 must preserve Joe's crisis progression.")
+	_check(int(game.phase_events.line) == 3 and int(game.phase_events.scratch) == 2, "Save version 15 must preserve the crises survived in the current phase.")
+	_check(is_equal_approx(game.contamination, 17.0) and is_equal_approx(game.another_line_clock, 77.0), "Save version 15 must preserve hidden contamination and Joe's line clock.")
+	_check(game.another_line_events == 4 and is_equal_approx(game.joe_high, 63.0) and is_equal_approx(game.lung_clock, 123.0) and is_equal_approx(game.spray_clock, 111.0), "Save version 15 must preserve the high and every independent Joe timer.")
+	_check(is_equal_approx(game.mined_since_line, 123456.0) and game.pending_line_grains == 800 and game.last_line_grains == 400, "Save version 15 must preserve the adaptive line tier and its recent-mining sample.")
+	_check(is_equal_approx(game.spray_film_hp, 500.0) and is_equal_approx(game.spray_film_max, 2400.0), "Save version 15 must preserve the persistent spray film.")
+	_check(game.fallen_wall_chunks.size() == 1 and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), game.WALL_CHUNK_HEALTH) and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("mass", 0.0)), 11.0), "Save version 15 must preserve wall-block health and mass independently.")
 	_check(game.rocks_opened == 9 and game.impurities_cleaned == 13 and is_equal_approx(game.tissue_repaired, 21.0), "Save version 6 must preserve mechanical phase objectives.")
 
 	var legacy := FileAccess.open(game.save_path, FileAccess.WRITE)
@@ -582,6 +592,11 @@ func _run() -> void:
 	_check(not game.levels.has("smart_clump"), "Legacy saves must discard the removed smart-clumping adaptation.")
 	_check(game.levels.has("click_burst") and game.levels.has("click_rhythm"), "Legacy saves must receive the new manual-click adaptations.")
 	_check(game.puncher_unlocked, "Legacy saves beyond phase 1 must keep the pugilist branch available.")
+	legacy = FileAccess.open(game.save_path, FileAccess.WRITE)
+	legacy.store_string(JSON.stringify({"version":14, "cells":0.0, "pile":[{"kind":"grain", "side":"right", "value":1000.0, "column":0, "scale":0.072}]}))
+	legacy.close()
+	game._load()
+	_check(game.loose_chunks.size() == 1 and is_equal_approx(float(game.loose_chunks[0].get_meta("value", 0.0)), 1.0) and game.loose_chunks[0].get_meta("source", "") == "joe", "Version 14 saves must convert legacy thousand-unit rain aggregates into indivisible Joe grains.")
 
 	legacy = FileAccess.open(game.save_path, FileAccess.WRITE)
 	legacy.store_string(JSON.stringify({"version":10, "cells":6200.0, "levels":{"box":2}, "septum_open":false}))

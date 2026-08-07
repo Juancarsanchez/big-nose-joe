@@ -2,7 +2,7 @@ extends Control
 
 const SAVE := "user://big_nose_joe.save"
 const SETTINGS := "user://big_nose_joe_settings.cfg"
-const SAVE_VERSION := 14
+const SAVE_VERSION := 15
 const ProgressionData = preload("res://scripts/progression_data.gd")
 const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
@@ -27,9 +27,11 @@ const TERRAIN_ANCHORS := [0.16, 0.68, 0.38, 0.84, 0.53]
 const ANOTHER_LINE_ANCHORS := [0.10, 0.52, 0.90]
 const ANOTHER_LINE_SHIFTS := [0.0, 0.08, -0.05, 0.13, -0.10]
 const COMPACTION_THRESHOLD := 18.0
-const COMPACTION_INTERVAL_MIN := 12
-const COMPACTION_INTERVAL_MAX := 36
+const COMPACTION_INTERVAL_MIN := 8
+const COMPACTION_INTERVAL_MAX := 24
 const COMPACTION_GRAINS := 6
+const COMPACTION_ROCK_LIMIT := 8
+const COMPACTION_CLICK_WINDOW := 10.0
 const RIGHT_WALL_COLUMN := -5
 const LEFT_WALL_COLUMN := 5
 const BASE_PAWN_SPEED := 70.0
@@ -59,9 +61,10 @@ const JOE_STARTING_HIGH := 90.0
 const JOE_HIGH_PER_COCAINE_UNIT := 0.00011
 const ANOTHER_LINE_INTERVAL := 120.0
 const ANOTHER_LINE_WARNING := 8.0
-const ANOTHER_LINE_UNITS := 200000.0
 const ANOTHER_LINE_HIGH_GAIN := 0.5
-const ANOTHER_LINE_VISUALS := 200
+const ANOTHER_LINE_MINING_THRESHOLDS := [1000.0, 5000.0, 20000.0, 100000.0, 500000.0, 2000000.0]
+const ANOTHER_LINE_GRAIN_TIERS := [80, 120, 200, 400, 800, 1600, 3000]
+const PHASE_ONE_CLEANING_EFFICIENCY := 0.00028
 const LUNG_INTERVAL := 300.0
 const LUNG_WARNING := 150.0
 const LUNG_STEAL_RATIO := 0.20
@@ -98,6 +101,7 @@ const HANDLER_CARRY := preload("res://assets/art/gameplay/sprites/pawn_handler_c
 const PLATELET_TEXTURE := preload("res://assets/art/gameplay/sprites/platelet.png")
 const BACTERIA_TEXTURE := preload("res://assets/art/gameplay/sprites/bacteria.png")
 const GRAIN_TEXTURE := preload("res://assets/art/gameplay/sprites/cocaine_grain.png")
+const PLAYER_GRAIN_MATERIAL := preload("res://assets/art/gameplay/materials/player_grain_outline.tres")
 const WALL_CHUNK_SHEET := preload("res://assets/art/gameplay/sprites/cocaine_wall_chunks.png")
 const UMBRELLA_TEXTURE := preload("res://assets/art/gameplay/sprites/umbrella_pink.png")
 const SPONGE_TEXTURE := preload("res://assets/art/gameplay/sprites/sponge_yellow.png")
@@ -200,6 +204,7 @@ var loose_chunks: Array[Sprite2D] = []
 var fallen_wall_chunks: Array[Sprite2D] = []
 var compaction_steps := {"left":0, "right":0}
 var compaction_announced := false
+var manual_mining_click_times: Array[float] = []
 var current_phase := 1
 var phase_work := 0.0
 var phase_events := {"line":0, "lungs":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
@@ -221,6 +226,10 @@ var another_line_drop_clock := 0.0
 var another_line_spawn_index := 0
 var another_line_events := 0
 var another_line_warned := false
+var mined_since_line := 0.0
+var pending_line_grains := ANOTHER_LINE_GRAIN_TIERS[0]
+var current_line_grains := 0
+var last_line_grains := ANOTHER_LINE_GRAIN_TIERS[0]
 var lung_clock := LUNG_INTERVAL
 var lung_warned := false
 var chalk_clock := CHALK_INTERVAL
@@ -719,9 +728,9 @@ func _choose_work_side(index: int) -> String:
 		return "left" if index % 2 == 0 else "right"
 	return "left" if left_score > right_score else "right"
 
-func _spawn_chunk(origin: Vector2, value: float, side: String = active_side, preferred_column: int = 999) -> void:
+func _spawn_chunk(origin: Vector2, value: float, side: String = active_side, preferred_column: int = 999, source: String = "player") -> void:
 	var column := _choose_landing_column(side, preferred_column)
-	var piece := _create_piece("grain", side, value, 0, column, randf_range(0.068, 0.078))
+	var piece := _create_piece("grain", side, value, 0, column, randf_range(0.068, 0.078), "", source)
 	_drop_piece(piece, origin)
 
 func _spawn_special_piece(kind: String, side: String, material: String = "") -> void:
@@ -741,9 +750,11 @@ func _drop_piece(piece: Sprite2D, origin: Vector2) -> void:
 	tween.tween_property(piece, "rotation", piece.rotation + randf_range(-0.42, 0.42), duration)
 	tween.chain().tween_callback(_mark_landed.bind(piece))
 
-func _create_piece(kind: String, side: String, value: float, hardness: int, column: int, piece_scale: float, material: String = "") -> Sprite2D:
+func _create_piece(kind: String, side: String, value: float, hardness: int, column: int, piece_scale: float, material: String = "", source: String = "player") -> Sprite2D:
 	var piece := Sprite2D.new()
 	piece.texture = BACTERIA_TEXTURE if kind == "bacteria" else GRAIN_TEXTURE
+	if kind == "grain" and source == "player":
+		piece.material = PLAYER_GRAIN_MATERIAL
 	column = _constrain_column(side, column)
 	piece.scale = Vector2(piece_scale, piece_scale)
 	piece.set_meta("base_scale", piece_scale)
@@ -754,6 +765,7 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 	piece.set_meta("x_jitter", randf_range(-3.8, 3.8))
 	piece.set_meta("height", ROCK_HEIGHT if kind == "rock" else (10.0 if kind == "bacteria" else GRAIN_HEIGHT))
 	piece.set_meta("material", material)
+	piece.set_meta("source", source)
 	piece.set_meta("landed", true)
 	piece.set_meta("carried", false)
 	piece.set_meta("hardness", hardness)
@@ -775,27 +787,6 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 	loose_chunks.append(piece)
 	piece.position = _landing_position(piece)
 	return piece
-
-func _split_grain_piece(piece: Sprite2D, claimed_value: float) -> Sprite2D:
-	if not is_instance_valid(piece) or piece.get_meta("kind", "grain") != "grain":
-		return piece
-	var total := float(piece.get_meta("value", 1.0))
-	claimed_value = clampf(claimed_value, 0.0, total)
-	if claimed_value <= 0.001 or claimed_value >= total - 0.001:
-		return piece
-	piece.set_meta("value", total - claimed_value)
-	var portion := _create_piece(
-		"grain",
-		str(piece.get_meta("side", "right")),
-		claimed_value,
-		0,
-		int(piece.get_meta("column", 0)),
-		float(piece.get_meta("base_scale", 0.07))
-	)
-	portion.position = piece.position
-	portion.rotation = piece.rotation
-	portion.set_meta("x_jitter", float(piece.get_meta("x_jitter", 0.0)))
-	return portion
 
 func _mark_landed(piece: Variant) -> void:
 	if not is_instance_valid(piece): return
@@ -924,7 +915,7 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 			if kind == "bacteria" and not handler: continue
 			if kind == "impurity" and int(levels.detector) > 0 and not bool(pawn.get_meta("detector", false)): continue
 			var stored_value := float(candidate.get_meta("value", 1.0)) * (_box_yield_multiplier() if kind == "grain" else 1.0)
-			if kind != "impurity" and stored_value > remaining_storage + 0.001 and (kind != "grain" or remaining_storage <= 0.001): continue
+			if kind != "impurity" and stored_value > remaining_storage + 0.001: continue
 			collectable.append(candidate)
 		if collectable.is_empty(): break
 		var preferred: Array[Sprite2D] = []
@@ -937,14 +928,9 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 		var source := preferred if not preferred.is_empty() else collectable
 		var piece := source[randi_range(0, mini(6, source.size() - 1))]
 		var piece_kind: String = piece.get_meta("kind", "grain")
-		var yield_multiplier := _box_yield_multiplier() if piece_kind == "grain" else 1.0
-		var piece_stored_value := float(piece.get_meta("value", 1.0)) * yield_multiplier
-		if piece_kind == "grain" and piece_stored_value > remaining_storage + 0.001:
-			piece = _split_grain_piece(piece, remaining_storage / maxf(0.001, yield_multiplier))
-			piece_stored_value = float(piece.get_meta("value", 1.0)) * yield_multiplier
 		piece.set_meta("carried", true)
 		if piece_kind != "impurity":
-			remaining_storage -= piece_stored_value
+			remaining_storage -= float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if piece_kind == "grain" else 1.0)
 		piece.z_index = 20
 		if handler and piece.get_meta("kind", "grain") == "bacteria":
 			piece.visible = false
@@ -1048,14 +1034,9 @@ func _manual_collect_at(world_pos: Vector2) -> bool:
 		_float_text("ESO SE MUEVE", world_pos)
 		return true
 	var stored_value := float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if kind == "grain" else 1.0)
-	if kind != "impurity":
-		var available := _manual_claim_space()
-		if available <= 0.001:
-			_float_text("ALMACÃ‰N LLENO", world_pos)
-			return true
-		if stored_value > available + 0.001:
-			var yield_multiplier := _box_yield_multiplier() if kind == "grain" else 1.0
-			piece = _split_grain_piece(piece, available / maxf(0.001, yield_multiplier))
+	if kind != "impurity" and stored_value > _manual_claim_space() + 0.001:
+		_float_text("ALMACÃ‰N LLENO", world_pos)
+		return true
 	var side: String = piece.get_meta("side", "right")
 	piece.set_meta("carried", true)
 	piece.set_meta("manual_flying", true)
@@ -1271,9 +1252,8 @@ func _chip_rock(rock: Sprite2D, power: int = 1) -> void:
 		_spawn_impact_dust(rock.position, Color("eef4e7"), 5)
 
 func _maybe_compact(side: String) -> void:
-	if current_phase < 2: return
-	var rock_limit := 8 + current_phase * 2 + int(levels.breaker) * 4
-	if _rock_count(side) >= rock_limit: return
+	if not _compaction_unlocked(): return
+	if _rock_count(side) >= COMPACTION_ROCK_LIMIT: return
 	var pressure_rate := _auto_hit_rate() + _special_extraction_rate(true)
 	var interval := _compaction_interval()
 	if _pile_load(side) < COMPACTION_THRESHOLD or int(compaction_steps.get(side, 0)) < interval: return
@@ -1297,7 +1277,30 @@ func _maybe_compact(side: String) -> void:
 
 func _compaction_interval() -> int:
 	var pressure_rate := _auto_hit_rate() + _special_extraction_rate(true)
-	return clampi(roundi(float(COMPACTION_INTERVAL_MAX) - sqrt(maxf(0.0, pressure_rate)) * 2.4), COMPACTION_INTERVAL_MIN, COMPACTION_INTERVAL_MAX)
+	var interval := COMPACTION_INTERVAL_MAX - roundi(sqrt(maxf(0.0, pressure_rate)) * 1.4)
+	var click_rate := _manual_mining_click_rate()
+	if click_rate >= 4.0:
+		interval -= 12
+	elif click_rate >= 2.0:
+		interval -= 6
+	return clampi(interval, COMPACTION_INTERVAL_MIN, COMPACTION_INTERVAL_MAX)
+
+func _compaction_unlocked() -> bool:
+	# Las fases conservan el umbral ya cruzado aunque una locura vuelva a subir el colocón.
+	return current_phase >= 2
+
+func _record_manual_mining_click() -> void:
+	manual_mining_click_times.append(Time.get_ticks_msec() * 0.001)
+	_prune_manual_mining_clicks()
+
+func _manual_mining_click_rate() -> float:
+	_prune_manual_mining_clicks()
+	return float(manual_mining_click_times.size()) / COMPACTION_CLICK_WINDOW
+
+func _prune_manual_mining_clicks() -> void:
+	var cutoff := Time.get_ticks_msec() * 0.001 - COMPACTION_CLICK_WINDOW
+	while not manual_mining_click_times.is_empty() and manual_mining_click_times[0] < cutoff:
+		manual_mining_click_times.pop_front()
 
 func _dense_grain_cluster(side: String) -> Array[Sprite2D]:
 	var grains: Array[Sprite2D] = []
@@ -1351,6 +1354,7 @@ func _click_wall(side: String) -> void:
 			node.set_meta("side", side)
 			_place_puncher(node as Sprite2D)
 	total_clicks += 1
+	_record_manual_mining_click()
 	var hit := minf(_click_power(), _wall_hp(side))
 	_damage_wall(hit, side)
 	_spawn_chunk(Vector2(_mine_x(side), _ground_y() - randf_range(160.0, 310.0)), hit, side)
@@ -1367,6 +1371,7 @@ func _click_wall(side: String) -> void:
 			_float_text("¡RÁFAGA!  +%d" % burst, Vector2(_mine_x(side), _ground_y() - 245.0))
 
 func _damage_wall(amount: float, side: String = active_side) -> void:
+	mined_since_line += minf(maxf(0.0, amount), _wall_hp(side))
 	if side == "left":
 		if left_hp <= 0.0: return
 		var previous_ratio := clampf(left_hp / left_max, 0.0, 1.0)
@@ -2042,6 +2047,10 @@ func _debug_set_phase(next_phase: int) -> void:
 	another_line_spawn_index = 0
 	another_line_events = 0
 	another_line_warned = false
+	mined_since_line = 0.0
+	pending_line_grains = int(ANOTHER_LINE_GRAIN_TIERS[0])
+	current_line_grains = 0
+	last_line_grains = int(ANOTHER_LINE_GRAIN_TIERS[0])
 	lung_clock = LUNG_INTERVAL
 	lung_warned = false
 	chalk_clock = CHALK_INTERVAL
@@ -2060,6 +2069,7 @@ func _debug_set_phase(next_phase: int) -> void:
 	puncher_debut_pending = false
 	puncher_debut_clock = 0.0
 	manual_clicks_since_burst = 0
+	manual_mining_click_times.clear()
 	rocks_opened = 0
 	impurities_cleaned = 0
 	tissue_repaired = 0.0
@@ -2126,7 +2136,7 @@ func _update_another_line(delta: float) -> void:
 			var batch := mini(5, another_line_wave)
 			another_line_wave -= batch
 			for grain in range(batch):
-				var wave_total := ANOTHER_LINE_VISUALS
+				var wave_total := maxi(1, current_line_grains)
 				var projected_load := _pile_load(active_side) + float(another_line_wave)
 				var previous_load := maxf(0.0, projected_load - float(wave_total))
 				var reach := mini(MAX_PILE_RADIUS, 18 + current_phase * 2 + int(sqrt(previous_load / 12.0)))
@@ -2141,39 +2151,55 @@ func _update_another_line(delta: float) -> void:
 				_spawn_line_piece(Vector2(rain_x + randf_range(-7.0, 7.0), _ground_y() - randf_range(300.0, 430.0)), active_side, center, another_line_spawn_index)
 			if another_line_wave == 0:
 				_finish_another_line()
+				current_line_grains = 0
 		return
 	another_line_clock -= delta
 	if another_line_clock <= ANOTHER_LINE_WARNING and not another_line_warned:
 		another_line_warned = true
-		_show_toast("JOE PREPARA OTRA RAYITA  ·  CAERÁN %s GRANOS" % _number(ANOTHER_LINE_UNITS))
+		pending_line_grains = _another_line_grain_count(mined_since_line)
+		_show_toast("JOE PREPARA OTRA RAYITA  ·  CAERÁN %s GRANOS" % _number(pending_line_grains))
 	if another_line_clock <= 0.0:
 		_start_another_line("normal")
 
+func _another_line_grain_count(recent_mining: float) -> int:
+	for index in range(ANOTHER_LINE_MINING_THRESHOLDS.size()):
+		if recent_mining < float(ANOTHER_LINE_MINING_THRESHOLDS[index]):
+			return int(ANOTHER_LINE_GRAIN_TIERS[index])
+	return int(ANOTHER_LINE_GRAIN_TIERS.back())
+
 func _start_another_line(source: String) -> void:
+	var grain_count := last_line_grains
 	if source == "normal":
+		grain_count = pending_line_grains if another_line_warned else _another_line_grain_count(mined_since_line)
+		last_line_grains = grain_count
+		mined_since_line = 0.0
+		pending_line_grains = int(ANOTHER_LINE_GRAIN_TIERS[0])
 		another_line_clock = ANOTHER_LINE_INTERVAL
 		another_line_warned = false
-	another_line_wave += ANOTHER_LINE_VISUALS
+	if another_line_wave == 0:
+		another_line_spawn_index = 0
+		current_line_grains = 0
+	another_line_wave += grain_count
+	current_line_grains += grain_count
 	another_line_drop_clock = 0.0
-	another_line_spawn_index = 0
 	another_line_events += 1
 	if source == "normal": phase_events.line = int(phase_events.line) + 1
 	if source == "normal":
 		_change_joe_high(ANOTHER_LINE_HIGH_GAIN, true)
 		_play_sfx(SFX_JOE_INHALE, -13.0, 1.12)
 	var source_text := "PULMONES DE DROGATA" if source == "lungs" else ("RAYITA CON SERRÍN" if source == "adulterated" else "OTRA RAYITA")
-	_show_toast("%s  ·  +%s GRANOS" % [source_text, _number(ANOTHER_LINE_UNITS)])
-	_float_text("+%s GRANOS" % _number(ANOTHER_LINE_UNITS), Vector2(_pile_center(active_side), _ground_y() - 250.0))
+	_show_toast("%s  ·  +%s GRANOS" % [source_text, _number(grain_count)])
+	_float_text("+%s GRANOS" % _number(grain_count), Vector2(_pile_center(active_side), _ground_y() - 250.0))
 
 func _spawn_line_piece(origin: Vector2, side: String, column: int, index: int) -> void:
-	var value := ANOTHER_LINE_UNITS / float(ANOTHER_LINE_VISUALS)
+	var value := 1.0
 	var impurity_stride := maxi(5, 5 + int(levels.sorting))
 	if current_phase >= 3 and index % impurity_stride == 0:
 		var adulterant := "serrín" if another_line_events % 2 == 1 else "yeso"
-		var piece := _create_piece("impurity", side, value, 0, _choose_landing_column(side, column), randf_range(0.078, 0.09), adulterant)
+		var piece := _create_piece("impurity", side, value, 0, _choose_landing_column(side, column), randf_range(0.078, 0.09), adulterant, "joe")
 		_drop_piece(piece, origin)
 	else:
-		_spawn_chunk(origin, value, side, column)
+		_spawn_chunk(origin, value, side, column, "joe")
 
 func _finish_another_line() -> void:
 	if puncher_unlocked:
@@ -2489,7 +2515,8 @@ func _future_special_damage(kind: String, owned_level: int) -> float:
 	return 50000000.0 * pow(10.0, int(levels.supersaiyan_power))
 
 func _improve_joe(clean_units: float) -> void:
-	_change_joe_high(-clean_units * JOE_HIGH_PER_COCAINE_UNIT)
+	var efficiency := PHASE_ONE_CLEANING_EFFICIENCY if current_phase == 1 else JOE_HIGH_PER_COCAINE_UNIT
+	_change_joe_high(-clean_units * efficiency)
 
 func _change_joe_high(amount: float, pulse: bool = false) -> void:
 	joe_high = clampf(joe_high + amount, 0.0, 100.0)
@@ -2872,17 +2899,11 @@ func _claim_transport_cocaine(side: String, capacity: float, take_all: bool) -> 
 		var piece := value as Sprite2D
 		if not _piece_is_in_pile(piece, side) or piece.get_meta("kind", "grain") != "grain": continue
 		var piece_value := float(piece.get_meta("value", 1.0))
-		var yield_multiplier := _box_yield_multiplier()
-		var stored_value := piece_value * yield_multiplier
-		if stored_value > remaining + 0.001:
-			if remaining <= 0.001: continue
-			piece = _split_grain_piece(piece, remaining / maxf(0.001, yield_multiplier))
-			piece_value = float(piece.get_meta("value", 1.0))
-			stored_value = piece_value * yield_multiplier
+		if piece_value > remaining + 0.001: continue
 		piece.set_meta("carried", true)
 		piece.visible = false
 		cargo.append(piece)
-		remaining -= stored_value
+		remaining -= piece_value
 		if remaining <= 0.001: break
 	_settle_surface(side, 5)
 	_restack_pile(side)
@@ -3314,7 +3335,7 @@ func _serialize_pile() -> Array:
 	var data: Array = []
 	for piece in loose_chunks:
 		if not is_instance_valid(piece): continue
-		data.append({"kind":piece.get_meta("kind", "grain"), "material":piece.get_meta("material", ""), "side":piece.get_meta("side", "right"), "value":float(piece.get_meta("value", 1.0)), "hardness":int(piece.get_meta("hardness", 0)), "max_hardness":int(piece.get_meta("max_hardness", 0)), "column":int(piece.get_meta("column", 0)), "scale":float(piece.get_meta("base_scale", 0.07)), "x_jitter":float(piece.get_meta("x_jitter", 0.0))})
+		data.append({"kind":piece.get_meta("kind", "grain"), "material":piece.get_meta("material", ""), "source":piece.get_meta("source", "player"), "side":piece.get_meta("side", "right"), "value":float(piece.get_meta("value", 1.0)), "hardness":int(piece.get_meta("hardness", 0)), "max_hardness":int(piece.get_meta("max_hardness", 0)), "column":int(piece.get_meta("column", 0)), "scale":float(piece.get_meta("base_scale", 0.07)), "x_jitter":float(piece.get_meta("x_jitter", 0.0))})
 	return data
 
 func _serialize_fallen_wall_chunks() -> Array:
@@ -3363,7 +3384,7 @@ func _restore_pile(data: Variant) -> void:
 		var kind := str(entry.get("kind", "grain"))
 		if kind == "smart_clump": kind = "grain"
 		var hardness := int(entry.get("hardness", 0))
-		var piece := _create_piece(kind, str(entry.get("side", "right")), float(entry.get("value", 1.0)), int(entry.get("max_hardness", hardness)), int(entry.get("column", 0)), float(entry.get("scale", 0.18 if kind == "rock" else 0.07)), str(entry.get("material", "")))
+		var piece := _create_piece(kind, str(entry.get("side", "right")), float(entry.get("value", 1.0)), int(entry.get("max_hardness", hardness)), int(entry.get("column", 0)), float(entry.get("scale", 0.18 if kind == "rock" else 0.07)), str(entry.get("material", "")), str(entry.get("source", "player")))
 		piece.set_meta("hardness", hardness)
 		piece.set_meta("x_jitter", float(entry.get("x_jitter", 0.0)))
 		piece.position = _landing_position(piece)
@@ -3389,6 +3410,7 @@ func _save() -> void:
 			"impurities_handled":impurities_handled, "bacteria_handled":bacteria_handled,
 			"rocks_opened":rocks_opened, "impurities_cleaned":impurities_cleaned, "tissue_repaired":tissue_repaired,
 			"another_line_clock":another_line_clock, "another_line_wave":another_line_wave, "another_line_spawn_index":another_line_spawn_index, "another_line_events":another_line_events,
+			"mined_since_line":mined_since_line, "pending_line_grains":pending_line_grains, "current_line_grains":current_line_grains, "last_line_grains":last_line_grains,
 			"lung_clock":lung_clock, "chalk_clock":chalk_clock, "spray_clock":spray_clock, "spray_pending":spray_pending, "spray_followup_clock":spray_followup_clock, "spray_side":spray_side,
 			"spray_film_hp":spray_film_hp, "spray_film_max":spray_film_max,
 			"scratch_clock":scratch_clock, "mucus_clock":mucus_clock, "mucus_hp":mucus_hp, "mucus_max_hp":mucus_max_hp, "catapult_clock":catapult_clock,
@@ -3401,6 +3423,7 @@ func _load() -> void:
 	if not FileAccess.file_exists(save_path): return
 	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
 	if typeof(data) != TYPE_DICTIONARY: return
+	var saved_version := int(data.get("version", 0))
 	cells = float(data.get("cells", 0.0))
 	right_hp = float(data.get("right_hp", FIRST_WALL_HP))
 	right_max = float(data.get("right_max", FIRST_WALL_HP))
@@ -3415,7 +3438,7 @@ func _load() -> void:
 	var saved_levels: Dictionary = data.get("levels", {})
 	for id in saved_levels:
 		if levels.has(id): levels[id] = int(saved_levels[id])
-	if int(data.get("version", 0)) < SAVE_VERSION:
+	if saved_version < SAVE_VERSION:
 		var legacy_box := int(saved_levels.get("box", 0))
 		if legacy_box >= 1 or cells > STORAGE_CAPACITIES[0]:
 			levels.container = 1
@@ -3438,7 +3461,15 @@ func _load() -> void:
 		left_max = FIRST_LEFT_WALL_HP
 		left_hp = left_max * left_ratio
 		left_cleared = 1 if left_hp <= 0.0 else 0
-	_restore_pile(data.get("pile", []))
+	var saved_pile: Array = data.get("pile", [])
+	if saved_version < 15:
+		for entry_value in saved_pile:
+			if typeof(entry_value) != TYPE_DICTIONARY: continue
+			var entry: Dictionary = entry_value
+			if entry.get("kind", "grain") in ["grain", "impurity"] and is_equal_approx(float(entry.get("value", 1.0)), 1000.0):
+				entry.value = 1.0
+				entry.source = "joe"
+	_restore_pile(saved_pile)
 	_restore_fallen_wall_chunks(data.get("fallen_wall_chunks", []))
 	var saved_steps = data.get("compaction_steps", {})
 	if typeof(saved_steps) == TYPE_DICTIONARY:
@@ -3471,6 +3502,10 @@ func _load() -> void:
 	another_line_wave = maxi(0, int(data.get("another_line_wave", 0)))
 	another_line_spawn_index = maxi(0, int(data.get("another_line_spawn_index", 0)))
 	another_line_events = maxi(0, int(data.get("another_line_events", 0)))
+	mined_since_line = maxf(0.0, float(data.get("mined_since_line", 0.0)))
+	pending_line_grains = maxi(1, int(data.get("pending_line_grains", ANOTHER_LINE_GRAIN_TIERS[0])))
+	current_line_grains = maxi(another_line_wave, int(data.get("current_line_grains", another_line_wave)))
+	last_line_grains = maxi(1, int(data.get("last_line_grains", ANOTHER_LINE_GRAIN_TIERS[0])))
 	lung_clock = clampf(float(data.get("lung_clock", LUNG_INTERVAL)), 0.0, LUNG_INTERVAL)
 	lung_warned = lung_clock <= LUNG_WARNING
 	chalk_clock = clampf(float(data.get("chalk_clock", CHALK_INTERVAL)), 0.0, CHALK_INTERVAL)
@@ -3489,6 +3524,7 @@ func _load() -> void:
 	puncher_debut_pending = bool(data.get("puncher_debut_pending", false))
 	puncher_debut_clock = maxf(0.0, float(data.get("puncher_debut_clock", 0.0)))
 	manual_clicks_since_burst = maxi(0, int(data.get("manual_clicks_since_burst", 0)))
+	manual_mining_click_times.clear()
 	another_line_warned = another_line_clock <= ANOTHER_LINE_WARNING
 	another_line_drop_clock = 0.0
 	bacteria_clock = 0.0
@@ -3549,6 +3585,10 @@ func _new_game() -> void:
 	another_line_spawn_index = 0
 	another_line_events = 0
 	another_line_warned = false
+	mined_since_line = 0.0
+	pending_line_grains = int(ANOTHER_LINE_GRAIN_TIERS[0])
+	current_line_grains = 0
+	last_line_grains = int(ANOTHER_LINE_GRAIN_TIERS[0])
 	lung_clock = LUNG_INTERVAL
 	lung_warned = false
 	chalk_clock = CHALK_INTERVAL
@@ -3567,6 +3607,7 @@ func _new_game() -> void:
 	puncher_debut_pending = false
 	puncher_debut_clock = 0.0
 	manual_clicks_since_burst = 0
+	manual_mining_click_times.clear()
 	overdose_active = false
 	phase_event_pending = true
 	_clear_pile()

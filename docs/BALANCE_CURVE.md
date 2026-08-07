@@ -4,18 +4,19 @@ Joe empieza al 90%. Las fases se disparan, una sola vez, al bajar a 70%, 52%, 34
 
 ## Primeros diez minutos
 
-La previsión para una partida activa, sin optimización extrema, es retirar aproximadamente entre 250.000 y 450.000 puntos de pared. El centro de balance usado es 300.000:
+La primera fase busca unas 90.000 unidades limpias en aproximadamente diez minutos. La producción propia genera bolas indivisibles cuyo valor coincide con el golpe, mientras las rayitas de Joe añaden únicamente granos de valor 1 para atascar viajes:
 
-- clic y ráfagas manuales: 20.000–40.000;
-- raspado basal y primeros peones: 5.000–15.000;
-- púgiles en prácticas y federados: 45.000–90.000;
-- primer tramo de pesos pesados: 180.000–300.000.
+- la primera rayita empieza en 80 granos;
+- al aumentar la extracción, las siguientes saltan a 120, 200, 400, 800, 1.600 y 3.000;
+- cada grano de Joe vale 1 y consume un hueco completo del transportista;
+- la cocaína densa extraída por clics y púgiles aporta la mayor parte del progreso económico.
 
-La entrega limpia reduce 0,00011 puntos de colocón por unidad. Unas 300.000 unidades entregadas reducen 33 puntos; las rayitas, el polvo pendiente y la fricción logística devuelven aproximadamente entre 8 y 13. El resultado esperado es cruzar el 70% alrededor del minuto 8–12 y provocar por primera vez Pulmones de Drogata.
+Durante la fase 1, la entrega limpia reduce 0,00028 puntos de colocón por unidad. Unas 90.000 unidades reducen 25,2 puntos brutos; las rayitas y el polvo pendiente devuelven parte de esa mejora. Desde la fase 2 vuelve a aplicarse 0,00011 por unidad. El resultado esperado sigue siendo cruzar el 70% alrededor del minuto 8–12 y provocar por primera vez Pulmones de Drogata.
 
 ## Escalado de cinco horas
 
 - 70%: Pulmones de Drogata añade 20 puntos y roba almacén. Obliga a volver a conquistar terreno.
+- Al cruzar ese 70% también queda activo para siempre el apelmazado dinámico: de 24 aterrizajes en calma hasta ocho con extracción frenética, con un máximo de ocho pedruscos por fosa.
 - 52%: las impurezas convierten capacidad y clasificación en el nuevo límite.
 - 34%: spray y moco paralizan la extracción si faltan esponjas o catapultas.
 - 18%: hemorragia e infección mantienen presión permanente durante el tramo de producción absurda.
