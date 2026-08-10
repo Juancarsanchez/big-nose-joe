@@ -238,6 +238,32 @@ func _run() -> void:
 	_check(absf(debut_puncher.position.x - game._puncher_strike_position(debut_puncher).x) < 0.6, "The punch must resolve at the visible edge of the cocaine wall.")
 	_check(game.punchers.get_child(0).get_node_or_null("BoxingGlove") != null, "Pugilists must be distinguished by a separate boxing-glove layer.")
 	game._clear_pile()
+
+	# The first progression gap is bridged by two strong tier upgrades, followed by one late speed jump.
+	game.levels.container = 1
+	game.levels.cart = 1
+	game._update_ui()
+	_check((game.buttons.cart_upgrade as Button).visible and (game.buttons.punch_union as Button).visible, "The trailer and punch union must unlock together after owning both the cart and a pugilist.")
+	_check(not (game.buttons.shift as Button).visible, "The motorway must remain hidden until the player buys one of the two tier upgrades.")
+	game.cells = 10000.0
+	game._buy("cart_upgrade")
+	var upgraded_cart := game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart").front() as Node2D
+	_check(is_equal_approx(float(upgraded_cart.get_meta("capacity", 0.0)), 36.0) and upgraded_cart.get_node_or_null("Trailer") != null, "The Vesicular Trailer must visibly raise the cart from twelve to thirty-six units per trip.")
+	_check((game.buttons.shift as Button).visible, "Buying either tier upgrade must reveal the late phase-one speed jump.")
+	game._buy("punch_union")
+	await process_frame
+	_check(game._puncher_count() == 3 and game.punchers.get_child_count() == 3, "The Punch Union must add exactly two basic pugilists without advancing their rank.")
+	game._buy("shift")
+	await process_frame
+	_check(is_equal_approx(game._pawn_speed(), game.BASE_PAWN_SPEED * 1.60), "The Lymphatic Motorway must increase pawn movement by sixty percent.")
+	var motorway_cart := game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart").back() as Node2D
+	_check(is_equal_approx(float(motorway_cart.get_meta("speed", 0.0)), game.CART_SPEED * 1.35), "The Lymphatic Motorway must also increase ground-transport speed by thirty-five percent.")
+	game.levels.cart_upgrade = 0
+	game.levels.punch_union = 0
+	game.levels.shift = 0
+	game._rebuild_transporters()
+	game._rebuild_punchers()
+
 	game.levels.puncher = 2
 	game.levels.punch_power = 1
 	game.puncher_debut_pending = false

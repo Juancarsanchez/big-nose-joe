@@ -44,6 +44,7 @@ const CONTAINER_X := 4860.0
 const SILO_X := 5350.0
 const PLANT_X := 1150.0
 const CART_CAPACITY := 12.0
+const CART_TRAILER_CAPACITY := 36.0
 const OX_CAPACITY := 40.0
 const CART_SPEED := 145.0
 const OX_SPEED := 105.0
@@ -68,7 +69,7 @@ const ANOTHER_LINE_HIGH_GAIN := 0.5
 const ANOTHER_LINE_MINING_THRESHOLDS := [1000.0, 5000.0, 20000.0, 100000.0, 500000.0, 2000000.0]
 const ANOTHER_LINE_GRAIN_TIERS := [240, 360, 600, 1000, 1600, 2600, 4000]
 const ANOTHER_LINE_DROP_INTERVAL := 0.035
-const PHASE_ONE_CLEANING_EFFICIENCY := 0.00036
+const PHASE_ONE_CLEANING_EFFICIENCY := 0.00060
 const LUNG_INTERVAL := 300.0
 const LUNG_WARNING := 150.0
 const LUNG_STEAL_RATIO := 0.20
@@ -600,7 +601,11 @@ func _pawn_speed() -> float:
 		crisis_factor *= lerpf(1.0, 0.68, tissue_damage / 100.0)
 	if current_phase >= 5:
 		crisis_factor *= lerpf(1.0, 0.72, infection / 100.0)
-	return BASE_PAWN_SPEED * pow(1.35, int(levels.shift)) * crisis_factor
+	var motorway_multiplier := 1.60 if int(levels.shift) > 0 else 1.0
+	return BASE_PAWN_SPEED * motorway_multiplier * crisis_factor
+
+func _ground_transport_speed(base_speed: float) -> float:
+	return base_speed * (1.35 if int(levels.shift) > 0 else 1.0)
 
 func _transport_capacity() -> int:
 	return BASE_CAPACITY
@@ -1749,7 +1754,7 @@ func _rebuild_pawns() -> void:
 func _rebuild_punchers() -> void:
 	for child in punchers.get_children():
 		child.queue_free()
-	for index in range(mini(8, int(levels.puncher))):
+	for index in range(_puncher_count()):
 		var rank := clampi(int(levels.punch_power), 0, PUGILIST_DAMAGE.size() - 1)
 		var puncher := Sprite2D.new()
 		puncher.texture = PAWN_EMPTY
@@ -1845,6 +1850,9 @@ func _punch_interval() -> float:
 func _punch_output() -> int:
 	return int(PUGILIST_DAMAGE[clampi(int(levels.punch_power), 0, PUGILIST_DAMAGE.size() - 1)])
 
+func _puncher_count() -> int:
+	return mini(8, int(levels.puncher) + (2 if int(levels.punch_union) > 0 else 0))
+
 func _punch_evolution_locked() -> bool:
 	# El púgil base pertenece a la fase 1. Cada descenso posterior del colocón
 	# autoriza exactamente una evolución adicional de toda la cuadrilla.
@@ -1855,12 +1863,12 @@ func _wall_mining_blocked() -> bool:
 	return mucus_hp > 0.0 or spray_film_hp > 0.0
 
 func _auto_hit_rate() -> float:
-	if int(levels.puncher) == 0 or box_jammed or _wall_mining_blocked() or _nearest_fallen_wall_chunk(active_side):
+	if _puncher_count() == 0 or box_jammed or _wall_mining_blocked() or _nearest_fallen_wall_chunk(active_side):
 		return 0.0
-	return float(levels.puncher) * float(_punch_output()) / _punch_interval()
+	return float(_puncher_count()) * float(_punch_output()) / _punch_interval()
 
 func _update_punchers(delta: float) -> void:
-	if int(levels.puncher) == 0:
+	if _puncher_count() == 0:
 		return
 	if box_jammed:
 		return
@@ -2219,9 +2227,10 @@ func _rate() -> float:
 	var cycle := distance * 2.0 / maxf(1.0, _pawn_speed()) + 0.8 + _deposit_duration()
 	var result := float(2 + int(levels.pawn)) * float(_transport_capacity()) / cycle * _box_yield_multiplier()
 	if int(levels.get("cart", 0)) > 0:
-		result += CART_CAPACITY / (distance * 2.0 / CART_SPEED + 1.1)
+		var cart_capacity := CART_TRAILER_CAPACITY if int(levels.cart_upgrade) > 0 else CART_CAPACITY
+		result += cart_capacity / (distance * 2.0 / _ground_transport_speed(CART_SPEED) + 1.1)
 	if int(levels.get("ox_convoy", 0)) > 0:
-		result += OX_CAPACITY / (distance * 2.0 / OX_SPEED + 1.1)
+		result += OX_CAPACITY / (distance * 2.0 / _ground_transport_speed(OX_SPEED) + 1.1)
 	if int(levels.get("train", 0)) > 0 and septum_open:
 		var available := _pile_load("left") + _pile_load("right")
 		var surface_trip := (absf(PLANT_X + 165.0 - LEFT_TUNNEL_X) + absf(RIGHT_TUNNEL_X - _pile_center("right") - 106.0)) * 2.0 / TRAIN_SPEED
@@ -2236,7 +2245,11 @@ func _buy(id: String) -> void:
 	if cells < cost or level >= int(upgrade.get("max", 999)): return
 	cells -= cost
 	levels[id] = level + 1
-	if upgrade.kind in ["pawn", "speed", "coordination", "specialist", "detector", "handler"]: _rebuild_pawns()
+	if upgrade.kind in ["pawn", "coordination", "specialist", "detector", "handler"]: _rebuild_pawns()
+	elif upgrade.kind == "speed":
+		_rebuild_pawns()
+		_rebuild_transporters()
+		_show_toast("AUTOVÍA LINFÁTICA  ·  TODO EL TRÁFICO ACELERA")
 	elif upgrade.kind == "autoclicker":
 		_rebuild_punchers()
 		if level == 0:
@@ -2247,11 +2260,14 @@ func _buy(id: String) -> void:
 	elif upgrade.kind == "auto_power":
 		_rebuild_punchers()
 		_show_toast("LA CUADRILLA PÚGIL HA EVOLUCIONADO")
+	elif upgrade.kind == "punch_union":
+		_rebuild_punchers()
+		_show_toast("SINDICATO DEL PUÑO  ·  +2 PÚGILES")
 	elif upgrade.kind == "storage":
 		_rebuild_infrastructure()
 		_rebuild_transporters()
 		_rebuild_pawns()
-	elif upgrade.kind in ["transport_cart", "transport_ox", "transport_train"]:
+	elif upgrade.kind in ["transport_cart", "transport_trailer", "transport_ox", "transport_train"]:
 		_rebuild_transporters()
 	elif upgrade.kind == "platelet": _rebuild_platelets()
 	elif upgrade.kind in ["elephant", "elephant_power", "pugilist_cannon", "cannon_power", "supersaiyan", "supersaiyan_power"]: _rebuild_punchers()
@@ -3058,9 +3074,10 @@ func _rebuild_transporters() -> void:
 		_release_transport_cargo(child)
 		child.queue_free()
 	if int(levels.get("cart", 0)) > 0:
-		_add_ground_transporter("cart", CART_CAPACITY, CART_SPEED)
+		var cart_capacity := CART_TRAILER_CAPACITY if int(levels.cart_upgrade) > 0 else CART_CAPACITY
+		_add_ground_transporter("cart", cart_capacity, _ground_transport_speed(CART_SPEED))
 	if int(levels.get("ox_convoy", 0)) > 0:
-		_add_ground_transporter("ox", OX_CAPACITY, OX_SPEED)
+		_add_ground_transporter("ox", OX_CAPACITY, _ground_transport_speed(OX_SPEED))
 	if int(levels.get("train", 0)) > 0 and septum_open:
 		_add_train()
 	_restack_pile()
@@ -3084,6 +3101,13 @@ func _add_ground_transporter(kind: String, capacity: float, speed: float) -> voi
 		cart.scale = Vector2.ONE * 0.075
 		cart.position = Vector2(8.0, -16.5)
 		root.add_child(cart)
+		if int(levels.cart_upgrade) > 0:
+			var trailer := Sprite2D.new()
+			trailer.name = "Trailer"
+			trailer.texture = CART_TEXTURE
+			trailer.scale = Vector2.ONE * 0.075
+			trailer.position = Vector2(112.0, -16.5)
+			root.add_child(trailer)
 		var puller := Sprite2D.new()
 		puller.name = "Puller"
 		puller.texture = PAWN_EMPTY
@@ -3480,6 +3504,19 @@ func _upgrade_available(upgrade: Dictionary) -> bool:
 	var dependency := str(upgrade.get("requires_upgrade", ""))
 	if not dependency.is_empty() and int(levels.get(dependency, 0)) == 0:
 		return false
+	var dependencies: Array = upgrade.get("requires_upgrades", [])
+	for required_id in dependencies:
+		if int(levels.get(str(required_id), 0)) == 0:
+			return false
+	var alternatives: Array = upgrade.get("requires_any_upgrades", [])
+	if not alternatives.is_empty():
+		var has_alternative := false
+		for required_id in alternatives:
+			if int(levels.get(str(required_id), 0)) > 0:
+				has_alternative = true
+				break
+		if not has_alternative:
+			return false
 	if current_phase == phase and phase_work < float(upgrade.get("unlock_at", 0.0)) and int(levels[upgrade.id]) == 0:
 		return false
 	return true
@@ -3525,9 +3562,10 @@ func _update_ui() -> void:
 		var evolution_locked: bool = upgrade.kind == "auto_power" and _punch_evolution_locked() and not maxed
 		var effect := "CLIC %s → %s" % [_number(pow(2.0, level)), _number(pow(2.0, level + 1))]
 		if upgrade.kind == "pawn": effect = "+1 peón"
-		elif upgrade.kind == "speed": effect = "VELOCIDAD %s → %s" % [_number(BASE_PAWN_SPEED * pow(1.35, level)), _number(BASE_PAWN_SPEED * pow(1.35, level + 1))]
+		elif upgrade.kind == "speed": effect = "PEONES +60%  ·  TRANSPORTE TERRESTRE +35%"
 		elif upgrade.kind == "storage": effect = ("CAPACIDAD %s" if maxed else "NUEVO LÍMITE %s") % _number(float(upgrade.power))
 		elif upgrade.kind == "transport_cart": effect = "12 GRANOS POR VIAJE  ·  NO MINA"
+		elif upgrade.kind == "transport_trailer": effect = "CARGA DEL CARRITO  12 → 36"
 		elif upgrade.kind == "transport_ox": effect = "40 GRANOS POR VIAJE  ·  NO MINA"
 		elif upgrade.kind == "transport_train": effect = "RECOGE TODO EL POLVO SUELTO  ·  NO MINA"
 		elif upgrade.kind == "coordination": effect = "reparto entre fosas" if level == 0 else "prioridad a pedruscos"
@@ -3539,6 +3577,7 @@ func _update_ui() -> void:
 		elif upgrade.kind == "handler": effect = "+1 cuidador con guantes"
 		elif upgrade.kind == "signals": effect = "+12% coordinación de crisis"
 		elif upgrade.kind == "autoclicker": effect = "+1 púgil automático"
+		elif upgrade.kind == "punch_union": effect = "+2 PÚGILES BÁSICOS  ·  50 DAÑO CADA UNO"
 		elif upgrade.kind == "auto_power":
 			if evolution_locked:
 				effect = "SIGUIENTE EVOLUCIÓN EN FASE %d" % mini(PHASES.size(), level + 2)
