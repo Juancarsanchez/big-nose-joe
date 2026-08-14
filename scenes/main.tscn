@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1"]
 [ext_resource type="Theme" path="res://assets/joe_theme.tres" id="2"]
@@ -12,6 +12,7 @@
 [ext_resource type="Texture2D" path="res://assets/art/gameplay/environment/septum_gate.png" id="10"]
 [ext_resource type="Texture2D" path="res://assets/art/gameplay/ui/joe_prognosis.png" id="11"]
 [ext_resource type="Shader" path="res://assets/art/gameplay/effects/cocaine_wall_damage.gdshader" id="12"]
+[ext_resource type="PackedScene" path="res://scenes/technology_lab.tscn" id="13"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_wall_left"]
 shader = ExtResource("12")
@@ -48,7 +49,7 @@ color = Color(0.047, 0.043, 0.067, 1)
 layout_mode = 1
 anchors_preset = 15
 anchor_left = 0.21
-anchor_right = 0.9
+anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
@@ -756,13 +757,13 @@ theme_override_constants/separation = 8
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.77, 0.56, 1)
 theme_override_font_sizes/font_size = 18
-text = "ADAPTACIONES INMUNOLÓGICAS"
+text = "LABORATORIO INMUNOLÓGICO"
 
 [node name="Subtitle" type="Label" parent="Shop/Margin/Content"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.57, 0.49, 0.53, 1)
 theme_override_font_sizes/font_size = 11
-text = "Producción, transporte y tratamiento a la vista."
+text = "Consulta unidades, estadísticas y evoluciones."
 autowrap_mode = 2
 
 [node name="PhaseProgress" type="ProgressBar" parent="Shop/Margin/Content"]
@@ -776,6 +777,20 @@ theme_override_colors/font_color = Color(0.69, 0.58, 0.58, 1)
 theme_override_font_sizes/font_size = 10
 text = "ESTABILIDAD  0 / 250"
 autowrap_mode = 2
+
+[node name="TechnologyButton" type="Button" parent="Shop/Margin/Content"]
+custom_minimum_size = Vector2(0, 54)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.54, 0.82, 0.91, 1)
+theme_override_font_sizes/font_size = 12
+text = "ABRIR LABORATORIO\nUNIDADES Y TECNOLOGÍAS"
+
+[node name="QuickTitle" type="Label" parent="Shop/Margin/Content"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.54, 0.82, 0.91, 1)
+theme_override_font_sizes/font_size = 10
+text = "ACCESOS RÁPIDOS"
 
 [node name="UpgradeScroll" type="ScrollContainer" parent="Shop/Margin/Content"]
 layout_mode = 2
@@ -855,6 +870,11 @@ custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 text = "GUARDAR PARTIDA"
 
+[node name="PauseButton" type="Button" parent="OptionsMenu/Margin/Content"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+text = "PAUSAR PARTIDA"
+
 [node name="AudioTitle" type="Label" parent="OptionsMenu/Margin/Content"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.68, 0.62, 1)
@@ -892,69 +912,32 @@ custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 text = "CERRAR MENÚ"
 
-[node name="PhaseLab" type="PanelContainer" parent="."]
-z_index = 20
+[node name="TechnologyLab" parent="." instance=ExtResource("13")]
+
+[node name="PauseOverlay" type="PanelContainer" parent="."]
+visible = false
+z_index = 55
 layout_mode = 1
-anchors_preset = 15
-anchor_left = 0.9
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 8.0
-offset_top = 14.0
-offset_right = -14.0
-offset_bottom = -14.0
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -170.0
+offset_top = -44.0
+offset_right = 170.0
+offset_bottom = 44.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 
-[node name="Margin" type="MarginContainer" parent="PhaseLab"]
+[node name="Label" type="Label" parent="PauseOverlay"]
 layout_mode = 2
-theme_override_constants/margin_left = 10
-theme_override_constants/margin_top = 16
-theme_override_constants/margin_right = 10
-theme_override_constants/margin_bottom = 14
-
-[node name="Content" type="VBoxContainer" parent="PhaseLab/Margin"]
-layout_mode = 2
-theme_override_constants/separation = 9
-
-[node name="Title" type="Label" parent="PhaseLab/Margin/Content"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.95, 0.77, 0.56, 1)
-theme_override_font_sizes/font_size = 15
-text = "PRUEBA DE FASES"
+theme_override_colors/font_color = Color(0.54, 0.82, 0.91, 1)
+theme_override_font_sizes/font_size = 21
+text = "PAUSA MÉDICA"
 horizontal_alignment = 1
-autowrap_mode = 2
-
-[node name="Note" type="Label" parent="PhaseLab/Margin/Content"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.57, 0.49, 0.53, 1)
-theme_override_font_sizes/font_size = 9
-text = "CAMBIO INMEDIATO\nNO CONCEDE MEJORAS"
-horizontal_alignment = 1
-
-[node name="PhaseList" type="VBoxContainer" parent="PhaseLab/Margin/Content"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="Spacer" type="Control" parent="PhaseLab/Margin/Content"]
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="Active" type="Label" parent="PhaseLab/Margin/Content"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.48, 0.65, 0.62, 1)
-theme_override_font_sizes/font_size = 9
-text = "FASE ACTIVA: 1"
-horizontal_alignment = 1
-autowrap_mode = 2
-
-[node name="ResetHint" type="Label" parent="PhaseLab/Margin/Content"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.45, 0.38, 0.43, 1)
-theme_override_font_sizes/font_size = 8
-text = "REPITE EL BOTÓN PARA REINICIAR LA CRISIS"
-horizontal_alignment = 1
-autowrap_mode = 2
+vertical_alignment = 1
 
 [node name="StartScreen" type="Control" parent="."]
 z_index = 50

@@ -2,13 +2,14 @@ extends Control
 
 const SAVE := "user://big_nose_joe.save"
 const SETTINGS := "user://big_nose_joe_settings.cfg"
-const SAVE_VERSION := 16
+const SAVE_VERSION := 17
 const ProgressionData = preload("res://scripts/progression_data.gd")
 const PilePieceData = preload("res://scripts/pile_piece.gd")
 const PileBatchRenderer = preload("res://scripts/pile_renderer.gd")
 const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
-const PHASE_SHORT_NAMES := ["DESAYUNO", "ASPIRADO", "ADULTERADA", "SPRAY", "COLAPSO"]
+const UNIT_CATALOG := ProgressionData.UNIT_CATALOG
+const QUICK_UPGRADE_IDS := ["nails", "continuous_sweep", "pawn", "pawn_capacity", "breaker", "detector", "sponge_power", "repair"]
 const PHASE_HIGH_THRESHOLDS := [90.0, 70.0, 52.0, 34.0, 18.0]
 const STAGE_WIDTH := 7800.0
 const SEPTUM_X := 3800.0
@@ -176,13 +177,20 @@ const SFX_OVERDOSE := preload("res://assets/audio/overdose.wav")
 @onready var wall_label: Label = $World/TopBar/Margin/Stats/WallState
 @onready var click_counter: Label = $World/TopBar/Margin/Stats/ClickCounter
 @onready var break_button: Button = $Shop/Margin/Content/SeptumUpgradeButton
-@onready var upgrade_list: VBoxContainer = $Shop/Margin/Content/UpgradeScroll/UpgradeList
-@onready var upgrade_scroll: ScrollContainer = $Shop/Margin/Content/UpgradeScroll
+@onready var upgrade_list: VBoxContainer = $TechnologyLab/Margin/Content/Body/Detail/UpgradeScroll/UpgradeList
+@onready var upgrade_scroll: ScrollContainer = $TechnologyLab/Margin/Content/Body/Detail/UpgradeScroll
 @onready var phase_progress: ProgressBar = $Shop/Margin/Content/PhaseProgress
 @onready var phase_hint: Label = $Shop/Margin/Content/PhaseHint
 @onready var shop_subtitle: Label = $Shop/Margin/Content/Subtitle
 @onready var shop: PanelContainer = $Shop
+@onready var technology_lab = $TechnologyLab
+@onready var technology_button: Button = $Shop/Margin/Content/TechnologyButton
+@onready var quick_title: Label = $Shop/Margin/Content/QuickTitle
+@onready var quick_scroll: ScrollContainer = $Shop/Margin/Content/UpgradeScroll
+@onready var quick_list: VBoxContainer = $Shop/Margin/Content/UpgradeScroll/UpgradeList
 @onready var options_menu: PanelContainer = $OptionsMenu
+@onready var pause_button: Button = $OptionsMenu/Margin/Content/PauseButton
+@onready var pause_overlay: PanelContainer = $PauseOverlay
 @onready var music_slider: HSlider = $OptionsMenu/Margin/Content/MusicSlider
 @onready var sfx_slider: HSlider = $OptionsMenu/Margin/Content/SfxSlider
 @onready var music_label: Label = $OptionsMenu/Margin/Content/MusicLabel
@@ -193,8 +201,6 @@ const SFX_OVERDOSE := preload("res://assets/audio/overdose.wav")
 @onready var continue_button: Button = $StartScreen/Menu/Margin/Content/ContinueButton
 @onready var save_state: Label = $StartScreen/Menu/Margin/Content/SaveState
 @onready var joe_dialog: AcceptDialog = $JoeEventDialog
-@onready var phase_debug_list: VBoxContainer = $PhaseLab/Margin/Content/PhaseList
-@onready var phase_debug_active: Label = $PhaseLab/Margin/Content/Active
 
 var cells := 0.0
 var right_hp := FIRST_WALL_HP
@@ -208,7 +214,7 @@ var septum_open := false
 var active_side := "right"
 var levels := _empty_levels()
 var buttons := {}
-var phase_debug_buttons := {}
+var quick_buttons := {}
 var loose_chunks: Array[PilePiece] = []
 var fallen_wall_chunks: Array[Sprite2D] = []
 var pile_renderer: PileRenderer
@@ -289,6 +295,8 @@ var joe_high_feedback_tween: Tween
 var joe_high_feedback_clock := 0.0
 var music_volume := 0.75
 var sfx_volume := 0.85
+var selected_technology_unit := "manual"
+var user_paused := false
 
 func _ready() -> void:
 	pile_renderer = PileBatchRenderer.new()
@@ -298,6 +306,7 @@ func _ready() -> void:
 	_discard_obsolete_save()
 	_setup_audio()
 	_start_music()
+	technology_lab.setup(UNIT_CATALOG)
 	overdose_dialog = ConfirmationDialog.new()
 	overdose_dialog.title = "JOE SE HA MUERTO"
 	overdose_dialog.dialog_text = "Joe se ha muerto por gilipollas y por sobredosis.\n\n¿Quieres cargar la última partida guardada?"
@@ -308,14 +317,6 @@ func _ready() -> void:
 	overdose_dialog.canceled.connect(_return_to_menu_after_overdose)
 	overdose_dialog.close_requested.connect(_return_to_menu_after_overdose)
 	add_child(overdose_dialog)
-	for phase in PHASES:
-		var phase_button := Button.new()
-		phase_button.custom_minimum_size = Vector2(0, 54)
-		phase_button.add_theme_font_size_override("font_size", 9)
-		phase_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		phase_button.pressed.connect(_debug_set_phase.bind(int(phase.id)))
-		phase_debug_list.add_child(phase_button)
-		phase_debug_buttons[phase.id] = phase_button
 	for upgrade in UPGRADES:
 		var button := Button.new()
 		button.custom_minimum_size = Vector2(248, 64)
@@ -325,12 +326,25 @@ func _ready() -> void:
 		button.pressed.connect(_buy.bind(upgrade.id))
 		upgrade_list.add_child(button)
 		buttons[upgrade.id] = button
+	for upgrade_id in QUICK_UPGRADE_IDS:
+		var quick_button := Button.new()
+		quick_button.custom_minimum_size = Vector2(0.0, 62.0)
+		quick_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		quick_button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		quick_button.add_theme_font_size_override("font_size", 9)
+		quick_button.pressed.connect(_buy.bind(upgrade_id))
+		quick_list.add_child(quick_button)
+		quick_buttons[upgrade_id] = quick_button
+	technology_button.pressed.connect(_open_technology_lab)
+	technology_lab.close_requested.connect(_close_technology_lab)
+	technology_lab.unit_selected.connect(_select_technology_unit)
 	right_button.pressed.connect(_click_wall.bind("right"))
 	left_button.pressed.connect(_click_wall.bind("left"))
 	break_button.pressed.connect($BreakDialog.popup_centered)
 	$BreakDialog.confirmed.connect(_open_septum)
 	$Shop/Margin/Content/MenuButton.pressed.connect(_open_options_menu)
 	$OptionsMenu/Margin/Content/SaveButton.pressed.connect(_manual_save)
+	pause_button.pressed.connect(_toggle_pause)
 	$OptionsMenu/Margin/Content/SaveExitButton.pressed.connect(_exit_game)
 	$OptionsMenu/Margin/Content/CloseButton.pressed.connect(_close_options_menu)
 	music_slider.value_changed.connect(_set_music_volume)
@@ -345,6 +359,7 @@ func _ready() -> void:
 	call_deferred("_finish_layout")
 	_update_start_screen()
 	_update_world()
+	_select_technology_unit(selected_technology_unit)
 	_update_ui()
 
 func _setup_audio() -> void:
@@ -394,12 +409,111 @@ func _save_audio_settings() -> void:
 	settings.save(settings_path)
 
 func _open_options_menu() -> void:
+	technology_lab.hide()
 	shop.hide()
 	options_menu.show()
 
 func _close_options_menu() -> void:
 	options_menu.hide()
 	shop.show()
+
+func _toggle_pause() -> void:
+	user_paused = not user_paused
+	pause_overlay.visible = user_paused
+	pause_button.text = "REANUDAR PARTIDA" if user_paused else "PAUSAR PARTIDA"
+	continuous_sweep_held = false
+	_show_toast("PAUSA MÉDICA" if user_paused else "JOE VUELVE A SER UN PROBLEMA")
+
+func _open_technology_lab() -> void:
+	options_menu.hide()
+	technology_lab.show()
+	_update_technology_lab()
+
+func _close_technology_lab() -> void:
+	technology_lab.hide()
+
+func _select_technology_unit(unit_id: String) -> void:
+	selected_technology_unit = unit_id
+	_update_technology_lab()
+	_update_ui()
+
+func _catalog_unit(unit_id: String) -> Dictionary:
+	for unit in UNIT_CATALOG:
+		if str(unit.id) == unit_id: return unit
+	return {}
+
+func _technology_unit_for_upgrade(upgrade_id: String) -> String:
+	for unit in UNIT_CATALOG:
+		if upgrade_id in unit.upgrades: return str(unit.id)
+	return ""
+
+func _technology_unit_unlocked(unit: Dictionary) -> bool:
+	var unit_id := str(unit.id)
+	if unit_id in ["manual", "pawn", "storage"]: return true
+	if unit_id == "breaker" and compaction_announced: return true
+	for upgrade_id in unit.upgrades:
+		if int(levels.get(str(upgrade_id), 0)) > 0: return true
+		var upgrade := _upgrade(str(upgrade_id))
+		if not upgrade.is_empty() and _upgrade_available(upgrade): return true
+	return false
+
+func _technology_owned_count(unit_id: String) -> int:
+	match unit_id:
+		"manual": return 1
+		"pawn": return 2 + int(levels.pawn)
+		"pugilist": return _puncher_count()
+		"leukophant": return int(levels.elephant)
+		"cannon": return int(levels.pugilist_cannon)
+		"supersaiyan": return int(levels.supersaiyan)
+		"breaker":
+			return pawns.get_children().filter(func(pawn: Node) -> bool: return bool(pawn.get_meta("specialist", false))).size()
+		"umbrella": return int(levels.umbrella)
+		"detector": return int(levels.detector)
+		"sponge": return int(levels.sponge)
+		"platelet": return int(levels.platelets) * 2
+		"handler": return int(levels.handlers)
+		"catapult": return int(levels.catapult)
+		"cart": return int(levels.cart)
+		"leukox": return int(levels.ox_convoy)
+		"train": return int(levels.train)
+		"storage": return _storage_tier() + 1
+	return 0
+
+func _technology_stats(unit_id: String) -> String:
+	match unit_id:
+		"manual":
+			var sweep := "BLOQUEADO" if int(levels.continuous_sweep) == 0 else "1 GRANO / %.2f S" % _continuous_sweep_interval()
+			return "POTENCIA DE CLIC: %s\nBARRIDO: %s\nNUDILLOS: NV. %d" % [_number(_click_power()), sweep, int(levels.click_burst)]
+		"pawn": return "UNIDADES: %d\nRASPADO: 1 POR VIAJE\nCARGA: %d  ·  VELOCIDAD: %s" % [2 + int(levels.pawn), _transport_capacity(), _number(_pawn_speed())]
+		"pugilist": return "UNIDADES: %d / 8\nDAÑO POR GOLPE: %s\nGOLPE CADA %.2f S" % [_puncher_count(), _number(_punch_output()), _punch_interval()]
+		"leukophant": return "UNIDADES: %d / 1\nCABEZAZO: %s\nEMBESTIDA CADA %.0f S" % [int(levels.elephant), _number(_special_extractor_damage("elephant")), ELEPHANT_INTERVAL]
+		"cannon": return "UNIDADES: %d / 1\nPROYECTIL: %s\nDISPARO CADA %.0f S" % [int(levels.pugilist_cannon), _number(_special_extractor_damage("cannon")), CANNON_INTERVAL]
+		"supersaiyan": return "UNIDADES: %d / 1\nKAMEHAMEHA: %s\nATAQUE CADA %.0f S" % [int(levels.supersaiyan), _number(_special_extractor_damage("supersaiyan")), SUPERSAIYAN_INTERVAL]
+		"breaker": return "CASCOS ACTIVOS: %d\nDAÑO AL APELMAZADO: %d\nLÍMITE ACTUAL: %d PEDRUSCOS" % [_technology_owned_count(unit_id), 1 + int(levels.breaker), _compaction_rock_limit()]
+		"umbrella": return "UNIDADES: %d / 3\nCOCAÍNA PROTEGIDA: %d%%\nPULMONES CADA %.0f S" % [int(levels.umbrella), roundi(_umbrella_reduction() * 100.0), LUNG_INTERVAL]
+		"detector": return "UNIDADES: %d\nIMPUREZAS FILTRADAS: %d\nCONTAMINACIÓN INTERNA: %d%%" % [int(levels.detector), impurities_cleaned, roundi(contamination)]
+		"sponge": return "UNIDADES: %d / 2\nABSORCIÓN: %s DE SPRAY/S\nPELÍCULA RESTANTE: %s" % [int(levels.sponge), _number(_sponge_absorb_rate()), _number(spray_film_hp)]
+		"platelet": return "UNIDADES: %d\nREPARACIÓN: %s TEJIDO/S\nDAÑO NASAL: %d%%" % [int(levels.platelets) * 2, _number(_platelet_repair_rate()), roundi(tissue_damage)]
+		"handler": return "UNIDADES: %d\nBACTERIAS RETIRADAS: %d\nINFECCIÓN: %d%%" % [int(levels.handlers), bacteria_handled, roundi(infection)]
+		"catapult": return "MÁQUINAS: %d / 2\nIMPACTO: %s\nLANZAMIENTO CADA %.1f S" % [int(levels.catapult), _number(CATAPULT_BASE_DAMAGE * pow(2.0, int(levels.catapult_power))), CATAPULT_INTERVAL]
+		"cart": return "UNIDADES: %d / 1\nCARGA: %s POR VIAJE\nVELOCIDAD: %s" % [int(levels.cart), _number(_cart_capacity()), _number(_ground_transport_speed(CART_SPEED))]
+		"leukox": return "UNIDADES: %d / 1\nCARGA: %s POR VIAJE\nVELOCIDAD: %s" % [int(levels.ox_convoy), _number(OX_CAPACITY), _number(_ground_transport_speed(OX_SPEED))]
+		"train": return "UNIDADES: %d / 1\nCARGA: TODO EL POLVO DISPONIBLE\nVELOCIDAD: %s" % [int(levels.train), _number(TRAIN_SPEED)]
+		"storage": return "NIVEL DE INSTALACIÓN: %d\nCAPACIDAD: %s\nOCUPACIÓN: %s" % [_storage_tier() + 1, _number(_storage_capacity()), _number(cells)]
+	return "SIN DATOS"
+
+func _update_technology_lab() -> void:
+	if not is_instance_valid(technology_lab): return
+	var required := _required_upgrade_id()
+	for unit in UNIT_CATALOG:
+		var unlocked := _technology_unit_unlocked(unit)
+		var urgent: bool = not required.is_empty() and required in unit.upgrades
+		technology_lab.update_card(str(unit.id), unlocked, _technology_owned_count(str(unit.id)), urgent)
+	var selected := _catalog_unit(selected_technology_unit)
+	if selected.is_empty():
+		selected = UNIT_CATALOG[0]
+		selected_technology_unit = str(selected.id)
+	technology_lab.select_unit(selected, _technology_unit_unlocked(selected), _technology_stats(selected_technology_unit))
 
 func _start_music() -> void:
 	music_player = AudioStreamPlayer.new()
@@ -476,6 +590,8 @@ func _finish_layout() -> void:
 	_update_pressure_visuals()
 
 func _process(delta: float) -> void:
+	if user_paused:
+		return
 	_update_particle_motions(delta)
 	if not playing:
 		return
@@ -3570,14 +3686,41 @@ func _upgrade_available(upgrade: Dictionary) -> bool:
 		return false
 	return true
 
+func _quick_upgrade_effect(upgrade_id: String, level: int) -> String:
+	match upgrade_id:
+		"nails": return "CLIC %s → %s" % [_number(pow(2.0, level)), _number(pow(2.0, level + 1))]
+		"continuous_sweep": return "BARRIDO %.2f → %.2f S" % [_continuous_sweep_interval_for(level), _continuous_sweep_interval_for(level + 1)]
+		"pawn": return "+1 PEÓN RECOLECTOR"
+		"pawn_capacity": return "CARGA %d → %d" % [_transport_capacity(), _transport_capacity() + 1]
+		"breaker": return "APELMAZADO %d → %d" % [1 + level, 2 + level]
+		"detector": return "+1 QUIMIORRECEPTOR"
+		"sponge_power":
+			var count := maxf(1.0, float(levels.sponge))
+			return "SPRAY %s → %s/S" % [_number(count * 40.0 * pow(1.8, level)), _number(count * 40.0 * pow(1.8, level + 1))]
+		"repair": return "TEJIDO %s → %s/S" % [_number(_platelet_rate_for(level)), _number(_platelet_rate_for(level + 1))]
+	return "MEJORA NUMÉRICA"
+
+func _update_quick_access() -> void:
+	var visible_count := 0
+	for upgrade_id in QUICK_UPGRADE_IDS:
+		var button := quick_buttons.get(upgrade_id) as Button
+		if not button: continue
+		var upgrade := _upgrade(upgrade_id)
+		var level := int(levels.get(upgrade_id, 0))
+		var max_level := int(upgrade.get("max", 1))
+		button.visible = level > 0 and level < max_level and _upgrade_available(upgrade)
+		if not button.visible: continue
+		visible_count += 1
+		var cost: float = ceil(float(upgrade.base) * pow(float(upgrade.growth), level))
+		button.text = "%s  [NV. %d]\n%s\n◆ %s COCAÍNA" % [upgrade.name, level, _quick_upgrade_effect(upgrade_id, level), _number(cost)]
+		button.disabled = cells < cost
+	quick_title.visible = visible_count > 0
+	quick_scroll.visible = visible_count > 0
+
 func _update_ui() -> void:
 	var phase := _phase()
-	for phase_data in PHASES:
-		var phase_id := int(phase_data.id)
-		var phase_button := phase_debug_buttons[phase_id] as Button
-		phase_button.text = "%sFASE %d\n%s" % ["▶ " if phase_id == current_phase else "", phase_id, PHASE_SHORT_NAMES[phase_id - 1]]
-		phase_button.modulate = Color.WHITE if phase_id == current_phase else Color(0.68, 0.62, 0.66)
-	phase_debug_active.text = "FASE ACTIVA: %d\n%s" % [current_phase, PHASE_SHORT_NAMES[current_phase - 1]]
+	_update_technology_lab()
+	_update_quick_access()
 	phase_label.text = "FASE %d/%d" % [current_phase, PHASES.size()]
 	world_subtitle.text = "FASE %d  ·  %s" % [current_phase, phase.title]
 	shop_subtitle.text = phase.joe
@@ -3597,9 +3740,11 @@ func _update_ui() -> void:
 	var hp := left_hp if active_side == "left" else right_hp
 	var wall_side := "IZQUIERDA" if active_side == "left" else "DERECHA"
 	wall_label.text = "PARED %s  ·  RESISTENCIA %s" % [wall_side, _number(maxf(0.0, hp)) if int(levels.wall_scan) > 0 else "???"]
+	var required_upgrade := _required_upgrade_id()
+	technology_button.text = "★ ADAPTACIÓN NECESARIA\nABRIR LABORATORIO" if not required_upgrade.is_empty() and int(levels.get(required_upgrade, 0)) == 0 else "ABRIR LABORATORIO\nUNIDADES Y TECNOLOGÍAS"
 	for upgrade in UPGRADES:
 		var button := buttons[upgrade.id] as Button
-		button.visible = _upgrade_available(upgrade)
+		button.visible = _upgrade_available(upgrade) and _technology_unit_for_upgrade(str(upgrade.id)) == selected_technology_unit
 		var level: int = int(levels[upgrade.id])
 		var required: bool = str(upgrade.id) == _required_upgrade_id() and level == 0
 		button.custom_minimum_size.y = 82.0
@@ -3717,11 +3862,15 @@ func _set_upgrade_halo(button: Button, active: bool) -> void:
 func _focus_required_upgrade() -> void:
 	var required := _required_upgrade_id()
 	if required.is_empty() or int(levels[required]) > 0: return
+	var unit_id := _technology_unit_for_upgrade(required)
+	if not unit_id.is_empty(): selected_technology_unit = unit_id
+	_update_ui()
 	var button := buttons.get(required) as Button
-	if button and button.visible:
+	if technology_lab.visible and button and button.visible:
 		_scroll_to_required_upgrade(button)
 
 func _scroll_to_required_upgrade(button: Button) -> void:
+	if not technology_lab.visible: return
 	await get_tree().process_frame
 	upgrade_scroll.ensure_control_visible(button)
 	var target := button.position.y + button.size.y - upgrade_scroll.size.y + 8.0
@@ -4080,11 +4229,15 @@ func _new_game() -> void:
 
 func _begin_game() -> void:
 	overdose_active = false
+	user_paused = false
+	pause_overlay.hide()
+	pause_button.text = "PAUSAR PARTIDA"
 	continuous_sweep_held = false
 	continuous_sweep_clock = 0.0
 	playing = not phase_event_pending
 	start_screen.hide()
 	options_menu.hide()
+	technology_lab.hide()
 	shop.show()
 	camera_x = _closed_camera_min()
 	_rebuild_pawns()
@@ -4127,7 +4280,7 @@ func _input(event: InputEvent) -> void:
 	if not click.pressed:
 		continuous_sweep_held = false
 		return
-	if not playing or not stage_view.get_global_rect().has_point(click.position):
+	if user_paused or not playing or not stage_view.get_global_rect().has_point(click.position):
 		return
 	var world_pos := stage.get_global_transform_with_canvas().affine_inverse() * click.position
 	if _manual_mine_fallen_wall_chunk(world_pos):
@@ -4140,11 +4293,12 @@ func _input(event: InputEvent) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if playing and event.is_action_pressed("ui_cancel"):
-		if options_menu.visible: _close_options_menu()
+		if technology_lab.visible: _close_technology_lab()
+		elif options_menu.visible: _close_options_menu()
 		else: _open_options_menu()
 		get_viewport().set_input_as_handled()
 		return
-	if playing and event.is_action_pressed("ui_accept"): _click_wall(active_side)
+	if playing and not user_paused and event.is_action_pressed("ui_accept"): _click_wall(active_side)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:

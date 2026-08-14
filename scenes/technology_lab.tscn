@@ -1,0 +1,108 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/technology_lab.gd" id="1"]
+
+[node name="TechnologyLab" type="PanelContainer"]
+visible = false
+z_index = 80
+layout_mode = 1
+anchors_preset = 15
+anchor_left = 0.22
+anchor_top = 0.07
+anchor_right = 0.98
+anchor_bottom = 0.93
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 2
+theme_override_constants/margin_left = 22
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 22
+theme_override_constants/margin_bottom = 18
+
+[node name="Content" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Header" type="HBoxContainer" parent="Margin/Content"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Margin/Content/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.95, 0.77, 0.56, 1)
+theme_override_font_sizes/font_size = 22
+text = "LABORATORIO DE ADAPTACIONES"
+
+[node name="CloseButton" type="Button" parent="Margin/Content/Header"]
+custom_minimum_size = Vector2(112, 36)
+layout_mode = 2
+text = "CERRAR  ×"
+
+[node name="Subtitle" type="Label" parent="Margin/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.52, 0.56, 1)
+theme_override_font_sizes/font_size = 11
+text = "Cada criatura, vehículo y edificio con identidad propia conserva aquí sus estadísticas y tecnologías."
+
+[node name="Divider" type="HSeparator" parent="Margin/Content"]
+layout_mode = 2
+
+[node name="Body" type="HBoxContainer" parent="Margin/Content"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 18
+
+[node name="UnitScroll" type="ScrollContainer" parent="Margin/Content/Body"]
+custom_minimum_size = Vector2(500, 0)
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="UnitGrid" type="GridContainer" parent="Margin/Content/Body/UnitScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 8
+columns = 3
+
+[node name="Detail" type="VBoxContainer" parent="Margin/Content/Body"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="UnitTitle" type="Label" parent="Margin/Content/Body/Detail"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.54, 0.82, 0.91, 1)
+theme_override_font_sizes/font_size = 19
+text = "SELECCIONA UNA UNIDAD"
+
+[node name="UnitType" type="Label" parent="Margin/Content/Body/Detail"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.58, 0.62, 1)
+theme_override_font_sizes/font_size = 10
+text = "CATÁLOGO INMUNOLÓGICO"
+
+[node name="Stats" type="Label" parent="Margin/Content/Body/Detail"]
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.84, 0.77, 0.68, 1)
+text = "Selecciona una silueta para consultar su ficha."
+autowrap_mode = 2
+
+[node name="Status" type="Label" parent="Margin/Content/Body/Detail"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.41, 0.76, 0.83, 1)
+theme_override_font_sizes/font_size = 11
+text = "TECNOLOGÍAS"
+
+[node name="UpgradeScroll" type="ScrollContainer" parent="Margin/Content/Body/Detail"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="UpgradeList" type="VBoxContainer" parent="Margin/Content/Body/Detail/UpgradeScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 9

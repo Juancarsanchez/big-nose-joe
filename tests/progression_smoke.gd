@@ -24,6 +24,29 @@ func _run() -> void:
 	game.phase_event_pending = false
 	game.joe_dialog.hide()
 	game.playing = true
+	_check(game.get_node_or_null("PhaseLab") == null and is_equal_approx((game.get_node("World") as Control).anchor_right, 1.0), "The obsolete phase-selector bar must be removed and the playable viewport must use the freed right edge.")
+	game._open_technology_lab()
+	_check(game.technology_lab.visible and game.technology_lab.cards.size() == game.UNIT_CATALOG.size(), "The technology laboratory must expose one persistent card for every unit, vehicle and infrastructure family.")
+	_check(game.technology_lab.cards.has("leukophant") and game.technology_lab.cards.has("cannon") and game.technology_lab.cards.has("supersaiyan"), "Leukophant, Cell Cannon and Supersaiyan must be independent technology pages.")
+	_check((game.technology_lab.cards.leukophant as Button).icon == game.ELEPHANT_TEXTURE and (game.technology_lab.cards.supersaiyan as Button).icon == game.SUPERSAIYAN_TEXTURE, "Technology cards must reuse the real in-game unit sprites.")
+	game._close_technology_lab()
+	game._update_ui()
+	_check(not (game.quick_buttons.nails as Button).visible, "A repeatable technology must not enter quick access before its first laboratory purchase.")
+	game.levels.nails = 1
+	game.cells = 1000.0
+	game._update_ui()
+	_check((game.quick_buttons.nails as Button).visible and (game.quick_buttons.nails as Button).text.contains("CLIC 2 → 4"), "An already discovered critical technology must receive a compact numerical quick-access button.")
+	(game.quick_buttons.nails as Button).pressed.emit()
+	_check(int(game.levels.nails) == 2, "Quick access must buy the next real level without reopening the laboratory.")
+	game.levels.nails = 0
+	game.cells = 0.0
+	game._update_ui()
+	var paused_line_clock: float = game.another_line_clock
+	game._toggle_pause()
+	game._process(2.0)
+	_check(game.user_paused and game.pause_overlay.visible and game.pause_button.text.contains("REANUDAR") and is_equal_approx(game.another_line_clock, paused_line_clock), "Medical pause must stop the simulation while keeping its menu controls available.")
+	game._toggle_pause()
+	_check(not game.user_paused and not game.pause_overlay.visible, "Resuming must restore the simulation and remove the pause overlay.")
 	var save_button := game.get_node("OptionsMenu/Margin/Content/SaveButton") as Button
 	var save_exit_button := game.get_node("OptionsMenu/Margin/Content/SaveExitButton") as Button
 	game._open_options_menu()
@@ -234,7 +257,8 @@ func _run() -> void:
 		tallest_wave_column = maxi(tallest_wave_column, int(count))
 	_check(wave_columns.size() >= 8, "Otra rayita must create several connected hills instead of one vertical needle.")
 	_check(wave_columns.size() <= 44 and tallest_wave_column >= 5, "Otra rayita must retain meaningful vertical relief instead of becoming a flat flood.")
-	_check(game.puncher_unlocked and (game.buttons.puncher as Button).visible, "The first extra line must unlock the pugilist adaptation.")
+	game._select_technology_unit("pugilist")
+	_check(game.puncher_unlocked and (game.buttons.puncher as Button).visible, "The first extra line must unlock the pugilist adaptation on its own page.")
 	_check((game.buttons.puncher as Button).has_theme_stylebox_override("normal"), "The newly mandatory pugilist must receive the blue halo.")
 	game._clear_pile()
 	var outlined_player_grain = game._create_piece("grain", "right", 4.0, 0, 0, 0.072)
@@ -270,8 +294,9 @@ func _run() -> void:
 	# The first progression gap is bridged by two strong tier upgrades, followed by one late speed jump.
 	game.levels.container = 1
 	game.levels.cart = 1
-	game._update_ui()
-	_check((game.buttons.cart_reinforced as Button).visible and (game.buttons.punch_union as Button).visible, "The numerical cart-capacity upgrade and punch union must unlock after owning the cart and a pugilist.")
+	_check(game._upgrade_available(game._upgrade("cart_reinforced")) and game._upgrade_available(game._upgrade("punch_union")), "The numerical cart-capacity upgrade and punch union must unlock after owning the cart and a pugilist.")
+	game._select_technology_unit("cart")
+	_check((game.buttons.cart_reinforced as Button).visible, "The cart capacity upgrade must appear inside the cart page.")
 	_check(not (game.buttons.cart_upgrade as Button).visible, "The final cart-capacity tier must wait for reinforced axles.")
 	_check(not (game.buttons.shift as Button).visible, "The motorway must remain hidden until the player buys one of the two tier upgrades.")
 	game.cells = 10000.0
@@ -281,6 +306,7 @@ func _run() -> void:
 	var upgraded_cart := game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart").front() as Node2D
 	_check(is_equal_approx(float(upgraded_cart.get_meta("capacity", 0.0)), 36.0) and upgraded_cart.get_node_or_null("Trailer") == null, "Cart upgrades must raise capacity to thirty-six without spawning another unit or wagon.")
 	_check((game.buttons.shift as Button).visible, "Buying either tier upgrade must reveal the late phase-one speed jump.")
+	game._select_technology_unit("pugilist")
 	game._buy("punch_union")
 	await process_frame
 	_check(game._puncher_count() == 3 and game.punchers.get_child_count() == 3, "The Punch Union must add exactly two basic pugilists without advancing their rank.")
@@ -427,7 +453,7 @@ func _run() -> void:
 	_check(int(game.levels.punch_power) == 1, "Phase two must not allow buying the phase-three pugilist evolution early.")
 	_check(not (game.buttons.coord as Button).visible, "Work in Chain must remain hidden before the septum is open.")
 	game.septum_open = true
-	game._update_ui()
+	game._select_technology_unit("pawn")
 	_check((game.buttons.coord as Button).visible, "Work in Chain may appear only after both fossae are unlocked.")
 	game.septum_open = false
 
@@ -469,7 +495,7 @@ func _run() -> void:
 	# Phase 3 keeps its formulas hidden: players read the dirty box and slower animation.
 	game.levels.detector = 0
 	game.contamination = 0.0
-	game._update_ui()
+	game._select_technology_unit("detector")
 	_check((game.buttons.detector as Button).text.contains("NECESARIA"), "Phase 3 must point directly at the receptor adaptation.")
 	_check(not (game.buttons.wall_scan as Button).visible and game.wall_label.text.contains("???"), "Exact wall resistance must remain unavailable until the adulterant detector exists.")
 	game.levels.detector = 1
@@ -683,17 +709,17 @@ func _run() -> void:
 	game.joe_high = 0.0
 	game._clear_fallen_wall_chunks()
 	game._load()
-	_check(game.current_phase == 5 and is_equal_approx(game.phase_work, 321.0), "Save version 16 must preserve Joe's crisis progression.")
-	_check(int(game.phase_events.line) == 3 and int(game.phase_events.scratch) == 2, "Save version 16 must preserve the crises survived in the current phase.")
-	_check(is_equal_approx(game.contamination, 17.0) and is_equal_approx(game.another_line_clock, 77.0), "Save version 16 must preserve hidden contamination and Joe's line clock.")
-	_check(game.another_line_events == 4 and is_equal_approx(game.joe_high, 63.0) and is_equal_approx(game.lung_clock, 123.0) and is_equal_approx(game.spray_clock, 111.0), "Save version 16 must preserve the high and every independent Joe timer.")
-	_check(is_equal_approx(game.mined_since_line, 123456.0) and game.pending_line_grains == 800 and game.last_line_grains == 400, "Save version 16 must preserve the adaptive line tier and its recent-mining sample.")
-	_check(is_equal_approx(game.spray_film_hp, 500.0) and is_equal_approx(game.spray_film_max, 2400.0), "Save version 16 must preserve the persistent spray film.")
-	_check(game.fallen_wall_chunks.size() == 1 and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), game.WALL_CHUNK_HEALTH) and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("mass", 0.0)), 11.0), "Save version 16 must preserve wall-block health and mass independently.")
+	_check(game.current_phase == 5 and is_equal_approx(game.phase_work, 321.0), "Save version 17 must preserve Joe's crisis progression.")
+	_check(int(game.phase_events.line) == 3 and int(game.phase_events.scratch) == 2, "Save version 17 must preserve the crises survived in the current phase.")
+	_check(is_equal_approx(game.contamination, 17.0) and is_equal_approx(game.another_line_clock, 77.0), "Save version 17 must preserve hidden contamination and Joe's line clock.")
+	_check(game.another_line_events == 4 and is_equal_approx(game.joe_high, 63.0) and is_equal_approx(game.lung_clock, 123.0) and is_equal_approx(game.spray_clock, 111.0), "Save version 17 must preserve the high and every independent Joe timer.")
+	_check(is_equal_approx(game.mined_since_line, 123456.0) and game.pending_line_grains == 800 and game.last_line_grains == 400, "Save version 17 must preserve the adaptive line tier and its recent-mining sample.")
+	_check(is_equal_approx(game.spray_film_hp, 500.0) and is_equal_approx(game.spray_film_max, 2400.0), "Save version 17 must preserve the persistent spray film.")
+	_check(game.fallen_wall_chunks.size() == 1 and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), game.WALL_CHUNK_HEALTH) and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("mass", 0.0)), 11.0), "Save version 17 must preserve wall-block health and mass independently.")
 	_check(game.rocks_opened == 9 and game.impurities_cleaned == 13 and is_equal_approx(game.tissue_repaired, 21.0), "Save version 6 must preserve mechanical phase objectives.")
 
 	var obsolete := FileAccess.open(game.save_path, FileAccess.WRITE)
-	obsolete.store_string(JSON.stringify({"version":15, "cells":999999.0}))
+	obsolete.store_string(JSON.stringify({"version":16, "cells":999999.0}))
 	obsolete.close()
 	game._load()
 	_check(not FileAccess.file_exists(game.save_path), "Every pre-optimization run must be deleted instead of migrated into the new architecture.")

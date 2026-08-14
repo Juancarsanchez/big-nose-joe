@@ -19,15 +19,15 @@ Al abrir el juego aparece una portada desde la que se puede continuar, empezar d
 
 Cada cambio de fase abre un diálogo que explica el nuevo problema. La adaptación imprescindible se busca automáticamente en el laboratorio, aparece con el texto `NECESARIA PARA SUPERAR ESTA FASE` y queda rodeada por un halo azul hasta que se compra.
 
+La tienda lineal ha sido sustituida por el `LABORATORIO DE ADAPTACIONES`. El catálogo conserva una tarjeta para cada criatura, transporte o infraestructura con identidad propia. Las unidades desconocidas aparecen como siluetas; al desbloquearlas recuperan su sprite real y abren una ficha con cantidades, estadísticas en unidades reales y únicamente sus propias tecnologías. Púgil, Leucofante, Cañón de Células y Leucocito Supersaiyan son unidades independientes. Los rangos y accesorios que no crean otro actor permanecen dentro de la ficha de su unidad original.
+
 1. `UNA RAYITA PARA DESAYUNAR` — 90%: tutorial de clic, caída, recogida y entrega. La primera oleada desbloquea la `CÉLULA PÚGIL EN PRÁCTICAS`.
 2. `¿QUIÉN HA VACIADO EL CÁRTEL?` — 70%: Joe estrena inmediatamente `PULMONES DE DROGATA`; después se repite cada 300 segundos. El apelmazado presentado por la primera rayita se vuelve constante y aparecen los paraguas.
 3. `OFERTA DEL SUPERMERCADO` — 52%: cada rayita alterna serrín y yeso, y la tiza conserva su temporizador independiente. Los `QUIMIORRECEPTORES` evitan que el almacén se llene de basura.
 4. `SPRAY NASAL DEL BAZAR` — 34%: el spray bloquea y reconstruye pared; el moco verde empieza a repetirse en esta misma fase. Los `MACRÓFAGOS ESPONJA` y las `CATAPULTAS MUCOLÍTICAS` resuelven ambos problemas.
 5. `VOLCÁN ZOOLÓGICO` — 18%: comienzan hemorragia, daño tisular, bacterias, plaquetas y cuidadores mientras todas las locuras anteriores continúan activas.
 
-Las fases ya no avanzan por tiempo ni por entregas. Joe empieza al 90% y cada tramo se desbloquea cuando el jugador logra reducir su colocón hasta 70%, 52%, 34% y 18%. Cada umbral provoca inmediatamente la nueva barbaridad y añade su temporizador al repertorio permanente. El medidor principal de colocón ocupa el centro superior: picar la pared lo hace bajar al instante, muestra las unidades reales extraídas y pulsa en azul; almacenar ese mismo polvo no aplica la reducción dos veces. La versión 16 inaugura el modelo masivo de partículas; todos los guardados anteriores quedan invalidados y se eliminan en vez de migrarse.
-
-El panel `PRUEBA DE FASES`, fijado al extremo derecho, permite saltar inmediatamente a cualquiera de las cinco fases. Conserva células, mejoras y paredes, reinicia los indicadores de esa crisis y elimina los recursos futuros al volver hacia atrás.
+Las fases ya no avanzan por tiempo ni por entregas. Joe empieza al 90% y cada tramo se desbloquea cuando el jugador logra reducir su colocón hasta 70%, 52%, 34% y 18%. Cada umbral provoca inmediatamente la nueva barbaridad y añade su temporizador al repertorio permanente. El medidor principal de colocón ocupa el centro superior: picar la pared lo hace bajar al instante, muestra las unidades reales extraídas y pulsa en azul; almacenar ese mismo polvo no aplica la reducción dos veces. La versión 17 reinicia los guardados anteriores para estrenar limpiamente el Laboratorio y sus accesos rápidos.
 
 ## Cocaína, apelmazado y transporte
 
@@ -63,7 +63,7 @@ Los desastres no forman una ruleta ni pueden cancelarse. Cada fase añade un tem
 
 La producción automática especializada no está disponible al comenzar. Cada 120 segundos Joe se mete `OTRA RAYITA`: aparece un aviso y una oleada de 240, 360, 600, 1.000, 1.600, 2.600 o 4.000 granos según la extracción reciente. Todos valen exactamente una unidad y ocupan un hueco completo de transporte, de modo que son sabotaje logístico y no paquetes de riqueza. Los granos extraídos por el jugador conservan el valor completo del golpe y solo se distinguen de los de Joe mediante un contorno oscuro pronunciado; nunca revelan su valor ni se fraccionan para entrar en el almacén. Tras la primera avalancha se desbloquea `CÉLULA PÚGIL EN PRÁCTICAS`.
 
-El primer púgil entra con guante rojo y cinta azul, calienta el brazo, atraviesa físicamente la zona de trabajo y suelta siempre diez partículas. Los cuatro rangos producen respectivamente diez bolas de 5, 10, 20 y 50 unidades: impactos totales de 50, 100, 200 y 500. Esa fórmula permanece interna: el impacto solo muestra el daño total. Si surge moco o cae un bloque mientras camina, vuelve a su puesto en vez de congelarse a mitad del recorrido. Cada evolución incorpora capas visibles de guante, cinta, cinturón, insignia y aura, y solo puede comprarse una evolución nueva por fase. El `SINDICATO DEL PUÑO` constituye un salto de cantidad previo: incorpora dos púgiles básicos de una vez sin adelantar su rango. Después llegan tres saltos deliberadamente absurdos: el `PAQUIDERMO LEUCOCITARIO` camina hasta la pared y embiste 120.000 cada veinte segundos; el `CAÑÓN DE CÉLULAS PÚGIL` dispara 750.000 cada catorce; y el `LEUCOCITO SUPERSAIYAN` carga un Kamehameha de 50 millones cada cincuenta. Sus mejoras multiplican esos impactos por cinco, seis y diez respectivamente.
+El primer púgil entra con guante rojo y cinta azul, calienta el brazo, atraviesa físicamente la zona de trabajo y suelta siempre diez partículas. Los cuatro rangos producen respectivamente diez bolas de 5, 10, 20 y 50 unidades: impactos totales de 50, 100, 200 y 500. Esa fórmula permanece interna: el impacto solo muestra el daño total. Si surge moco o cae un bloque mientras camina, vuelve a su puesto en vez de congelarse a mitad del recorrido. Cada evolución incorpora capas visibles de guante, cinta, cinturón, insignia y aura, y solo puede comprarse una evolución nueva por fase. El `SINDICATO DEL PUÑO` constituye un salto de cantidad previo: incorpora dos púgiles básicos de una vez sin adelantar su rango. Después llegan tres unidades deliberadamente absurdas con fichas independientes: el `LEUCOFANTE` camina hasta la pared y embiste 120.000 cada veinte segundos; el `CAÑÓN DE CÉLULAS PÚGIL` dispara 750.000 cada catorce; y el `LEUCOCITO SUPERSAIYAN` carga un Kamehameha de 50 millones cada cincuenta. Sus mejoras multiplican esos impactos por cinco, seis y diez respectivamente.
 
 `GUANTES EMPAPADOS EN COCAÍNA` aumenta los granos desprendidos por golpe y `CAMPANA SIN DESCANSO` reduce el intervalo entre rondas. Los recolectores siguen siendo necesarios para convertir el polvo del suelo en células, por lo que producción y logística pueden mejorarse por separado.
 
@@ -78,7 +78,9 @@ La ventana es de 1440×810. El escenario interior mide 7.800 píxeles de ancho y
 ## Estructura
 
 - `scenes/main.tscn`: composición visual, capas e interfaz.
+- `scenes/technology_lab.tscn`: ventana, catálogo de unidades y panel de tecnologías.
 - `scripts/main.gd`: lógica de juego.
+- `scripts/technology_lab.gd`: presentación de fichas, sprites y siluetas bloqueadas.
 - `scripts/progression_data.gd`: fases, textos, costes y adaptaciones.
 - `assets/art/gameplay/sprites`: peones, paredes, recursos y transportes separados por vehículo y animal de tiro.
 - `assets/art/gameplay/infrastructure`: contenedor, silo y planta como edificios independientes.

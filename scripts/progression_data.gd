@@ -38,6 +38,26 @@ const PHASES := [
 	}
 ]
 
+const UNIT_CATALOG: Array[Dictionary] = [
+	{"id":"manual", "name":"MANOS DEL JUGADOR", "type":"HERRAMIENTA MANUAL", "phase":1, "icon":"res://assets/art/gameplay/sprites/cocaine_grain.png", "upgrades":["nails", "continuous_sweep", "click_burst", "click_rhythm"]},
+	{"id":"pawn", "name":"GLÓBULO BLANCO", "type":"UNIDAD BÁSICA", "phase":1, "icon":"res://assets/art/gameplay/sprites/pawn_empty.png", "upgrades":["pawn", "pawn_capacity", "coord"]},
+	{"id":"pugilist", "name":"PÚGIL", "type":"EXTRACCIÓN BÁSICA", "phase":1, "icon":"res://assets/art/gameplay/sprites/pawn_empty.png", "upgrades":["puncher", "punch_union", "punch_power", "punch_speed"]},
+	{"id":"leukophant", "name":"LEUCOFANTE", "type":"EXTRACCIÓN PESADA", "phase":3, "icon":"res://assets/art/gameplay/sprites/leukocyte_elephant.png", "upgrades":["elephant", "elephant_power"]},
+	{"id":"cannon", "name":"CAÑÓN DE CÉLULAS", "type":"ARTILLERÍA INMUNE", "phase":4, "icon":"res://assets/art/gameplay/sprites/pugilist_cannon.png", "upgrades":["pugilist_cannon", "cannon_power"]},
+	{"id":"supersaiyan", "name":"LEUCOCITO SUPERSAIYAN", "type":"ARMA ABSURDA", "phase":5, "icon":"res://assets/art/gameplay/sprites/leukocyte_supersaiyan.png", "upgrades":["supersaiyan", "supersaiyan_power"]},
+	{"id":"breaker", "name":"CASCO AZUL", "type":"ADAPTACIÓN AL APELMAZADO", "phase":1, "icon":"res://assets/art/gameplay/sprites/pawn_specialist_empty.png", "upgrades":["breaker"]},
+	{"id":"umbrella", "name":"PARAGUAS ROSA", "type":"ADAPTACIÓN RESPIRATORIA", "phase":2, "icon":"res://assets/art/gameplay/sprites/umbrella_pink.png", "upgrades":["umbrella", "umbrella_power"]},
+	{"id":"detector", "name":"QUIMIORRECEPTOR", "type":"ADAPTACIÓN A IMPUREZAS", "phase":3, "icon":"res://assets/art/gameplay/sprites/pawn_detector_empty.png", "upgrades":["detector", "wall_scan", "sorting"]},
+	{"id":"sponge", "name":"MACRÓFAGO ESPONJA", "type":"ADAPTACIÓN AL SPRAY", "phase":4, "icon":"res://assets/art/gameplay/sprites/sponge_yellow.png", "upgrades":["sponge", "sponge_power"]},
+	{"id":"platelet", "name":"PLAQUETA", "type":"REPARACIÓN TISULAR", "phase":5, "icon":"res://assets/art/gameplay/sprites/platelet.png", "upgrades":["platelets", "repair"]},
+	{"id":"handler", "name":"CUIDADOR CON GUANTES", "type":"CONTROL BACTERIANO", "phase":5, "icon":"res://assets/art/gameplay/sprites/pawn_handler_empty.png", "upgrades":["handlers", "signals"]},
+	{"id":"catapult", "name":"CATAPULTA MUCOLÍTICA", "type":"MÁQUINA DE ADAPTACIÓN", "phase":4, "icon":"res://assets/art/gameplay/sprites/mucus_catapult.png", "upgrades":["catapult", "catapult_power"]},
+	{"id":"cart", "name":"CARRITO VESICULAR", "type":"TRANSPORTE", "phase":1, "icon":"res://assets/art/gameplay/sprites/vesicular_cart.png", "upgrades":["cart", "cart_reinforced", "cart_upgrade", "shift"]},
+	{"id":"leukox", "name":"MUGIDÓFILO DE CARGA", "type":"TRANSPORTE PESADO", "phase":2, "icon":"res://assets/art/gameplay/sprites/leukox.png", "upgrades":["ox_convoy"]},
+	{"id":"train", "name":"EXPRESO LEUCOCITARIO", "type":"TRANSPORTE INTERFOSA", "phase":5, "icon":"res://assets/art/gameplay/sprites/leukocyte_express.png", "upgrades":["train"]},
+	{"id":"storage", "name":"ALMACENAMIENTO", "type":"INFRAESTRUCTURA", "phase":1, "icon":"res://assets/art/gameplay/infrastructure/storage_container.png", "upgrades":["container", "container_capacity", "silo", "plant"]}
+]
+
 const UPGRADES := [
 	{"id":"nails", "phase":1, "name":"UÑAS DE QUERATINA", "desc":"Duplica la potencia manual completa.", "base":20.0, "growth":2.35, "kind":"click", "power":2.0, "max":8},
 	{"id":"pawn", "phase":1, "unlock_at":35.0, "name":"OTRO PEÓN BÁSICO", "desc":"Añade otro ciclo visible de raspado, recogida y transporte.", "base":55.0, "growth":2.0, "kind":"pawn", "power":1.0, "max":8},
@@ -66,8 +86,8 @@ const UPGRADES := [
 	{"id":"sorting", "phase":3, "name":"RECONOCIMIENTO MOLECULAR", "desc":"Reduce la proporción de impurezas que atasca cada turno.", "base":2100.0, "growth":2.35, "kind":"sorting", "power":0.08, "max":3},
 	{"id":"sponge", "phase":4, "name":"MACRÓFAGO ESPONJA", "desc":"Absorbe la película azul del spray; mientras exista, la pared no se puede minar.", "base":6500.0, "growth":4.0, "kind":"sponge", "power":40.0, "max":2},
 	{"id":"sponge_power", "phase":4, "requires_upgrade":"sponge", "name":"ESPONJOSIDAD PROHIBIDA", "desc":"La esponja crece y multiplica las unidades de spray absorbidas cada segundo.", "base":18000.0, "growth":3.8, "kind":"sponge_power", "power":1.8, "max":5},
-	{"id":"elephant", "phase":3, "requires_upgrade":"puncher", "name":"PAQUIDERMO LEUCOCITARIO", "desc":"Una célula-elefante avanza despacio y embiste la pared cada veinte segundos.", "base":25000.0, "growth":1.0, "kind":"elephant", "power":120000.0, "max":1},
-	{"id":"elephant_power", "phase":3, "requires_upgrade":"elephant", "name":"MEMORIA DE ELEFANTE MUSCULAR", "desc":"Multiplica por cinco el cabezazo del paquidermo.", "base":60000.0, "growth":2.5, "kind":"elephant_power", "power":5.0, "max":3},
+	{"id":"elephant", "phase":3, "requires_upgrade":"puncher", "name":"LEUCOFANTE", "desc":"Una célula-elefante avanza despacio y embiste la pared cada veinte segundos.", "base":25000.0, "growth":1.0, "kind":"elephant", "power":120000.0, "max":1},
+	{"id":"elephant_power", "phase":3, "requires_upgrade":"elephant", "name":"MEMORIA DE LEUCOFANTE", "desc":"Multiplica por cinco el cabezazo del Leucofante.", "base":60000.0, "growth":2.5, "kind":"elephant_power", "power":5.0, "max":3},
 	{"id":"platelets", "phase":5, "name":"PLAQUETAS TURBO", "desc":"Convoca dos reparadoras coral que priorizan las heridas abiertas.", "base":3200.0, "growth":1.85, "kind":"platelet", "power":1.0, "max":6},
 	{"id":"repair", "phase":5, "requires_upgrade":"platelets", "name":"PLAQUETAS GRAPADORAS", "desc":"Evoluciona la reparación de puntada a sutura industrial.", "base":5200.0, "growth":3.0, "kind":"repair", "power":2.5, "max":5},
 	{"id":"pugilist_cannon", "phase":4, "requires_upgrade":"elephant", "name":"CAÑÓN DE CÉLULAS PÚGIL", "desc":"Dispara leucocitos de cabeza contra la pared con absoluta irresponsabilidad.", "base":75000.0, "growth":1.0, "kind":"pugilist_cannon", "power":750000.0, "max":1},
