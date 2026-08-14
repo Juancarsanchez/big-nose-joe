@@ -80,6 +80,34 @@ func _run() -> void:
 	game.joe_high = 90.0
 	game.joe_high_display = 90.0
 	game._update_ui()
+	_check(game.phase_hint.text.contains("COLOCADO") and not game.phase_hint.text.contains("%"), "Joe's next move must be communicated as a vague mood, never as a numeric pressure formula.")
+	game.joe_high = 80.0
+	game._update_ui()
+	_check(game.phase_hint.text.contains("INQUIETO"), "The vague phase hint must warn that Joe is becoming restless.")
+	game.joe_high = 71.0
+	game._update_ui()
+	_check(game.phase_hint.text.contains("A PUNTO"), "The phase hint must clearly become urgent just before Joe's next madness.")
+	game.joe_high = 90.0
+	game.joe_high_display = 90.0
+	game.levels.continuous_sweep = 1
+	_check(is_equal_approx(game._continuous_sweep_interval(), 0.22) and game._continuous_sweep_interval_for(3) < 0.10, "Continuous Sweep must unlock early, feel faster than repeated clicking, and support visible speed upgrades.")
+	game.levels.continuous_sweep = 0
+	var initial_pile_limit: int = game._pile_radius_limit("right")
+	game.levels.container = 1
+	_check(game._pile_radius_limit("right") > initial_pile_limit, "The pile boundary must expand naturally toward a farther storage building instead of ending at a fixed invisible wall.")
+	game.levels.container_capacity = 1
+	_check(is_equal_approx(game._storage_capacity(), 15000.0), "The numerical container expansion must provide a useful fifteen-thousand-unit step before the silo.")
+	game.levels.container_capacity = 0
+	game.levels.container = 0
+	game.levels.pawn_capacity = 2
+	_check(game._transport_capacity() == 5, "Basic-pawn capacity training must keep every existing and future pawn relevant without creating a new unit.")
+	game.levels.pawn_capacity = 0
+	game.another_line_events = 1
+	_check(game._compaction_unlocked() and game._compaction_rock_limit() == 2, "The first Joe rain must introduce up to two clumps before phase two.")
+	game.current_phase = 2
+	_check(game._compaction_rock_limit() == 8, "After the introduction, clumping pressure must scale to eight simultaneous obstacles.")
+	game.current_phase = 1
+	game.another_line_events = 0
 	_check(game.wall_label.text.contains("???") and not game.wall_label.text.contains("10.0B"), "Wall resistance must remain unknown during the opening.")
 	_check(not game.levels.has("smart_clump"), "Normal-pawn smart clumping must be removed completely.")
 	game.right_hp = game.right_max * 0.01
@@ -243,12 +271,15 @@ func _run() -> void:
 	game.levels.container = 1
 	game.levels.cart = 1
 	game._update_ui()
-	_check((game.buttons.cart_upgrade as Button).visible and (game.buttons.punch_union as Button).visible, "The trailer and punch union must unlock together after owning both the cart and a pugilist.")
+	_check((game.buttons.cart_reinforced as Button).visible and (game.buttons.punch_union as Button).visible, "The numerical cart-capacity upgrade and punch union must unlock after owning the cart and a pugilist.")
+	_check(not (game.buttons.cart_upgrade as Button).visible, "The final cart-capacity tier must wait for reinforced axles.")
 	_check(not (game.buttons.shift as Button).visible, "The motorway must remain hidden until the player buys one of the two tier upgrades.")
 	game.cells = 10000.0
+	game._buy("cart_reinforced")
 	game._buy("cart_upgrade")
+	await process_frame
 	var upgraded_cart := game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart").front() as Node2D
-	_check(is_equal_approx(float(upgraded_cart.get_meta("capacity", 0.0)), 36.0) and upgraded_cart.get_node_or_null("Trailer") != null, "The Vesicular Trailer must visibly raise the cart from twelve to thirty-six units per trip.")
+	_check(is_equal_approx(float(upgraded_cart.get_meta("capacity", 0.0)), 36.0) and upgraded_cart.get_node_or_null("Trailer") == null, "Cart upgrades must raise capacity to thirty-six without spawning another unit or wagon.")
 	_check((game.buttons.shift as Button).visible, "Buying either tier upgrade must reveal the late phase-one speed jump.")
 	game._buy("punch_union")
 	await process_frame
@@ -259,6 +290,7 @@ func _run() -> void:
 	var motorway_cart := game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart").back() as Node2D
 	_check(is_equal_approx(float(motorway_cart.get_meta("speed", 0.0)), game.CART_SPEED * 1.35), "The Lymphatic Motorway must also increase ground-transport speed by thirty-five percent.")
 	game.levels.cart_upgrade = 0
+	game.levels.cart_reinforced = 0
 	game.levels.punch_union = 0
 	game.levels.shift = 0
 	game._rebuild_transporters()
@@ -355,8 +387,9 @@ func _run() -> void:
 	var clicks_before_burst: int = game.total_clicks
 	var wall_before_burst: float = game.right_hp
 	game._click_wall("right")
-	_check(game.loose_chunks.size() == 7, "A level-two manual burst must add six grains to the normal clicked grain.")
-	_check(game.total_clicks == clicks_before_burst + 1 and is_equal_approx(game.right_hp, wall_before_burst - game._click_power() - 6.0), "A burst must amplify one manual click without pretending to be several clicks.")
+	_check(game.loose_chunks.size() == 3, "A level-two manual burst must add two full-power grains to the normal clicked grain.")
+	_check(game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), game._click_power())), "Every keratin burst grain must carry the player's complete current click power.")
+	_check(game.total_clicks == clicks_before_burst + 1 and is_equal_approx(game.right_hp, wall_before_burst - game._click_power() * 3.0), "A burst must amplify one manual click without pretending to be several clicks.")
 	game._clear_pile()
 
 	# Phase 1 also requires visible logistics investment.

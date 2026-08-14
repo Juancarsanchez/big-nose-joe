@@ -22,7 +22,8 @@ const PAN_SPEED := 1050.0
 const GRAIN_SPACING := 9.2
 const GRAIN_HEIGHT := 7.4
 const ROCK_HEIGHT := 18.0
-const MAX_PILE_RADIUS := 46
+const MAX_PILE_RADIUS := 92
+const PILE_BOX_MARGIN := 118.0
 const MAX_SURFACE_STEP := 1.35
 const TERRAIN_BAND_SIZE := 30
 const TERRAIN_ANCHORS := [0.16, 0.68, 0.38, 0.84, 0.53]
@@ -39,11 +40,12 @@ const LEFT_WALL_COLUMN := 5
 const BASE_PAWN_SPEED := 70.0
 const BASE_CAPACITY := 3
 const PAWN_FOOT_DEPTH := 14.0
-const STORAGE_CAPACITIES := [1000.0, 5000.0, 50000.0, 500000.0]
+const STORAGE_CAPACITIES := [1000.0, 5000.0, 15000.0, 50000.0, 500000.0]
 const CONTAINER_X := 4860.0
 const SILO_X := 5350.0
 const PLANT_X := 1150.0
 const CART_CAPACITY := 12.0
+const CART_REINFORCED_CAPACITY := 24.0
 const CART_TRAILER_CAPACITY := 36.0
 const OX_CAPACITY := 40.0
 const CART_SPEED := 145.0
@@ -266,6 +268,8 @@ var puncher_unlocked := false
 var puncher_debut_pending := false
 var puncher_debut_clock := 0.0
 var manual_clicks_since_burst := 0
+var continuous_sweep_held := false
+var continuous_sweep_clock := 0.0
 var rocks_opened := 0
 var impurities_cleaned := 0
 var tissue_repaired := 0.0
@@ -477,6 +481,7 @@ func _process(delta: float) -> void:
 		return
 	_update_camera(delta)
 	_update_another_line(delta)
+	_update_continuous_sweep(delta)
 	_update_joe_events(delta)
 	_update_crisis(delta)
 	_update_box_jam(delta)
@@ -541,8 +546,9 @@ func _box_x() -> float:
 	return box.position.x + box.size.x * 0.35
 
 func _storage_tier() -> int:
-	if int(levels.get("plant", 0)) > 0: return 3
-	if int(levels.get("silo", 0)) > 0: return 2
+	if int(levels.get("plant", 0)) > 0: return 4
+	if int(levels.get("silo", 0)) > 0: return 3
+	if int(levels.get("container_capacity", 0)) > 0: return 2
 	if int(levels.get("container", 0)) > 0: return 1
 	return 0
 
@@ -608,7 +614,7 @@ func _ground_transport_speed(base_speed: float) -> float:
 	return base_speed * (1.35 if int(levels.shift) > 0 else 1.0)
 
 func _transport_capacity() -> int:
-	return BASE_CAPACITY
+	return BASE_CAPACITY + int(levels.get("pawn_capacity", 0))
 
 func _deposit_duration() -> float:
 	return 0.30 / _deposit_speed_multiplier()
@@ -982,10 +988,18 @@ func _terrain_height(side: String, column: int) -> float:
 
 func _constrain_column(side: String, column: int) -> int:
 	if side == "right" and column < RIGHT_WALL_COLUMN:
-		return RIGHT_WALL_COLUMN + (RIGHT_WALL_COLUMN - column)
-	if side == "left" and column > LEFT_WALL_COLUMN:
-		return LEFT_WALL_COLUMN - (column - LEFT_WALL_COLUMN)
-	return clampi(column, -MAX_PILE_RADIUS, MAX_PILE_RADIUS)
+		column = RIGHT_WALL_COLUMN + (RIGHT_WALL_COLUMN - column)
+	elif side == "left" and column > LEFT_WALL_COLUMN:
+		column = LEFT_WALL_COLUMN - (column - LEFT_WALL_COLUMN)
+	var limit := _pile_radius_limit(side)
+	return clampi(column, -limit, limit)
+
+func _pile_radius_limit(side: String) -> int:
+	if side == "right":
+		var free_width := maxf(18.0 * GRAIN_SPACING, _box_x() - PILE_BOX_MARGIN - _pile_center(side))
+		return clampi(floori(free_width / GRAIN_SPACING), 18, MAX_PILE_RADIUS)
+	var left_edge := 180.0 if septum_open else maxf(180.0, camera_x - 100.0)
+	return clampi(floori((_pile_center(side) - left_edge) / GRAIN_SPACING), 18, MAX_PILE_RADIUS)
 
 func _column_bounds(side: String, radius: int) -> Vector2i:
 	return Vector2i(-radius, LEFT_WALL_COLUMN) if side == "left" else Vector2i(RIGHT_WALL_COLUMN, radius)
@@ -1002,7 +1016,7 @@ func _natural_drop_center(side: String, bounds: Vector2i) -> int:
 	return roundi(lerpf(float(bounds.x), float(bounds.y), float(TERRAIN_ANCHORS[band])))
 
 func _choose_landing_column(side: String, preferred_column: int = 999) -> int:
-	var radius := mini(MAX_PILE_RADIUS, 2 + int(sqrt(_pile_load(side) / 2.8)))
+	var radius := mini(_pile_radius_limit(side), 2 + int(sqrt(_pile_load(side) / 2.8)))
 	var bounds := _column_bounds(side, radius)
 	var center := _natural_drop_center(side, bounds) if preferred_column == 999 else clampi(_constrain_column(side, preferred_column), bounds.x, bounds.y)
 	var column := clampi(center + randi_range(-1, 1), bounds.x, bounds.y)
@@ -1024,7 +1038,7 @@ func _movable_top_piece(side: String, column: int) -> PilePiece:
 	return top
 
 func _settle_surface(side: String, max_moves: int) -> void:
-	var bounds := _column_bounds(side, MAX_PILE_RADIUS)
+	var bounds := _column_bounds(side, _pile_radius_limit(side))
 	for move in range(max_moves):
 		var source_column := 999
 		var target_column := 999
@@ -1176,7 +1190,7 @@ func _mine_fallen_wall_chunk(chunk: Sprite2D, amount: float) -> void:
 	collapse.tween_property(chunk, "rotation", chunk.rotation + randf_range(-0.55, 0.55), 0.24)
 	collapse.chain().tween_callback(chunk.queue_free)
 
-func _manual_collect_at(world_pos: Vector2) -> bool:
+func _manual_collect_at(world_pos: Vector2, _show_feedback: bool = true) -> bool:
 	var piece := _surface_piece_at(world_pos)
 	if not piece:
 		return false
@@ -1208,6 +1222,35 @@ func _manual_collect_at(world_pos: Vector2) -> bool:
 	var duration := MANUAL_DELIVERY_BASE_TIME + minf(0.28, start.distance_to(target) / 1500.0)
 	particle_motions.append({"kind":"manual", "piece":piece, "elapsed":0.0, "duration":duration, "start":start, "control":control, "target":target})
 	return true
+
+func _continuous_sweep_interval() -> float:
+	return _continuous_sweep_interval_for(int(levels.get("continuous_sweep", 0)))
+
+func _continuous_sweep_interval_for(level: int) -> float:
+	return [INF, 0.22, 0.14, 0.09][clampi(level, 0, 3)]
+
+func _update_continuous_sweep(delta: float) -> void:
+	if not continuous_sweep_held or int(levels.get("continuous_sweep", 0)) == 0:
+		return
+	continuous_sweep_clock -= delta
+	if continuous_sweep_clock > 0.0:
+		return
+	var screen_pos := get_viewport().get_mouse_position()
+	if not stage_view.get_global_rect().has_point(screen_pos):
+		continuous_sweep_held = false
+		return
+	var world_pos := stage.get_global_transform_with_canvas().affine_inverse() * screen_pos
+	var piece := _surface_piece_at(world_pos)
+	if not piece or box_jammed:
+		continuous_sweep_clock = 0.05
+		return
+	var kind: String = piece.get_meta("kind", "grain")
+	var stored_value := float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if kind == "grain" else 1.0)
+	if kind in ["rock", "bacteria"] or (kind != "impurity" and stored_value > _manual_claim_space() + 0.001):
+		continuous_sweep_clock = 0.08
+		return
+	_manual_collect_at(world_pos, false)
+	continuous_sweep_clock = _continuous_sweep_interval()
 
 func _animate_manual_flight(progress: float, piece: Variant, start: Vector2, control: Vector2, target: Vector2) -> void:
 	if not is_instance_valid(piece):
@@ -1418,7 +1461,7 @@ func _chip_rock(rock: PilePiece, power: int = 1) -> void:
 
 func _maybe_compact(side: String) -> void:
 	if not _compaction_unlocked(): return
-	if _rock_count(side) >= COMPACTION_ROCK_LIMIT: return
+	if _rock_count(side) >= _compaction_rock_limit(): return
 	var pressure_rate := _auto_hit_rate() + _special_extraction_rate(true)
 	var interval := _compaction_interval()
 	if _pile_load(side) < COMPACTION_THRESHOLD or int(compaction_steps.get(side, 0)) < interval: return
@@ -1443,6 +1486,9 @@ func _maybe_compact(side: String) -> void:
 	if not compaction_announced:
 		compaction_announced = true
 		_show_toast("EL POLVO SE APELMAZA  ·  HACEN FALTA ESPECIALISTAS")
+		_update_ui()
+		call_deferred("_focus_required_upgrade")
+		_save()
 
 func _compaction_interval() -> int:
 	var pressure_rate := _auto_hit_rate() + _special_extraction_rate(true)
@@ -1455,8 +1501,11 @@ func _compaction_interval() -> int:
 	return clampi(interval, COMPACTION_INTERVAL_MIN, COMPACTION_INTERVAL_MAX)
 
 func _compaction_unlocked() -> bool:
-	# Las fases conservan el umbral ya cruzado aunque una locura vuelva a subir el colocón.
-	return current_phase >= 2
+	# La primera rayita presenta el problema; el 70% lo convierte en presión constante.
+	return current_phase >= 2 or another_line_events > 0
+
+func _compaction_rock_limit() -> int:
+	return 2 if current_phase == 1 else COMPACTION_ROCK_LIMIT
 
 func _record_manual_mining_click() -> void:
 	manual_mining_click_times.append(Time.get_ticks_msec() * 0.001)
@@ -1537,11 +1586,11 @@ func _click_wall(side: String) -> void:
 		var threshold := maxi(6, 10 - int(levels.click_rhythm))
 		if manual_clicks_since_burst >= threshold:
 			manual_clicks_since_burst = 0
-			var burst := mini(int(levels.click_burst) * 3, ceili(_wall_hp(side)))
-			_damage_wall(float(burst), side)
-			for grain in range(burst):
-				_spawn_chunk(Vector2(_mine_x(side) + randf_range(-18.0, 18.0), _ground_y() - randf_range(190.0, 330.0)), 1.0, side)
-			_float_text("¡RÁFAGA!  +%d" % burst, Vector2(_mine_x(side), _ground_y() - 245.0))
+			var repeats := int(levels.click_burst)
+			var burst := minf(float(repeats) * _click_power(), _wall_hp(side))
+			_damage_wall(burst, side)
+			_spawn_extraction_payload(side, burst, _mine_x(side), repeats)
+			_float_text("¡RÁFAGA!  -%s" % _number(burst), Vector2(_mine_x(side), _ground_y() - 245.0))
 
 func _damage_wall(amount: float, side: String = active_side) -> void:
 	var extracted := minf(maxf(0.0, amount), _wall_hp(side))
@@ -2227,8 +2276,7 @@ func _rate() -> float:
 	var cycle := distance * 2.0 / maxf(1.0, _pawn_speed()) + 0.8 + _deposit_duration()
 	var result := float(2 + int(levels.pawn)) * float(_transport_capacity()) / cycle * _box_yield_multiplier()
 	if int(levels.get("cart", 0)) > 0:
-		var cart_capacity := CART_TRAILER_CAPACITY if int(levels.cart_upgrade) > 0 else CART_CAPACITY
-		result += cart_capacity / (distance * 2.0 / _ground_transport_speed(CART_SPEED) + 1.1)
+		result += _cart_capacity() / (distance * 2.0 / _ground_transport_speed(CART_SPEED) + 1.1)
 	if int(levels.get("ox_convoy", 0)) > 0:
 		result += OX_CAPACITY / (distance * 2.0 / _ground_transport_speed(OX_SPEED) + 1.1)
 	if int(levels.get("train", 0)) > 0 and septum_open:
@@ -2267,7 +2315,7 @@ func _buy(id: String) -> void:
 		_rebuild_infrastructure()
 		_rebuild_transporters()
 		_rebuild_pawns()
-	elif upgrade.kind in ["transport_cart", "transport_trailer", "transport_ox", "transport_train"]:
+	elif upgrade.kind in ["transport_cart", "transport_capacity", "transport_ox", "transport_train"]:
 		_rebuild_transporters()
 	elif upgrade.kind == "platelet": _rebuild_platelets()
 	elif upgrade.kind in ["elephant", "elephant_power", "pugilist_cannon", "cannon_power", "supersaiyan", "supersaiyan_power"]: _rebuild_punchers()
@@ -2322,6 +2370,8 @@ func _debug_set_phase(next_phase: int) -> void:
 	puncher_debut_pending = false
 	puncher_debut_clock = 0.0
 	manual_clicks_since_burst = 0
+	continuous_sweep_held = false
+	continuous_sweep_clock = 0.0
 	manual_mining_click_times.clear()
 	rocks_opened = 0
 	impurities_cleaned = 0
@@ -2385,7 +2435,7 @@ func _update_another_line(delta: float) -> void:
 				var wave_total := maxi(1, current_line_grains)
 				var projected_load := _pile_load(active_side) + float(another_line_wave)
 				var previous_load := maxf(0.0, projected_load - float(wave_total))
-				var reach := mini(MAX_PILE_RADIUS, 18 + current_phase * 2 + int(sqrt(previous_load / 12.0)))
+				var reach := mini(_pile_radius_limit(active_side), 18 + current_phase * 2 + int(sqrt(previous_load / 12.0)))
 				var bounds := _column_bounds(active_side, reach)
 				var band_size := ceili(float(wave_total) / float(ANOTHER_LINE_ANCHORS.size()))
 				var band := mini(ANOTHER_LINE_ANCHORS.size() - 1, int(another_line_spawn_index / band_size))
@@ -2977,7 +3027,7 @@ func _rebuild_infrastructure() -> void:
 	_update_storage_visual()
 
 func _storage_feedback_position() -> Vector2:
-	var height: float = [82.0, 155.0, 200.0, 200.0][_storage_tier()]
+	var height: float = [82.0, 155.0, 155.0, 200.0, 200.0][_storage_tier()]
 	return Vector2(_box_x(), _ground_y() - height)
 
 func _add_storage_readout() -> void:
@@ -3074,13 +3124,17 @@ func _rebuild_transporters() -> void:
 		_release_transport_cargo(child)
 		child.queue_free()
 	if int(levels.get("cart", 0)) > 0:
-		var cart_capacity := CART_TRAILER_CAPACITY if int(levels.cart_upgrade) > 0 else CART_CAPACITY
-		_add_ground_transporter("cart", cart_capacity, _ground_transport_speed(CART_SPEED))
+		_add_ground_transporter("cart", _cart_capacity(), _ground_transport_speed(CART_SPEED))
 	if int(levels.get("ox_convoy", 0)) > 0:
 		_add_ground_transporter("ox", OX_CAPACITY, _ground_transport_speed(OX_SPEED))
 	if int(levels.get("train", 0)) > 0 and septum_open:
 		_add_train()
 	_restack_pile()
+
+func _cart_capacity() -> float:
+	if int(levels.get("cart_upgrade", 0)) > 0: return CART_TRAILER_CAPACITY
+	if int(levels.get("cart_reinforced", 0)) > 0: return CART_REINFORCED_CAPACITY
+	return CART_CAPACITY
 
 func _add_ground_transporter(kind: String, capacity: float, speed: float) -> void:
 	var root := Node2D.new()
@@ -3101,13 +3155,6 @@ func _add_ground_transporter(kind: String, capacity: float, speed: float) -> voi
 		cart.scale = Vector2.ONE * 0.075
 		cart.position = Vector2(8.0, -16.5)
 		root.add_child(cart)
-		if int(levels.cart_upgrade) > 0:
-			var trailer := Sprite2D.new()
-			trailer.name = "Trailer"
-			trailer.texture = CART_TEXTURE
-			trailer.scale = Vector2.ONE * 0.075
-			trailer.position = Vector2(112.0, -16.5)
-			root.add_child(trailer)
 		var puller := Sprite2D.new()
 		puller.name = "Puller"
 		puller.texture = PAWN_EMPTY
@@ -3501,6 +3548,8 @@ func _upgrade_available(upgrade: Dictionary) -> bool:
 		return false
 	if bool(upgrade.get("requires_puncher_unlock", false)) and not puncher_unlocked and current_phase == 1:
 		return false
+	if bool(upgrade.get("requires_compaction", false)) and not compaction_announced and current_phase == 1:
+		return false
 	var dependency := str(upgrade.get("requires_upgrade", ""))
 	if not dependency.is_empty() and int(levels.get(dependency, 0)) == 0:
 		return false
@@ -3534,7 +3583,7 @@ func _update_ui() -> void:
 	shop_subtitle.text = phase.joe
 	phase_progress.max_value = 1.0
 	phase_progress.value = _phase_adaptation_progress()
-	phase_hint.text = "PRESIÓN SOBRE JOE  %d%%  ·  %s" % [roundi(_phase_adaptation_progress() * 100.0), _phase_requirement()]
+	phase_hint.text = _joe_intent_hint()
 	joe_high_progress.value = joe_high_display
 	if joe_high_feedback_clock <= 0.0:
 		joe_high_progress.modulate = Color("7b67d8").lerp(Color("ffcc58"), joe_high_display / 100.0)
@@ -3562,10 +3611,11 @@ func _update_ui() -> void:
 		var evolution_locked: bool = upgrade.kind == "auto_power" and _punch_evolution_locked() and not maxed
 		var effect := "CLIC %s → %s" % [_number(pow(2.0, level)), _number(pow(2.0, level + 1))]
 		if upgrade.kind == "pawn": effect = "+1 peón"
+		elif upgrade.kind == "pawn_capacity": effect = "CARGA POR PEÓN  %d → %d" % [_transport_capacity(), _transport_capacity() + 1]
 		elif upgrade.kind == "speed": effect = "PEONES +60%  ·  TRANSPORTE TERRESTRE +35%"
 		elif upgrade.kind == "storage": effect = ("CAPACIDAD %s" if maxed else "NUEVO LÍMITE %s") % _number(float(upgrade.power))
 		elif upgrade.kind == "transport_cart": effect = "12 GRANOS POR VIAJE  ·  NO MINA"
-		elif upgrade.kind == "transport_trailer": effect = "CARGA DEL CARRITO  12 → 36"
+		elif upgrade.kind == "transport_capacity": effect = "CARGA DEL CARRITO  %s → %s" % [_number(_cart_capacity()), _number(float(upgrade.power))]
 		elif upgrade.kind == "transport_ox": effect = "40 GRANOS POR VIAJE  ·  NO MINA"
 		elif upgrade.kind == "transport_train": effect = "RECOGE TODO EL POLVO SUELTO  ·  NO MINA"
 		elif upgrade.kind == "coordination": effect = "reparto entre fosas" if level == 0 else "prioridad a pedruscos"
@@ -3589,7 +3639,8 @@ func _update_ui() -> void:
 		elif upgrade.kind == "auto_speed":
 			var rank := clampi(int(levels.punch_power), 0, PUGILIST_INTERVALS.size() - 1)
 			effect = "INTERVALO %.2f → %.2f S" % [float(PUGILIST_INTERVALS[rank]) * pow(0.85, level), float(PUGILIST_INTERVALS[rank]) * pow(0.85, level + 1)]
-		elif upgrade.kind == "click_burst": effect = "+3 granos en cada ráfaga"
+		elif upgrade.kind == "manual_sweep": effect = "MANTENER PULSADO  ·  %.2f S POR GRANO" % _continuous_sweep_interval_for(level + 1)
+		elif upgrade.kind == "click_burst": effect = "RÁFAGA  %d BOLAS DE %s" % [level if maxed else level + 1, _number(_click_power())]
 		elif upgrade.kind == "click_rhythm": effect = "-1 clic para provocar la ráfaga"
 		elif upgrade.kind in ["umbrella", "umbrella_power"]:
 			var future_umbrellas := level + 1 if upgrade.kind == "umbrella" else int(levels.umbrella)
@@ -3623,8 +3674,17 @@ func _high_state() -> String:
 	if joe_high_display < 100.0: return "VIENDO SONIDOS"
 	return "KO TÉCNICO"
 
+func _joe_intent_hint() -> String:
+	if current_phase >= PHASES.size():
+		return "JOE ESTÁ COMPLETAMENTE DESATADO."
+	var progress := _phase_adaptation_progress()
+	if progress >= 0.82: return "JOE ESTÁ A PUNTO DE COMETER UNA LOCURA."
+	if progress >= 0.42: return "JOE ESTÁ INQUIETO."
+	return "JOE ESTÁ COLOCADO."
+
 func _required_upgrade_id() -> String:
 	if current_phase == 1:
+		if compaction_announced and int(levels.breaker) == 0: return "breaker"
 		if puncher_unlocked and int(levels.puncher) == 0: return "puncher"
 		if int(levels.container) == 0 and phase_work >= 150.0: return "container"
 		if int(levels.container) > 0 and int(levels.cart) == 0: return "cart"
@@ -4020,6 +4080,8 @@ func _new_game() -> void:
 
 func _begin_game() -> void:
 	overdose_active = false
+	continuous_sweep_held = false
+	continuous_sweep_clock = 0.0
 	playing = not phase_event_pending
 	start_screen.hide()
 	options_menu.hide()
@@ -4057,13 +4119,23 @@ func _manual_save() -> void:
 	_show_toast("PARTIDA GUARDADA  ·  JOE SIGUE VIVO DE MOMENTO")
 
 func _input(event: InputEvent) -> void:
-	if not playing or not event is InputEventMouseButton:
+	if not event is InputEventMouseButton:
 		return
 	var click := event as InputEventMouseButton
-	if click.button_index != MOUSE_BUTTON_LEFT or not click.pressed or not stage_view.get_global_rect().has_point(click.position):
+	if click.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if not click.pressed:
+		continuous_sweep_held = false
+		return
+	if not playing or not stage_view.get_global_rect().has_point(click.position):
 		return
 	var world_pos := stage.get_global_transform_with_canvas().affine_inverse() * click.position
-	if _manual_mine_fallen_wall_chunk(world_pos) or _manual_collect_at(world_pos):
+	if _manual_mine_fallen_wall_chunk(world_pos):
+		continuous_sweep_held = false
+		get_viewport().set_input_as_handled()
+	elif _manual_collect_at(world_pos):
+		continuous_sweep_held = int(levels.get("continuous_sweep", 0)) > 0
+		continuous_sweep_clock = _continuous_sweep_interval()
 		get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
