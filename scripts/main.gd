@@ -9,7 +9,7 @@ const PileBatchRenderer = preload("res://scripts/pile_renderer.gd")
 const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
 const UNIT_CATALOG := ProgressionData.UNIT_CATALOG
-const QUICK_UPGRADE_IDS := ["nails", "continuous_sweep", "pawn", "pawn_capacity", "breaker", "detector", "sponge_power", "repair"]
+const QUICK_UPGRADE_IDS := ["nails", "continuous_sweep", "pawn", "pawn_capacity", "smart_clump", "breaker", "detector", "sponge_power", "repair"]
 const PHASE_HIGH_THRESHOLDS := [90.0, 70.0, 52.0, 34.0, 18.0]
 const STAGE_WIDTH := 7800.0
 const SEPTUM_X := 3800.0
@@ -40,15 +40,16 @@ const RIGHT_WALL_COLUMN := -5
 const LEFT_WALL_COLUMN := 5
 const BASE_PAWN_SPEED := 70.0
 const BASE_CAPACITY := 3
+const SMART_CLUMP_SIZES := [1, 3, 5, 8, 12]
 const PAWN_FOOT_DEPTH := 14.0
 const STORAGE_CAPACITIES := [1000.0, 5000.0, 15000.0, 50000.0, 500000.0]
 const CONTAINER_X := 4860.0
 const SILO_X := 5350.0
 const PLANT_X := 1150.0
 const CART_CAPACITY := 12.0
-const CART_REINFORCED_CAPACITY := 24.0
-const CART_TRAILER_CAPACITY := 36.0
-const OX_CAPACITY := 40.0
+const CART_REINFORCED_CAPACITY := 48.0
+const CART_TRAILER_CAPACITY := 180.0
+const OX_CAPACITY := 600.0
 const CART_SPEED := 145.0
 const OX_SPEED := 105.0
 const TRAIN_SPEED := 330.0
@@ -223,6 +224,7 @@ var pile_columns := {"left":{}, "right":{}}
 var pile_heights := {"left":{}, "right":{}}
 var reserved_heights := {"left":{}, "right":{}}
 var pile_load_cache := {"left":0.0, "right":0.0}
+var joe_grain_load_cache := {"left":0.0, "right":0.0}
 var rock_count_cache := {"left":0, "right":0}
 var untreated_rock_count_cache := {"left":0, "right":0}
 var kind_count_cache := {"grain":0, "rock":0, "impurity":0, "bacteria":0}
@@ -484,7 +486,7 @@ func _technology_stats(unit_id: String) -> String:
 		"manual":
 			var sweep := "BLOQUEADO" if int(levels.continuous_sweep) == 0 else "1 GRANO / %.2f S" % _continuous_sweep_interval()
 			return "POTENCIA DE CLIC: %s\nBARRIDO: %s\nNUDILLOS: NV. %d" % [_number(_click_power()), sweep, int(levels.click_burst)]
-		"pawn": return "UNIDADES: %d\nRASPADO: 1 POR VIAJE\nCARGA: %d  ·  VELOCIDAD: %s" % [2 + int(levels.pawn), _transport_capacity(), _number(_pawn_speed())]
+		"pawn": return "UNIDADES: %d\nRASPADO: 1 POR VIAJE\nCARGA: %d BOLAS × %d GRANOS  ·  VELOCIDAD: %s" % [2 + int(levels.pawn), _transport_capacity(), _smart_clump_size(), _number(_pawn_speed())]
 		"pugilist": return "UNIDADES: %d / 8\nDAÑO POR GOLPE: %s\nGOLPE CADA %.2f S" % [_puncher_count(), _number(_punch_output()), _punch_interval()]
 		"leukophant": return "UNIDADES: %d / 1\nCABEZAZO: %s\nEMBESTIDA CADA %.0f S" % [int(levels.elephant), _number(_special_extractor_damage("elephant")), ELEPHANT_INTERVAL]
 		"cannon": return "UNIDADES: %d / 1\nPROYECTIL: %s\nDISPARO CADA %.0f S" % [int(levels.pugilist_cannon), _number(_special_extractor_damage("cannon")), CANNON_INTERVAL]
@@ -727,10 +729,22 @@ func _pawn_speed() -> float:
 	return BASE_PAWN_SPEED * motorway_multiplier * crisis_factor
 
 func _ground_transport_speed(base_speed: float) -> float:
-	return base_speed * (1.35 if int(levels.shift) > 0 else 1.0)
+	return base_speed * (2.0 if int(levels.shift) > 0 else 1.0)
 
 func _transport_capacity() -> int:
 	return BASE_CAPACITY + int(levels.get("pawn_capacity", 0))
+
+func _smart_clump_size(level := -1) -> int:
+	var resolved_level := int(levels.get("smart_clump", 0)) if level < 0 else level
+	return int(SMART_CLUMP_SIZES[clampi(resolved_level, 0, SMART_CLUMP_SIZES.size() - 1)])
+
+func _pawn_smart_clump_size(pawn: Sprite2D) -> int:
+	if bool(pawn.get_meta("specialist", false)) or bool(pawn.get_meta("detector", false)) or bool(pawn.get_meta("handler", false)):
+		return 1
+	return _smart_clump_size()
+
+func _pawn_claim_capacity(pawn: Sprite2D) -> int:
+	return _transport_capacity() * _pawn_smart_clump_size(pawn)
 
 func _deposit_duration() -> float:
 	return 0.30 / _deposit_speed_multiplier()
@@ -780,8 +794,8 @@ func _set_pawn_carrying(pawn: Sprite2D, carrying: bool) -> void:
 	elif specialist:
 		target = SPECIALIST_EMPTY
 	else:
-		# Los tres granos reales ya se dibujan sobre el peón. El antiguo sprite de
-		# carga añadía una cuarta bola decorativa y hacía parecer falsa la capacidad.
+		# La carga real se dibuja sobre el peón. Con apelmazado inteligente solo se
+		# ve una bola por paquete; las demás piezas siguen existiendo y conservan valor.
 		target = PAWN_EMPTY
 	if pawn.texture == target:
 		return
@@ -835,7 +849,7 @@ func _update_pawns(delta: float) -> void:
 						_chip_rock(rock, 1 + int(levels.breaker))
 						pawn.set_meta("timer", 0.34 / (1.0 + float(levels.shift) * 0.12))
 					else:
-						var cargo := _claim_top_pieces(side, _transport_capacity(), pawn)
+						var cargo := _claim_top_pieces(side, _pawn_claim_capacity(pawn), pawn)
 						pawn.set_meta("cargo", cargo)
 						if cargo.is_empty():
 							pawn.set_meta("timer", 0.25)
@@ -1003,6 +1017,7 @@ func _reset_pile_index() -> void:
 	pile_heights = {"left":{}, "right":{}}
 	reserved_heights = {"left":{}, "right":{}}
 	pile_load_cache = {"left":0.0, "right":0.0}
+	joe_grain_load_cache = {"left":0.0, "right":0.0}
 	rock_count_cache = {"left":0, "right":0}
 	untreated_rock_count_cache = {"left":0, "right":0}
 	kind_count_cache = {"grain":0, "rock":0, "impurity":0, "bacteria":0}
@@ -1013,8 +1028,11 @@ func _index_add_piece(piece: PilePiece) -> void:
 	var side: String = piece.get_meta("side", "right")
 	var column := int(piece.get_meta("column", 0))
 	var height := float(piece.get_meta("height", GRAIN_HEIGHT))
-	pile_load_cache[side] = float(pile_load_cache[side]) + float(piece.get_meta("value", 1.0))
+	var value := float(piece.get_meta("value", 1.0))
+	pile_load_cache[side] = float(pile_load_cache[side]) + value
 	var kind := str(piece.get_meta("kind", "grain"))
+	if kind == "grain" and piece.get_meta("source", "player") != "player":
+		joe_grain_load_cache[side] = float(joe_grain_load_cache[side]) + value
 	kind_count_cache[kind] = int(kind_count_cache.get(kind, 0)) + 1
 	if kind == "rock":
 		rock_count_cache[side] = int(rock_count_cache[side]) + 1
@@ -1037,8 +1055,11 @@ func _index_remove_piece(piece: PilePiece) -> void:
 	var side: String = piece.get_meta("side", "right")
 	var column := int(piece.get_meta("column", 0))
 	var height := float(piece.get_meta("height", GRAIN_HEIGHT))
-	pile_load_cache[side] = maxf(0.0, float(pile_load_cache[side]) - float(piece.get_meta("value", 1.0)))
+	var value := float(piece.get_meta("value", 1.0))
+	pile_load_cache[side] = maxf(0.0, float(pile_load_cache[side]) - value)
 	var kind := str(piece.get_meta("kind", "grain"))
+	if kind == "grain" and piece.get_meta("source", "player") != "player":
+		joe_grain_load_cache[side] = maxf(0.0, float(joe_grain_load_cache[side]) - value)
 	kind_count_cache[kind] = maxi(0, int(kind_count_cache.get(kind, 0)) - 1)
 	if kind == "rock":
 		rock_count_cache[side] = maxi(0, int(rock_count_cache[side]) - 1)
@@ -1069,6 +1090,7 @@ func _rebuild_pile_index(side_filter: String = "") -> void:
 		pile_heights[side_filter] = {}
 		reserved_heights[side_filter] = {}
 		pile_load_cache[side_filter] = 0.0
+		joe_grain_load_cache[side_filter] = 0.0
 		rock_count_cache[side_filter] = 0
 		untreated_rock_count_cache[side_filter] = 0
 		kind_count_cache = {"grain":0, "rock":0, "impurity":0, "bacteria":0}
@@ -1192,6 +1214,8 @@ func _top_pieces(side: String) -> Array[PilePiece]:
 func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 	var cargo: Array = []
 	var remaining_storage := _storage_claim_space()
+	var clump_size := _pawn_smart_clump_size(pawn)
+	var clump_scale := 1.0 + 0.08 * sqrt(float(clump_size - 1))
 	while cargo.size() < capacity:
 		var collectable: Array[PilePiece] = []
 		var handler := bool(pawn.get_meta("handler", false))
@@ -1222,10 +1246,17 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 			remaining_storage -= float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if piece_kind == "grain" else 1.0)
 		piece.z_index = 20
 		cargo.append(piece)
+		var cargo_index := cargo.size() - 1
+		var visual_index := int(cargo_index / clump_size)
+		var bundle_head := cargo_index % clump_size == 0
+		piece.set_meta("cargo_visual_index", visual_index)
+		piece.set_meta("cargo_visual_scale", clump_scale)
+		piece.visible = bundle_head
+		piece.scale = Vector2.ONE * float(piece.get_meta("base_scale", 0.07)) * clump_scale
 		var tween := create_tween().set_parallel()
-		tween.tween_property(piece, "position", _cargo_position(pawn, cargo.size() - 1, capacity), 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tween.tween_property(piece, "position", _cargo_position(pawn, visual_index, _transport_capacity()), 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		tween.tween_property(piece, "rotation", randf_range(-0.12, 0.12), 0.22)
-	_settle_surface(side, maxi(2, capacity))
+	_settle_surface(side, maxi(2, _transport_capacity()))
 	_restack_pile(side)
 	return cargo
 
@@ -1431,9 +1462,10 @@ func _cargo_position(pawn: Sprite2D, index: int, capacity: int) -> Vector2:
 
 func _update_carried_pieces(pawn: Sprite2D) -> void:
 	var cargo: Array = pawn.get_meta("cargo", [])
-	for index in range(cargo.size()):
-		var piece := cargo[index] as PilePiece
-		if is_instance_valid(piece): piece.position = _cargo_position(pawn, index, _transport_capacity())
+	for piece_value in cargo:
+		var piece := piece_value as PilePiece
+		if is_instance_valid(piece):
+			piece.position = _cargo_position(pawn, int(piece.get_meta("cargo_visual_index", 0)), _transport_capacity())
 
 func _begin_deposit(pawn: Sprite2D) -> void:
 	var cargo: Array = pawn.get_meta("cargo", [])
@@ -1450,10 +1482,12 @@ func _update_deposit(pawn: Sprite2D, progress: float) -> void:
 		var piece := cargo[index] as PilePiece
 		if not is_instance_valid(piece): continue
 		var start: Vector2 = piece.get_meta("deposit_start", piece.position)
-		var delayed := clampf(progress * 1.35 - float(index) * 0.08, 0.0, 1.0)
+		var visual_index := int(piece.get_meta("cargo_visual_index", index))
+		var delayed := clampf(progress * 1.35 - float(visual_index) * 0.08, 0.0, 1.0)
 		piece.position = start.lerp(target, smoothstep(0.0, 1.0, delayed))
 		var base_scale: float = float(piece.get_meta("base_scale", 0.07))
-		piece.scale = Vector2.ONE * lerpf(base_scale, 0.015, delayed)
+		var cargo_scale := float(piece.get_meta("cargo_visual_scale", 1.0))
+		piece.scale = Vector2.ONE * lerpf(base_scale * cargo_scale, 0.015, delayed)
 
 func _finish_delivery(pawn: Sprite2D) -> void:
 	var delivered := 0.0
@@ -2390,7 +2424,7 @@ func _rate() -> float:
 		return 0.0
 	var distance := absf(_box_x() - _pile_center(active_side))
 	var cycle := distance * 2.0 / maxf(1.0, _pawn_speed()) + 0.8 + _deposit_duration()
-	var result := float(2 + int(levels.pawn)) * float(_transport_capacity()) / cycle * _box_yield_multiplier()
+	var result := float(2 + int(levels.pawn)) * float(_transport_capacity() * _smart_clump_size()) / cycle * _box_yield_multiplier()
 	if int(levels.get("cart", 0)) > 0:
 		result += _cart_capacity() / (distance * 2.0 / _ground_transport_speed(CART_SPEED) + 1.1)
 	if int(levels.get("ox_convoy", 0)) > 0:
@@ -2410,6 +2444,8 @@ func _buy(id: String) -> void:
 	cells -= cost
 	levels[id] = level + 1
 	if upgrade.kind in ["pawn", "coordination", "specialist", "detector", "handler"]: _rebuild_pawns()
+	elif upgrade.kind == "smart_clump":
+		_show_toast("APELMAZADO INTELIGENTE  ·  %d GRANOS POR BOLA DE CARGA" % _smart_clump_size())
 	elif upgrade.kind == "speed":
 		_rebuild_pawns()
 		_rebuild_transporters()
@@ -2986,8 +3022,16 @@ func _return_to_menu_after_overdose() -> void:
 
 func _update_joe_high(delta: float) -> void:
 	joe_high_feedback_clock = maxf(0.0, joe_high_feedback_clock - delta)
-	var pile_burden := _pile_load("left") + _pile_load("right") + _fallen_wall_chunk_load()
-	var pile_rise := clampf((pile_burden - 900.0) / 9000.0, 0.0, 1.0) * 0.018
+	var pile_rise := 0.0
+	if current_phase == 1:
+		# Al principio solo la porquería que añade Joe contrarresta la limpieza.
+		# El polvo recién minado por el jugador ya ha salido de la pared y no debe
+		# borrar inmediatamente ese progreso por culpa de una logística todavía básica.
+		var joe_burden := float(joe_grain_load_cache.left) + float(joe_grain_load_cache.right)
+		pile_rise = clampf((joe_burden - 240.0) / 6000.0, 0.0, 1.0) * 0.006
+	else:
+		var pile_burden := _pile_load("left") + _pile_load("right") + _fallen_wall_chunk_load()
+		pile_rise = clampf((pile_burden - 900.0) / 9000.0, 0.0, 1.0) * 0.018
 	var contamination_rise := contamination / 100.0 * 0.010 if current_phase >= 3 else 0.0
 	var jam_rise := 0.08 if box_jammed else 0.0
 	var tissue_rise := tissue_damage / 100.0 * 0.015 if current_phase >= 5 else 0.0
@@ -3692,6 +3736,7 @@ func _quick_upgrade_effect(upgrade_id: String, level: int) -> String:
 		"continuous_sweep": return "BARRIDO %.2f → %.2f S" % [_continuous_sweep_interval_for(level), _continuous_sweep_interval_for(level + 1)]
 		"pawn": return "+1 PEÓN RECOLECTOR"
 		"pawn_capacity": return "CARGA %d → %d" % [_transport_capacity(), _transport_capacity() + 1]
+		"smart_clump": return "%d → %d GRANOS POR BOLA  ·  %d → %d POR VIAJE" % [_smart_clump_size(level), _smart_clump_size(level + 1), _transport_capacity() * _smart_clump_size(level), _transport_capacity() * _smart_clump_size(level + 1)]
 		"breaker": return "APELMAZADO %d → %d" % [1 + level, 2 + level]
 		"detector": return "+1 QUIMIORRECEPTOR"
 		"sponge_power":
@@ -3757,11 +3802,12 @@ func _update_ui() -> void:
 		var effect := "CLIC %s → %s" % [_number(pow(2.0, level)), _number(pow(2.0, level + 1))]
 		if upgrade.kind == "pawn": effect = "+1 peón"
 		elif upgrade.kind == "pawn_capacity": effect = "CARGA POR PEÓN  %d → %d" % [_transport_capacity(), _transport_capacity() + 1]
-		elif upgrade.kind == "speed": effect = "PEONES +60%  ·  TRANSPORTE TERRESTRE +35%"
+		elif upgrade.kind == "smart_clump": effect = "%d → %d GRANOS POR BOLA  ·  CARGA TOTAL %d → %d" % [_smart_clump_size(level), _smart_clump_size(level + 1), _transport_capacity() * _smart_clump_size(level), _transport_capacity() * _smart_clump_size(level + 1)]
+		elif upgrade.kind == "speed": effect = "PEONES +60%  ·  TRANSPORTE TERRESTRE ×2"
 		elif upgrade.kind == "storage": effect = ("CAPACIDAD %s" if maxed else "NUEVO LÍMITE %s") % _number(float(upgrade.power))
 		elif upgrade.kind == "transport_cart": effect = "12 GRANOS POR VIAJE  ·  NO MINA"
 		elif upgrade.kind == "transport_capacity": effect = "CARGA DEL CARRITO  %s → %s" % [_number(_cart_capacity()), _number(float(upgrade.power))]
-		elif upgrade.kind == "transport_ox": effect = "40 GRANOS POR VIAJE  ·  NO MINA"
+		elif upgrade.kind == "transport_ox": effect = "%s GRANOS POR VIAJE  ·  NO MINA" % _number(OX_CAPACITY)
 		elif upgrade.kind == "transport_train": effect = "RECOGE TODO EL POLVO SUELTO  ·  NO MINA"
 		elif upgrade.kind == "coordination": effect = "reparto entre fosas" if level == 0 else "prioridad a pedruscos"
 		elif upgrade.kind == "specialist": effect = "CASCO ROMPE %d → %d RESISTENCIA" % [1 + level, 2 + level]

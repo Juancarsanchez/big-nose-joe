@@ -125,6 +125,23 @@ func _run() -> void:
 	game.levels.pawn_capacity = 2
 	_check(game._transport_capacity() == 5, "Basic-pawn capacity training must keep every existing and future pawn relevant without creating a new unit.")
 	game.levels.pawn_capacity = 0
+	_check(game.levels.has("smart_clump"), "Smart clumping must exist as a voluntary logistics technology, separate from hostile rocks.")
+	game.levels.cart = 1
+	game.levels.smart_clump = 1
+	var smart_collector := Sprite2D.new()
+	for index in range(9):
+		game._create_piece("grain", "right", 1.0, 0, index, 0.072)
+	var smart_cargo: Array = game._claim_top_pieces("right", game._pawn_claim_capacity(smart_collector), smart_collector)
+	_check(smart_cargo.size() == 9 and smart_cargo.filter(func(piece) -> bool: return piece.visible).size() == 3, "Level-one Smart Clumping must turn three base slots into three visible bundles containing nine real grains.")
+	await create_timer(0.25).timeout
+	var helmet_probe := Sprite2D.new()
+	helmet_probe.set_meta("specialist", true)
+	_check(game._pawn_claim_capacity(helmet_probe) == 3, "Blue helmets must keep their rock-handling capacity instead of receiving the normal-pawn bundle multiplier.")
+	smart_collector.free()
+	helmet_probe.free()
+	game._clear_pile()
+	game.levels.smart_clump = 0
+	game.levels.cart = 0
 	game.another_line_events = 1
 	_check(game._compaction_unlocked() and game._compaction_rock_limit() == 2, "The first Joe rain must introduce up to two clumps before phase two.")
 	game.current_phase = 2
@@ -132,7 +149,15 @@ func _run() -> void:
 	game.current_phase = 1
 	game.another_line_events = 0
 	_check(game.wall_label.text.contains("???") and not game.wall_label.text.contains("10.0B"), "Wall resistance must remain unknown during the opening.")
-	_check(not game.levels.has("smart_clump"), "Normal-pawn smart clumping must be removed completely.")
+	game.joe_high = 80.0
+	game._create_piece("grain", "right", 10000.0, 0, 0, 0.072, "", "player")
+	game._update_joe_high(10.0)
+	_check(is_equal_approx(game.joe_high, 80.0), "Player-mined powder on the opening pile must not cancel the high reduction it already produced.")
+	game._create_piece("grain", "right", 6240.0, 0, 1, 0.072, "", "joe")
+	game._update_joe_high(1.0)
+	_check(is_equal_approx(game.joe_high, 80.006), "Only Joe's loose opening nuisance must add a tightly capped amount of high.")
+	game._clear_pile()
+	game.joe_high = 90.0
 	game.right_hp = game.right_max * 0.01
 	game._update_world()
 	_check(is_equal_approx(game.right_visual.scale.x, 0.05), "A nearly exhausted cocaine wall must remain as a five-percent sliver.")
@@ -304,7 +329,7 @@ func _run() -> void:
 	game._buy("cart_upgrade")
 	await process_frame
 	var upgraded_cart := game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart").front() as Node2D
-	_check(is_equal_approx(float(upgraded_cart.get_meta("capacity", 0.0)), 36.0) and upgraded_cart.get_node_or_null("Trailer") == null, "Cart upgrades must raise capacity to thirty-six without spawning another unit or wagon.")
+	_check(is_equal_approx(float(upgraded_cart.get_meta("capacity", 0.0)), 180.0) and upgraded_cart.get_node_or_null("Trailer") == null, "Cart upgrades must create a real 180-unit logistics jump without spawning another unit or wagon.")
 	_check((game.buttons.shift as Button).visible, "Buying either tier upgrade must reveal the late phase-one speed jump.")
 	game._select_technology_unit("pugilist")
 	game._buy("punch_union")
@@ -314,7 +339,8 @@ func _run() -> void:
 	await process_frame
 	_check(is_equal_approx(game._pawn_speed(), game.BASE_PAWN_SPEED * 1.60), "The Lymphatic Motorway must increase pawn movement by sixty percent.")
 	var motorway_cart := game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart").back() as Node2D
-	_check(is_equal_approx(float(motorway_cart.get_meta("speed", 0.0)), game.CART_SPEED * 1.35), "The Lymphatic Motorway must also increase ground-transport speed by thirty-five percent.")
+	_check(is_equal_approx(float(motorway_cart.get_meta("speed", 0.0)), game.CART_SPEED * 2.0), "The Lymphatic Motorway must double ground-transport speed.")
+	_check(is_equal_approx(game.OX_CAPACITY, 600.0), "The Mugidophile must be a genuine heavy-transport tier rather than a four-unit sidegrade over the cart.")
 	game.levels.cart_upgrade = 0
 	game.levels.cart_reinforced = 0
 	game.levels.punch_union = 0

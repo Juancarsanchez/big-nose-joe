@@ -132,7 +132,7 @@ func _run() -> void:
 	game._finish_delivery(pawn)
 	pawn.set_meta("specialist", false)
 
-	# Normal pawns keep every carried grain separate; safe smart clumping no longer exists.
+	# Without the voluntary technology, normal pawns still keep every carried grain separate.
 	game._clear_pile()
 	await process_frame
 	for index in range(6):
