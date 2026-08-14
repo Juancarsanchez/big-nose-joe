@@ -35,7 +35,7 @@ func _run() -> void:
 	game.levels.nails = 1
 	game.cells = 1000.0
 	game._update_ui()
-	_check((game.quick_buttons.nails as Button).visible and (game.quick_buttons.nails as Button).text.contains("CLIC 2 → 4"), "An already discovered critical technology must receive a compact numerical quick-access button.")
+	_check((game.quick_buttons.nails as Button).visible and (game.quick_buttons.nails as Button).text.contains("CLIC 3 → 10"), "An already discovered critical technology must receive a compact numerical quick-access button.")
 	(game.quick_buttons.nails as Button).pressed.emit()
 	_check(int(game.levels.nails) == 2, "Quick access must buy the next real level without reopening the laboratory.")
 	game.levels.nails = 0
@@ -99,7 +99,12 @@ func _run() -> void:
 	_check(is_equal_approx(game.FIRST_WALL_HP, 10000000000.0) and is_equal_approx(game.FIRST_LEFT_WALL_HP, 10000000000.0), "Both fossae must begin with ten billion resistance.")
 	_check(is_equal_approx(game.joe_high, 90.0), "Joe must begin dangerously high at ninety percent.")
 	game._improve_joe(90000.0)
-	_check(game.joe_high <= 58.0, "The opening cleaning coefficient must make the first visible fall of Joe's high substantially faster.")
+	_check(game.joe_high <= 68.5, "The phase-one coefficient must turn roughly ninety thousand extracted units into the first twenty-point high threshold.")
+	game.current_phase = 2
+	game.joe_high = 90.0
+	game._improve_joe(1000000.0)
+	_check(is_equal_approx(game.joe_high, 68.0), "Phase two must use its own resistance coefficient instead of sharing one global late-game value.")
+	game.current_phase = 1
 	game.joe_high = 90.0
 	game.joe_high_display = 90.0
 	game._update_ui()
@@ -119,7 +124,7 @@ func _run() -> void:
 	game.levels.container = 1
 	_check(game._pile_radius_limit("right") > initial_pile_limit, "The pile boundary must expand naturally toward a farther storage building instead of ending at a fixed invisible wall.")
 	game.levels.container_capacity = 1
-	_check(is_equal_approx(game._storage_capacity(), 15000.0), "The numerical container expansion must provide a useful fifteen-thousand-unit step before the silo.")
+	_check(is_equal_approx(game._storage_capacity(), 25000.0), "The numerical container expansion must provide a useful twenty-five-thousand-unit step before the next logistics jump.")
 	game.levels.container_capacity = 0
 	game.levels.container = 0
 	game.levels.pawn_capacity = 2
@@ -316,34 +321,45 @@ func _run() -> void:
 	_check(game.punchers.get_child(0).get_node_or_null("BoxingGlove") != null, "Pugilists must be distinguished by a separate boxing-glove layer.")
 	game._clear_pile()
 
-	# The first progression gap is bridged by two strong tier upgrades, followed by one late speed jump.
+	# Extraction, logistics and storage advance as an interlocked sequence instead of isolated tiny percentages.
 	game.levels.container = 1
 	game.levels.cart = 1
-	_check(game._upgrade_available(game._upgrade("cart_reinforced")) and game._upgrade_available(game._upgrade("punch_union")), "The numerical cart-capacity upgrade and punch union must unlock after owning the cart and a pugilist.")
+	game.levels.container_capacity = 1
+	_check(game._upgrade_available(game._upgrade("cart_reinforced")) and game._upgrade_available(game._upgrade("punch_union")), "The cart jump must wait for the 25K store while the Punch Union remains a parallel extraction choice.")
 	game._select_technology_unit("cart")
 	_check((game.buttons.cart_reinforced as Button).visible, "The cart capacity upgrade must appear inside the cart page.")
-	_check(not (game.buttons.cart_upgrade as Button).visible, "The final cart-capacity tier must wait for reinforced axles.")
+	_check(not (game.buttons.cart_upgrade as Button).visible, "The 300-unit cart tier must wait for the modular warehouse.")
 	_check(not (game.buttons.shift as Button).visible, "The motorway must remain hidden until the player buys one of the two tier upgrades.")
-	game.cells = 10000.0
+	game.cells = 200000.0
 	game._buy("cart_reinforced")
+	game._buy("warehouse")
 	game._buy("cart_upgrade")
 	await process_frame
 	var upgraded_cart := game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart").front() as Node2D
-	_check(is_equal_approx(float(upgraded_cart.get_meta("capacity", 0.0)), 180.0) and upgraded_cart.get_node_or_null("Trailer") == null, "Cart upgrades must create a real 180-unit logistics jump without spawning another unit or wagon.")
+	_check(is_equal_approx(float(upgraded_cart.get_meta("capacity", 0.0)), 300.0) and upgraded_cart.get_node_or_null("Trailer") == null, "Cart upgrades must create a real 300-unit logistics jump without spawning another unit or wagon.")
+	_check(is_equal_approx(game._storage_capacity(), 100000.0), "The 300-unit cart may only arrive after storage has expanded to one hundred thousand.")
 	_check((game.buttons.shift as Button).visible, "Buying either tier upgrade must reveal the late phase-one speed jump.")
 	game._select_technology_unit("pugilist")
 	game._buy("punch_union")
+	game._buy("punch_training")
+	game._buy("punch_speed")
 	await process_frame
 	_check(game._puncher_count() == 3 and game.punchers.get_child_count() == 3, "The Punch Union must add exactly two basic pugilists without advancing their rank.")
+	_check(game._punch_output() == 150 and is_equal_approx(game._punch_interval(), 2.5), "Phase-one Pugilist training must triple damage and visibly cut the four-second rest to two and a half seconds.")
+	_check(game.punchers.get_child(0).get_node_or_null("ProteinWrap") != null, "The large numerical Pugilist training must receive a small layered wrist-wrap variation.")
 	game._buy("shift")
 	await process_frame
 	_check(is_equal_approx(game._pawn_speed(), game.BASE_PAWN_SPEED * 1.60), "The Lymphatic Motorway must increase pawn movement by sixty percent.")
 	var motorway_cart := game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart").back() as Node2D
 	_check(is_equal_approx(float(motorway_cart.get_meta("speed", 0.0)), game.CART_SPEED * 2.0), "The Lymphatic Motorway must double ground-transport speed.")
-	_check(is_equal_approx(game.OX_CAPACITY, 600.0), "The Mugidophile must be a genuine heavy-transport tier rather than a four-unit sidegrade over the cart.")
+	_check(is_equal_approx(game._ox_capacity(), 10000.0) and is_equal_approx(game._ox_capacity(2), 125000.0), "The Mugidophile must progress from ten thousand to one hundred and twenty-five thousand units per trip.")
 	game.levels.cart_upgrade = 0
 	game.levels.cart_reinforced = 0
+	game.levels.warehouse = 0
+	game.levels.container_capacity = 0
 	game.levels.punch_union = 0
+	game.levels.punch_training = 0
+	game.levels.punch_speed = 0
 	game.levels.shift = 0
 	game._rebuild_transporters()
 	game._rebuild_punchers()
@@ -364,7 +380,7 @@ func _run() -> void:
 		game._update_punchers(0.08)
 		round_safety -= 1
 	_check(game.loose_chunks.size() == chunks_before_round + 20, "Two federated pugilists must each create the same readable ten-particle impact.")
-	_check(game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), 10.0)), "Federated pugilists must release ten grains of ten units each.")
+	_check(game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), 50.0)), "Federated pugilists must release ten grains of fifty units each.")
 	var return_safety := 120
 	var saw_puncher_facing_home := false
 	while not game._punchers_idle() and return_safety > 0:
@@ -471,12 +487,26 @@ func _run() -> void:
 	game._update_ui()
 	_check((game.buttons.breaker as Button).text.contains("NECESARIA"), "A new phase must explain which adaptation is mandatory.")
 	_check((game.buttons.breaker as Button).has_theme_stylebox_override("normal"), "The mandatory adaptation must receive a blue halo.")
-	game.cells = 10000.0
+	game.levels.punch_training = 1
+	game.cells = 100000.0
 	game._buy("punch_power")
 	_check(int(game.levels.punch_power) == 1, "Phase two must unlock exactly the federated pugilist evolution.")
 	_check((game.punchers.get_child(0) as Sprite2D).get_node_or_null("RankBelt") != null, "A pugilist evolution must change separate visible equipment layers, not only its numbers.")
 	game._buy("punch_power")
 	_check(int(game.levels.punch_power) == 1, "Phase two must not allow buying the phase-three pugilist evolution early.")
+	game.levels.warehouse = 1
+	game.levels.cart_upgrade = 1
+	game.cells = 20000000.0
+	game._buy("silo")
+	_check(is_equal_approx(game._storage_capacity(), 2000000.0), "Phase two must open a two-million-unit silo before its first freight-scale transport purchase.")
+	game._buy("cart_freight")
+	_check(is_equal_approx(game._cart_capacity(), 1500.0), "Palletized freight must raise the existing cart to 1,500 units without adding another vehicle.")
+	game._buy("ox_convoy")
+	game._buy("silo_capacity")
+	_check(is_equal_approx(game._storage_capacity(), 10000000.0), "The heavy convoy upgrade path must expand storage to ten million before improving the Mugidophile.")
+	game._buy("ox_capacity")
+	game._buy("ox_capacity")
+	_check(is_equal_approx(game._ox_capacity(), 125000.0), "Two heavy-load upgrades must produce a visible 10K to 50K to 125K Mugidophile curve.")
 	_check(not (game.buttons.coord as Button).visible, "Work in Chain must remain hidden before the septum is open.")
 	game.septum_open = true
 	game._select_technology_unit("pawn")

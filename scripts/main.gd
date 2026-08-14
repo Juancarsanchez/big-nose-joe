@@ -40,23 +40,25 @@ const RIGHT_WALL_COLUMN := -5
 const LEFT_WALL_COLUMN := 5
 const BASE_PAWN_SPEED := 70.0
 const BASE_CAPACITY := 3
-const SMART_CLUMP_SIZES := [1, 3, 5, 8, 12]
+const SMART_CLUMP_SIZES := [1, 3, 5, 8, 13, 21]
 const PAWN_FOOT_DEPTH := 14.0
-const STORAGE_CAPACITIES := [1000.0, 5000.0, 15000.0, 50000.0, 500000.0]
+const STORAGE_CAPACITIES := [1000.0, 5000.0, 25000.0, 100000.0, 2000000.0, 10000000.0, 500000000.0]
 const CONTAINER_X := 4860.0
 const SILO_X := 5350.0
 const PLANT_X := 1150.0
 const CART_CAPACITY := 12.0
-const CART_REINFORCED_CAPACITY := 48.0
-const CART_TRAILER_CAPACITY := 180.0
-const OX_CAPACITY := 600.0
+const CART_REINFORCED_CAPACITY := 60.0
+const CART_TRAILER_CAPACITY := 300.0
+const CART_FREIGHT_CAPACITY := 1500.0
+const OX_CAPACITIES := [10000.0, 50000.0, 125000.0]
 const CART_SPEED := 145.0
 const OX_SPEED := 105.0
 const TRAIN_SPEED := 330.0
 const TRAIN_TUNNEL_TIME := 2.0
 const LEFT_TUNNEL_X := 120.0
 const RIGHT_TUNNEL_X := 7680.0
-const PUGILIST_DAMAGE := [50, 100, 200, 500]
+const CLICK_POWER_TIERS := [1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 1000.0, 3000.0, 10000.0]
+const PUGILIST_DAMAGE := [50, 500, 5000, 50000]
 const PUGILIST_GRAINS_PER_HIT := 10
 const PUGILIST_INTERVALS := [4.0, 3.2, 2.6, 2.2]
 const PUNCHER_WALK_SPEED := 235.0
@@ -67,13 +69,13 @@ const SUPERSAIYAN_INTERVAL := 50.0
 const MANUAL_DELIVERY_BASE_TIME := 0.46
 const JOE_STARTING_HIGH := 90.0
 const JOE_HIGH_PER_COCAINE_UNIT := 0.00011
+const PHASE_CLEANING_EFFICIENCY := [0.00024, 0.000022, 0.0000013, 0.00000011, 0.00000001]
 const ANOTHER_LINE_INTERVAL := 120.0
 const ANOTHER_LINE_WARNING := 8.0
 const ANOTHER_LINE_HIGH_GAIN := 0.5
 const ANOTHER_LINE_MINING_THRESHOLDS := [1000.0, 5000.0, 20000.0, 100000.0, 500000.0, 2000000.0]
 const ANOTHER_LINE_GRAIN_TIERS := [240, 360, 600, 1000, 1600, 2600, 4000]
 const ANOTHER_LINE_DROP_INTERVAL := 0.035
-const PHASE_ONE_CLEANING_EFFICIENCY := 0.00060
 const LUNG_INTERVAL := 300.0
 const LUNG_WARNING := 150.0
 const LUNG_STEAL_RATIO := 0.20
@@ -499,7 +501,7 @@ func _technology_stats(unit_id: String) -> String:
 		"handler": return "UNIDADES: %d\nBACTERIAS RETIRADAS: %d\nINFECCIÓN: %d%%" % [int(levels.handlers), bacteria_handled, roundi(infection)]
 		"catapult": return "MÁQUINAS: %d / 2\nIMPACTO: %s\nLANZAMIENTO CADA %.1f S" % [int(levels.catapult), _number(CATAPULT_BASE_DAMAGE * pow(2.0, int(levels.catapult_power))), CATAPULT_INTERVAL]
 		"cart": return "UNIDADES: %d / 1\nCARGA: %s POR VIAJE\nVELOCIDAD: %s" % [int(levels.cart), _number(_cart_capacity()), _number(_ground_transport_speed(CART_SPEED))]
-		"leukox": return "UNIDADES: %d / 1\nCARGA: %s POR VIAJE\nVELOCIDAD: %s" % [int(levels.ox_convoy), _number(OX_CAPACITY), _number(_ground_transport_speed(OX_SPEED))]
+		"leukox": return "UNIDADES: %d / 1\nCARGA: %s POR VIAJE\nVELOCIDAD: %s" % [int(levels.ox_convoy), _number(_ox_capacity()), _number(_ground_transport_speed(OX_SPEED))]
 		"train": return "UNIDADES: %d / 1\nCARGA: TODO EL POLVO DISPONIBLE\nVELOCIDAD: %s" % [int(levels.train), _number(TRAIN_SPEED)]
 		"storage": return "NIVEL DE INSTALACIÓN: %d\nCAPACIDAD: %s\nOCUPACIÓN: %s" % [_storage_tier() + 1, _number(_storage_capacity()), _number(cells)]
 	return "SIN DATOS"
@@ -664,8 +666,10 @@ func _box_x() -> float:
 	return box.position.x + box.size.x * 0.35
 
 func _storage_tier() -> int:
-	if int(levels.get("plant", 0)) > 0: return 4
-	if int(levels.get("silo", 0)) > 0: return 3
+	if int(levels.get("plant", 0)) > 0: return 6
+	if int(levels.get("silo_capacity", 0)) > 0: return 5
+	if int(levels.get("silo", 0)) > 0: return 4
+	if int(levels.get("warehouse", 0)) > 0: return 3
 	if int(levels.get("container_capacity", 0)) > 0: return 2
 	if int(levels.get("container", 0)) > 0: return 1
 	return 0
@@ -1978,6 +1982,20 @@ func _rebuild_punchers() -> void:
 		headband.color = [Color("51c8e8"), Color("f2d06b"), Color("ef5b57"), Color("fff1c7")][rank]
 		headband.z_index = 2
 		puncher.add_child(headband)
+		if int(levels.get("punch_training", 0)) > 0:
+			var wrist_wrap := Polygon2D.new()
+			wrist_wrap.name = "ProteinWrap"
+			wrist_wrap.polygon = PackedVector2Array([Vector2(-202, 104), Vector2(-158, 93), Vector2(-149, 126), Vector2(-194, 139)])
+			wrist_wrap.color = Color("64d6d0")
+			wrist_wrap.z_index = 3
+			puncher.add_child(wrist_wrap)
+		if int(levels.get("punch_collective", 0)) > 0:
+			var union_pin := Polygon2D.new()
+			union_pin.name = "UnionPin"
+			union_pin.polygon = PackedVector2Array([Vector2(112, -168), Vector2(148, -150), Vector2(140, -110), Vector2(100, -118)])
+			union_pin.color = Color("77d7f0")
+			union_pin.z_index = 3
+			puncher.add_child(union_pin)
 		if rank >= 1:
 			var belt := Polygon2D.new()
 			belt.name = "RankBelt"
@@ -2013,10 +2031,11 @@ func _place_puncher(puncher: Sprite2D) -> void:
 
 func _set_puncher_facing(puncher: Sprite2D, faces_right: bool) -> void:
 	_set_pawn_facing(puncher, faces_right)
-	var glove := puncher.get_node_or_null("BoxingGlove") as Polygon2D
-	if glove:
-		var width := absf(glove.scale.x)
-		glove.scale.x = -width if faces_right else width
+	for layer_name in ["BoxingGlove", "ProteinWrap", "UnionPin"]:
+		var directional_layer := puncher.get_node_or_null(layer_name) as Polygon2D
+		if directional_layer:
+			var width := absf(directional_layer.scale.x)
+			directional_layer.scale.x = -width if faces_right else width
 
 func _wall_free_x(side: String) -> float:
 	var visual := left_visual if side == "left" else right_visual
@@ -2044,10 +2063,13 @@ func _puncher_strike_position(puncher: Sprite2D) -> Vector2:
 
 func _punch_interval() -> float:
 	var rank := clampi(int(levels.punch_power), 0, PUGILIST_INTERVALS.size() - 1)
-	return float(PUGILIST_INTERVALS[rank]) * pow(0.85, int(levels.punch_speed))
+	return float(PUGILIST_INTERVALS[rank]) * (0.625 if int(levels.punch_speed) > 0 else 1.0)
 
 func _punch_output() -> int:
-	return int(PUGILIST_DAMAGE[clampi(int(levels.punch_power), 0, PUGILIST_DAMAGE.size() - 1)])
+	var output := float(PUGILIST_DAMAGE[clampi(int(levels.punch_power), 0, PUGILIST_DAMAGE.size() - 1)])
+	if int(levels.get("punch_training", 0)) > 0: output *= 3.0
+	if int(levels.get("punch_collective", 0)) > 0: output *= 3.0
+	return roundi(output)
 
 func _puncher_count() -> int:
 	return mini(8, int(levels.puncher) + (2 if int(levels.punch_union) > 0 else 0))
@@ -2417,7 +2439,10 @@ func _spawn_extraction_payload(side: String, amount: float, impact_x: float, vis
 		_spawn_chunk(Vector2(impact_x + randf_range(-10.0, 10.0), _ground_y() - randf_range(185.0, 320.0)), value, side)
 
 func _click_power() -> float:
-	return pow(2.0, int(levels.nails))
+	return _click_power_for(int(levels.nails))
+
+func _click_power_for(level: int) -> float:
+	return float(CLICK_POWER_TIERS[clampi(level, 0, CLICK_POWER_TIERS.size() - 1)])
 
 func _rate() -> float:
 	if box_jammed:
@@ -2428,7 +2453,7 @@ func _rate() -> float:
 	if int(levels.get("cart", 0)) > 0:
 		result += _cart_capacity() / (distance * 2.0 / _ground_transport_speed(CART_SPEED) + 1.1)
 	if int(levels.get("ox_convoy", 0)) > 0:
-		result += OX_CAPACITY / (distance * 2.0 / _ground_transport_speed(OX_SPEED) + 1.1)
+		result += _ox_capacity() / (distance * 2.0 / _ground_transport_speed(OX_SPEED) + 1.1)
 	if int(levels.get("train", 0)) > 0 and septum_open:
 		var available := _pile_load("left") + _pile_load("right")
 		var surface_trip := (absf(PLANT_X + 165.0 - LEFT_TUNNEL_X) + absf(RIGHT_TUNNEL_X - _pile_center("right") - 106.0)) * 2.0 / TRAIN_SPEED
@@ -2457,9 +2482,9 @@ func _buy(id: String) -> void:
 			puncher_debut_clock = 1.35
 			punch_clock = _punch_interval()
 			_show_toast("EL NUEVO PÚGIL ESTÁ CALENTANDO EL BRAZO...")
-	elif upgrade.kind == "auto_power":
+	elif upgrade.kind in ["auto_power", "punch_training", "punch_collective"]:
 		_rebuild_punchers()
-		_show_toast("LA CUADRILLA PÚGIL HA EVOLUCIONADO")
+		_show_toast("LA CUADRILLA PÚGIL HA EVOLUCIONADO" if upgrade.kind == "auto_power" else "LA CUADRILLA PÚGIL SE HA PUESTO SERIA")
 	elif upgrade.kind == "punch_union":
 		_rebuild_punchers()
 		_show_toast("SINDICATO DEL PUÑO  ·  +2 PÚGILES")
@@ -2467,7 +2492,7 @@ func _buy(id: String) -> void:
 		_rebuild_infrastructure()
 		_rebuild_transporters()
 		_rebuild_pawns()
-	elif upgrade.kind in ["transport_cart", "transport_capacity", "transport_ox", "transport_train"]:
+	elif upgrade.kind in ["transport_cart", "transport_capacity", "transport_ox", "transport_ox_capacity", "transport_train"]:
 		_rebuild_transporters()
 	elif upgrade.kind == "platelet": _rebuild_platelets()
 	elif upgrade.kind in ["elephant", "elephant_power", "pugilist_cannon", "cannon_power", "supersaiyan", "supersaiyan_power"]: _rebuild_punchers()
@@ -2963,7 +2988,7 @@ func _future_special_damage(kind: String, owned_level: int) -> float:
 	return 50000000.0 * pow(10.0, int(levels.supersaiyan_power))
 
 func _improve_joe(clean_units: float, mining_feedback := false) -> void:
-	var efficiency := PHASE_ONE_CLEANING_EFFICIENCY if current_phase == 1 else JOE_HIGH_PER_COCAINE_UNIT
+	var efficiency := float(PHASE_CLEANING_EFFICIENCY[clampi(current_phase - 1, 0, PHASE_CLEANING_EFFICIENCY.size() - 1)])
 	var reduction := clean_units * efficiency
 	_change_joe_high(-reduction, mining_feedback)
 	if mining_feedback:
@@ -3176,9 +3201,13 @@ func _rebuild_infrastructure() -> void:
 	for child in infrastructure.get_children(): child.queue_free()
 	box.visible = int(levels.get("container", 0)) == 0
 	if int(levels.get("silo", 0)) > 0:
-		_add_infrastructure_sprite(SILO_TEXTURE, Vector2(SILO_X, _ground_y() - 80.0), 0.14, "SILO DE NIEVE ESTRATÉGICA")
+		var silo_scale := 0.17 if int(levels.get("silo_capacity", 0)) > 0 else 0.14
+		var silo_title := "SILO DE ALTO TONELAJE" if int(levels.get("silo_capacity", 0)) > 0 else "SILO DE NIEVE ESTRATÉGICA"
+		_add_infrastructure_sprite(SILO_TEXTURE, Vector2(SILO_X, _ground_y() - 80.0), silo_scale, silo_title)
 	elif int(levels.get("container", 0)) > 0:
-		_add_infrastructure_sprite(CONTAINER_TEXTURE, Vector2(CONTAINER_X, _ground_y() - 43.0), 0.115, "CONTENEDOR DE EMERGENCIA")
+		var container_scale := 0.145 if int(levels.get("warehouse", 0)) > 0 else (0.13 if int(levels.get("container_capacity", 0)) > 0 else 0.115)
+		var container_title := "ALMACÉN ALVEOLAR MODULAR" if int(levels.get("warehouse", 0)) > 0 else ("CONTENEDOR CON DOBLE FONDO" if int(levels.get("container_capacity", 0)) > 0 else "CONTENEDOR DE EMERGENCIA")
+		_add_infrastructure_sprite(CONTAINER_TEXTURE, Vector2(CONTAINER_X, _ground_y() - 43.0), container_scale, container_title)
 	if int(levels.get("plant", 0)) > 0:
 		_add_infrastructure_sprite(PLANT_TEXTURE, Vector2(PLANT_X, _ground_y() - 62.0), 0.17, "PLANTA DE NIEVE INDUSTRIAL")
 	if int(levels.get("train", 0)) > 0 and septum_open:
@@ -3187,7 +3216,7 @@ func _rebuild_infrastructure() -> void:
 	_update_storage_visual()
 
 func _storage_feedback_position() -> Vector2:
-	var height: float = [82.0, 155.0, 155.0, 200.0, 200.0][_storage_tier()]
+	var height: float = [82.0, 155.0, 155.0, 155.0, 200.0, 200.0, 200.0][_storage_tier()]
 	return Vector2(_box_x(), _ground_y() - height)
 
 func _add_storage_readout() -> void:
@@ -3286,15 +3315,20 @@ func _rebuild_transporters() -> void:
 	if int(levels.get("cart", 0)) > 0:
 		_add_ground_transporter("cart", _cart_capacity(), _ground_transport_speed(CART_SPEED))
 	if int(levels.get("ox_convoy", 0)) > 0:
-		_add_ground_transporter("ox", OX_CAPACITY, _ground_transport_speed(OX_SPEED))
+		_add_ground_transporter("ox", _ox_capacity(), _ground_transport_speed(OX_SPEED))
 	if int(levels.get("train", 0)) > 0 and septum_open:
 		_add_train()
 	_restack_pile()
 
 func _cart_capacity() -> float:
+	if int(levels.get("cart_freight", 0)) > 0: return CART_FREIGHT_CAPACITY
 	if int(levels.get("cart_upgrade", 0)) > 0: return CART_TRAILER_CAPACITY
 	if int(levels.get("cart_reinforced", 0)) > 0: return CART_REINFORCED_CAPACITY
 	return CART_CAPACITY
+
+func _ox_capacity(level := -1) -> float:
+	var resolved_level := int(levels.get("ox_capacity", 0)) if level < 0 else level
+	return float(OX_CAPACITIES[clampi(resolved_level, 0, OX_CAPACITIES.size() - 1)])
 
 func _add_ground_transporter(kind: String, capacity: float, speed: float) -> void:
 	var root := Node2D.new()
@@ -3732,7 +3766,7 @@ func _upgrade_available(upgrade: Dictionary) -> bool:
 
 func _quick_upgrade_effect(upgrade_id: String, level: int) -> String:
 	match upgrade_id:
-		"nails": return "CLIC %s → %s" % [_number(pow(2.0, level)), _number(pow(2.0, level + 1))]
+		"nails": return "CLIC %s → %s" % [_number(_click_power_for(level)), _number(_click_power_for(level + 1))]
 		"continuous_sweep": return "BARRIDO %.2f → %.2f S" % [_continuous_sweep_interval_for(level), _continuous_sweep_interval_for(level + 1)]
 		"pawn": return "+1 PEÓN RECOLECTOR"
 		"pawn_capacity": return "CARGA %d → %d" % [_transport_capacity(), _transport_capacity() + 1]
@@ -3799,7 +3833,7 @@ func _update_ui() -> void:
 		var cost: float = ceil(float(upgrade.base) * pow(float(upgrade.growth), level))
 		var maxed: bool = level >= int(upgrade.get("max", 999))
 		var evolution_locked: bool = upgrade.kind == "auto_power" and _punch_evolution_locked() and not maxed
-		var effect := "CLIC %s → %s" % [_number(pow(2.0, level)), _number(pow(2.0, level + 1))]
+		var effect := "CLIC %s → %s" % [_number(_click_power_for(level)), _number(_click_power_for(level + 1))]
 		if upgrade.kind == "pawn": effect = "+1 peón"
 		elif upgrade.kind == "pawn_capacity": effect = "CARGA POR PEÓN  %d → %d" % [_transport_capacity(), _transport_capacity() + 1]
 		elif upgrade.kind == "smart_clump": effect = "%d → %d GRANOS POR BOLA  ·  CARGA TOTAL %d → %d" % [_smart_clump_size(level), _smart_clump_size(level + 1), _transport_capacity() * _smart_clump_size(level), _transport_capacity() * _smart_clump_size(level + 1)]
@@ -3807,7 +3841,8 @@ func _update_ui() -> void:
 		elif upgrade.kind == "storage": effect = ("CAPACIDAD %s" if maxed else "NUEVO LÍMITE %s") % _number(float(upgrade.power))
 		elif upgrade.kind == "transport_cart": effect = "12 GRANOS POR VIAJE  ·  NO MINA"
 		elif upgrade.kind == "transport_capacity": effect = "CARGA DEL CARRITO  %s → %s" % [_number(_cart_capacity()), _number(float(upgrade.power))]
-		elif upgrade.kind == "transport_ox": effect = "%s GRANOS POR VIAJE  ·  NO MINA" % _number(OX_CAPACITY)
+		elif upgrade.kind == "transport_ox": effect = "%s GRANOS POR VIAJE  ·  NO MINA" % _number(_ox_capacity())
+		elif upgrade.kind == "transport_ox_capacity": effect = "CARGA DEL MUGIDÓFILO  %s → %s" % [_number(_ox_capacity(level)), _number(_ox_capacity(level + 1))]
 		elif upgrade.kind == "transport_train": effect = "RECOGE TODO EL POLVO SUELTO  ·  NO MINA"
 		elif upgrade.kind == "coordination": effect = "reparto entre fosas" if level == 0 else "prioridad a pedruscos"
 		elif upgrade.kind == "specialist": effect = "CASCO ROMPE %d → %d RESISTENCIA" % [1 + level, 2 + level]
@@ -3819,17 +3854,20 @@ func _update_ui() -> void:
 		elif upgrade.kind == "signals": effect = "+12% coordinación de crisis"
 		elif upgrade.kind == "autoclicker": effect = "+1 púgil automático"
 		elif upgrade.kind == "punch_union": effect = "+2 PÚGILES BÁSICOS  ·  50 DAÑO CADA UNO"
+		elif upgrade.kind == "punch_training": effect = "DAÑO DE TODA LA CUADRILLA  ×3"
+		elif upgrade.kind == "punch_collective": effect = "DAÑO DE TODA LA CUADRILLA  ×3"
 		elif upgrade.kind == "auto_power":
 			if evolution_locked:
 				effect = "SIGUIENTE EVOLUCIÓN EN FASE %d" % mini(PHASES.size(), level + 2)
 			else:
-				var current_ball := float(PUGILIST_DAMAGE[clampi(level, 0, PUGILIST_DAMAGE.size() - 1)]) / float(PUGILIST_GRAINS_PER_HIT)
-				var next_ball := float(PUGILIST_DAMAGE[clampi(level + 1, 0, PUGILIST_DAMAGE.size() - 1)]) / float(PUGILIST_GRAINS_PER_HIT)
+				var training_multiplier := (3.0 if int(levels.get("punch_training", 0)) > 0 else 1.0) * (3.0 if int(levels.get("punch_collective", 0)) > 0 else 1.0)
+				var current_ball := float(PUGILIST_DAMAGE[clampi(level, 0, PUGILIST_DAMAGE.size() - 1)]) * training_multiplier / float(PUGILIST_GRAINS_PER_HIT)
+				var next_ball := float(PUGILIST_DAMAGE[clampi(level + 1, 0, PUGILIST_DAMAGE.size() - 1)]) * training_multiplier / float(PUGILIST_GRAINS_PER_HIT)
 				effect = "%d BOLAS DE %s → %s" % [PUGILIST_GRAINS_PER_HIT, _number(current_ball), _number(next_ball)]
 		elif upgrade.kind == "wall_scan": effect = "REVELA LA RESISTENCIA EXACTA"
 		elif upgrade.kind == "auto_speed":
 			var rank := clampi(int(levels.punch_power), 0, PUGILIST_INTERVALS.size() - 1)
-			effect = "INTERVALO %.2f → %.2f S" % [float(PUGILIST_INTERVALS[rank]) * pow(0.85, level), float(PUGILIST_INTERVALS[rank]) * pow(0.85, level + 1)]
+			effect = "INTERVALO %.2f → %.2f S" % [float(PUGILIST_INTERVALS[rank]), float(PUGILIST_INTERVALS[rank]) * 0.625]
 		elif upgrade.kind == "manual_sweep": effect = "MANTENER PULSADO  ·  %.2f S POR GRANO" % _continuous_sweep_interval_for(level + 1)
 		elif upgrade.kind == "click_burst": effect = "RÁFAGA  %d BOLAS DE %s" % [level if maxed else level + 1, _number(_click_power())]
 		elif upgrade.kind == "click_rhythm": effect = "-1 clic para provocar la ráfaga"
