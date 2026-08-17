@@ -133,9 +133,20 @@ func _run() -> void:
 	_check(phase_two_late_logistics >= phase_two_total_extraction * 0.98 and phase_two_late_logistics <= phase_two_total_extraction * 1.08, "Completed phase-two logistics must catch the Pugilist and Leucoram output without missing its required storage tier.")
 
 	var phase_one_net_high: float = phase_one_auto * float(game.PHASE_CLEANING_EFFICIENCY[0])
-	var phase_two_net_high: float = phase_two_total_extraction * float(game.PHASE_CLEANING_EFFICIENCY[1]) - 0.025
+	game.joe_high = 52.0
+	var phase_two_net_high: float = phase_two_total_extraction * game._cleaning_efficiency() - 0.025
 	_check(phase_one_net_high > 0.04, "A completed phase-one extraction path must move Joe's high visibly every second.")
 	_check(phase_two_net_high > 0.02, "A completed phase-two extraction path must beat the maximum loose-powder pressure without collapsing the phase immediately.")
+	_set_levels(game, {"puncher":1, "punch_union":1, "punch_training":1, "punch_speed":1, "punch_power":1, "bronchial_rage":1})
+	game.current_phase = 2
+	game.joe_high = 70.0
+	game.joe_grain_load_cache = {"left":0.0, "right":4000.0}
+	var transition_efficiency: float = game._cleaning_efficiency()
+	var transition_pressure: float = game._joe_powder_pressure()
+	_check(is_equal_approx(transition_efficiency, float(game.PHASE_CLEANING_EFFICIENCY[1]) * game.PHASE2_TRANSITION_MULTIPLIER), "Phase two must begin with a temporary cleaning bridge instead of a 1,200-fold efficiency cliff.")
+	_check(game._auto_hit_rate() * transition_efficiency > transition_pressure, "The first phase-two Pugilist evolution and rage upgrade must beat one normal four-thousand-grain Joe wave.")
+	game.joe_high = 52.0
+	_check(is_equal_approx(game._cleaning_efficiency(), float(game.PHASE_CLEANING_EFFICIENCY[1])), "The phase-two transition bridge must disappear completely at the next high threshold.")
 	game.current_phase = 2
 	game.joe_high = 50.0
 	game.joe_high_display = 50.0

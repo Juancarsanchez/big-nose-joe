@@ -75,6 +75,7 @@ const MANUAL_DELIVERY_BASE_TIME := 0.46
 const JOE_STARTING_HIGH := 90.0
 const JOE_HIGH_PER_COCAINE_UNIT := 0.00011
 const PHASE_CLEANING_EFFICIENCY := [0.00024, 0.0000002, 0.000000005, 0.00000000003, 0.000000000001]
+const PHASE2_TRANSITION_MULTIPLIER := 10.0
 const ANOTHER_LINE_INTERVAL := 120.0
 const ANOTHER_LINE_WARNING := 8.0
 const ANOTHER_LINE_HIGH_GAIN := 0.5
@@ -3086,11 +3087,23 @@ func _future_special_damage(kind: String, owned_level: int) -> float:
 	return SUPERSAIYAN_BASE_DAMAGE * pow(10.0, int(levels.supersaiyan_power))
 
 func _improve_joe(clean_units: float, mining_feedback := false) -> void:
-	var efficiency := float(PHASE_CLEANING_EFFICIENCY[clampi(current_phase - 1, 0, PHASE_CLEANING_EFFICIENCY.size() - 1)])
+	var efficiency := _cleaning_efficiency()
 	var reduction := clean_units * efficiency
 	_change_joe_high(-reduction, mining_feedback)
 	if mining_feedback:
 		_show_mining_feedback(clean_units, reduction)
+
+func _cleaning_efficiency() -> float:
+	var efficiency := float(PHASE_CLEANING_EFFICIENCY[clampi(current_phase - 1, 0, PHASE_CLEANING_EFFICIENCY.size() - 1)])
+	if current_phase != 2:
+		return efficiency
+	# Al quitar Pulmones de Drogata desapareció el rebote que disimulaba el salto
+	# de escala entre fases. La ayuda se desvanece conforme el jugador compra la
+	# cadena industrial de fase 2: fuerte en 70 %, nula al alcanzar el 52 %.
+	var phase_top := float(PHASE_HIGH_THRESHOLDS[1])
+	var phase_bottom := float(PHASE_HIGH_THRESHOLDS[2])
+	var transition := clampf((joe_high - phase_bottom) / maxf(0.001, phase_top - phase_bottom), 0.0, 1.0)
+	return efficiency * lerpf(1.0, PHASE2_TRANSITION_MULTIPLIER, transition)
 
 func _show_mining_feedback(extracted: float, reduction: float) -> void:
 	joe_high_feedback_clock = 0.9
@@ -3149,13 +3162,7 @@ func _return_to_menu_after_overdose() -> void:
 
 func _update_joe_high(delta: float) -> void:
 	joe_high_feedback_clock = maxf(0.0, joe_high_feedback_clock - delta)
-	# La cocaína arrancada por el jugador ya ha reducido el colocón al salir de
-	# la pared. Solo el polvo que añade Joe puede ejercer presión desde el suelo.
-	var joe_burden := float(joe_grain_load_cache.left) + float(joe_grain_load_cache.right)
-	var threshold := 240.0 if current_phase == 1 else 900.0
-	var span := 6000.0 if current_phase == 1 else 9000.0
-	var maximum_rise := 0.006 if current_phase == 1 else 0.025
-	var pile_rise := clampf((joe_burden - threshold) / span, 0.0, 1.0) * maximum_rise
+	var pile_rise := _joe_powder_pressure()
 	var contamination_rise := contamination / 100.0 * 0.010 if current_phase >= 3 else 0.0
 	var jam_rise := 0.08 if box_jammed else 0.0
 	var tissue_rise := tissue_damage / 100.0 * 0.015 if current_phase >= 5 else 0.0
@@ -3164,6 +3171,15 @@ func _update_joe_high(delta: float) -> void:
 	joe_high_display = move_toward(joe_high_display, joe_high, delta * 9.0)
 	if joe_high >= 100.0:
 		_trigger_overdose()
+
+func _joe_powder_pressure() -> float:
+	# La cocaína arrancada por el jugador ya ha reducido el colocón al salir de
+	# la pared. Solo el polvo que añade Joe puede ejercer presión desde el suelo.
+	var joe_burden := float(joe_grain_load_cache.left) + float(joe_grain_load_cache.right)
+	var threshold := 240.0 if current_phase == 1 else 900.0
+	var span := 6000.0 if current_phase == 1 else 9000.0
+	var maximum_rise := 0.006 if current_phase == 1 else 0.025
+	return clampf((joe_burden - threshold) / span, 0.0, 1.0) * maximum_rise
 
 func _fallen_wall_chunk_load() -> float:
 	var total := 0.0
@@ -3954,8 +3970,12 @@ func _update_ui() -> void:
 	joe_high_progress.value = joe_high_display
 	if joe_high_feedback_clock <= 0.0:
 		joe_high_progress.modulate = Color("7b67d8").lerp(Color("ffcc58"), joe_high_display / 100.0)
-		joe_high_feedback.text = "MINA PARA BAJARLO"
-		joe_high_feedback.modulate = Color("8bcbd1")
+		if _joe_powder_pressure() > 0.0:
+			joe_high_feedback.text = "EL POLVO DE JOE LO MANTIENE ARRIBA"
+			joe_high_feedback.modulate = Color("e8b06b")
+		else:
+			joe_high_feedback.text = "MINA PARA BAJARLO"
+			joe_high_feedback.modulate = Color("8bcbd1")
 	joe_high_label.text = "COLOCÓN DE JOE  %.1f / 100" % joe_high_display
 	cells_label.text = "COCAÍNA  %s / %s" % [_number(cells), _number(_storage_capacity())]
 	rate_label.text = "%s / CLIC  ·  AUTO %s / S" % [_number(_click_power()), _number(_auto_hit_rate() + _special_extraction_rate())]

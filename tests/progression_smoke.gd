@@ -111,9 +111,9 @@ func _run() -> void:
 	game._improve_joe(90000.0)
 	_check(game.joe_high <= 68.5, "The phase-one coefficient must turn roughly ninety thousand extracted units into the first twenty-point high threshold.")
 	game.current_phase = 2
-	game.joe_high = 90.0
+	game.joe_high = 52.0
 	game._improve_joe(10000000.0)
-	_check(is_equal_approx(game.joe_high, 88.0), "Phase two must use its own resistance coefficient instead of sharing one global late-game value.")
+	_check(is_equal_approx(game.joe_high, 50.0), "Phase two must settle on its own resistance coefficient after its temporary transition bridge.")
 	game.current_phase = 1
 	game.joe_high = 90.0
 	game.joe_high_display = 90.0
