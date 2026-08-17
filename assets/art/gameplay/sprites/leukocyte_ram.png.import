@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cqvfsesyis6uv"
-path="res://.godot/imported/umbrella_pink.png-d8e1600365a42d130eade286dbd78189.ctex"
+uid="uid://djkbomij6oste"
+path="res://.godot/imported/leukocyte_ram.png-41fb7d99e2e8c7bfd98fbb1e30220750.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/art/gameplay/sprites/umbrella_pink.png"
-dest_files=["res://.godot/imported/umbrella_pink.png-d8e1600365a42d130eade286dbd78189.ctex"]
+source_file="res://assets/art/gameplay/sprites/leukocyte_ram.png"
+dest_files=["res://.godot/imported/leukocyte_ram.png-41fb7d99e2e8c7bfd98fbb1e30220750.ctex"]
 
 [params]
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bes81qr1ch68i"
-path="res://.godot/imported/umbrella_pink_chroma.png-f1de1fa5f4c286c1b34e3ab7fc691d60.ctex"
+uid="uid://l04jthtowcll"
+path="res://.godot/imported/plasma_cannon.png-378ca9a832a95235365badbc2d6be14b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/art/gameplay/source/umbrella_pink_chroma.png"
-dest_files=["res://.godot/imported/umbrella_pink_chroma.png-f1de1fa5f4c286c1b34e3ab7fc691d60.ctex"]
+source_file="res://assets/art/gameplay/sprites/plasma_cannon.png"
+dest_files=["res://.godot/imported/plasma_cannon.png-378ca9a832a95235365badbc2d6be14b.ctex"]
 
 [params]
 

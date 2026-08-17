@@ -16,7 +16,7 @@ func _capture() -> void:
 	game.playing = false
 	game.current_phase = 5
 	game.levels = game._empty_levels()
-	game.levels.merge({"puncher":4, "punch_power":3, "punch_speed":2, "elephant":1, "pugilist_cannon":1, "supersaiyan":1, "breaker":3, "platelets":2}, true)
+	game.levels.merge({"puncher":4, "punch_power":3, "punch_speed":2, "ram":1, "ram_power":2, "ram_speed":1, "elephant":1, "plasma_cannon":1, "supersaiyan":1, "breaker":3, "platelets":2}, true)
 	game.right_hp = game.right_max
 	seed(60826)
 	for index in range(150):

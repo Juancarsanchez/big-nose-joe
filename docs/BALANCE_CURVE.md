@@ -35,7 +35,7 @@ La `APELMAZADORA NASAL HOMOLOGADA` queda definida como infraestructura posterior
 
 ## Escalado de cinco horas
 
-- 70%: Pulmones de Drogata añade 20 puntos y roba almacén. Obliga a volver a conquistar terreno.
+- 70%: el polvo de Joe acumulado puede sumar hasta 0,025 puntos de colocón por segundo. Urge recogerlo, pero nunca roba progreso almacenado.
 - Al cruzar ese 70% también queda activo para siempre el apelmazado dinámico: de 24 aterrizajes en calma hasta ocho con extracción frenética, con un máximo de ocho pedruscos por fosa.
 - 52%: las impurezas convierten capacidad y clasificación en el nuevo límite.
 - 34%: spray y moco paralizan la extracción si faltan esponjas o catapultas.

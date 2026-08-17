@@ -115,7 +115,7 @@ func _run() -> void:
 	game._check_phase_progress()
 	_check(game.current_phase == 2 and game._compaction_unlocked(), "Crossing seventy percent high must permanently unlock compaction.")
 	game.joe_high = 90.0
-	_check(game._compaction_unlocked(), "Joe's high rebounding after Pulmones de Drogata must not disable compaction.")
+	_check(game._compaction_unlocked(), "Advancing Joe's high state must not disable compaction once it has appeared.")
 	game.phase_event_pending = false
 	game.playing = false
 	await process_frame

@@ -15,7 +15,7 @@ func _capture() -> void:
 	game.joe_dialog.hide()
 	game.current_phase = 5
 	game.levels = game._empty_levels()
-	game.levels.merge({"nails":3, "pawn":6, "shift":3, "container":1, "cart":1, "silo":1, "ox_convoy":1, "plant":1, "train":1, "coord":1, "breaker":2, "umbrella":3, "umbrella_power":2, "detector":2, "sorting":1, "sponge":2, "sponge_power":3, "platelets":3, "repair":2, "handlers":2, "signals":1, "catapult":2, "catapult_power":2}, true)
+	game.levels.merge({"nails":3, "pawn":6, "shift":3, "container":1, "cart":1, "silo":1, "ox_convoy":1, "plant":1, "train":1, "coord":1, "breaker":2, "detector":2, "sorting":1, "sponge":2, "sponge_power":3, "platelets":3, "repair":2, "handlers":2, "signals":1, "catapult":2, "catapult_power":2}, true)
 	game.septum_open = true
 	game.cells = 18400.0
 	game.tissue_damage = 58.0

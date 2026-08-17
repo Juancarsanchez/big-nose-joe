@@ -2,7 +2,7 @@ extends Control
 
 const SAVE := "user://big_nose_joe.save"
 const SETTINGS := "user://big_nose_joe_settings.cfg"
-const SAVE_VERSION := 17
+const SAVE_VERSION := 18
 const ProgressionData = preload("res://scripts/progression_data.gd")
 const PilePieceData = preload("res://scripts/pile_piece.gd")
 const PileBatchRenderer = preload("res://scripts/pile_renderer.gd")
@@ -15,8 +15,8 @@ const STAGE_WIDTH := 7800.0
 const SEPTUM_X := 3800.0
 const WORLD_SCALE := 0.62
 const FLOOR_HEIGHT := 95.0
-const FIRST_WALL_HP := 10000000000.0
-const FIRST_LEFT_WALL_HP := 10000000000.0
+const FIRST_WALL_HP := 1000000000000.0
+const FIRST_LEFT_WALL_HP := 1000000000000.0
 const TUNNEL_UNLOCK_PHASE := 4
 const EDGE_SIZE := 34.0
 const PAN_SPEED := 1050.0
@@ -42,7 +42,7 @@ const BASE_PAWN_SPEED := 70.0
 const BASE_CAPACITY := 3
 const SMART_CLUMP_SIZES := [1, 3, 5, 8, 13, 21]
 const PAWN_FOOT_DEPTH := 14.0
-const STORAGE_CAPACITIES := [1000.0, 5000.0, 25000.0, 100000.0, 2000000.0, 10000000.0, 500000000.0]
+const STORAGE_CAPACITIES := [1000.0, 5000.0, 25000.0, 100000.0, 2000000.0, 10000000.0, 100000000.0, 1000000000.0, 10000000000.0, 100000000000.0]
 const CONTAINER_X := 4860.0
 const SILO_X := 5350.0
 const PLANT_X := 1150.0
@@ -50,7 +50,7 @@ const CART_CAPACITY := 12.0
 const CART_REINFORCED_CAPACITY := 60.0
 const CART_TRAILER_CAPACITY := 300.0
 const CART_FREIGHT_CAPACITY := 1500.0
-const OX_CAPACITIES := [10000.0, 50000.0, 125000.0]
+const OX_CAPACITIES := [10000.0, 150000.0, 6500000.0, 100000000.0, 10000000000.0]
 const CART_SPEED := 145.0
 const OX_SPEED := 105.0
 const TRAIN_SPEED := 330.0
@@ -63,23 +63,24 @@ const PUGILIST_GRAINS_PER_HIT := 10
 const PUGILIST_INTERVALS := [4.0, 3.2, 2.6, 2.2]
 const PUNCHER_WALK_SPEED := 235.0
 const PUNCHER_STRIKE_TIME := 0.18
+const RAM_DAMAGE := [500000.0, 1000000.0, 2500000.0]
+const RAM_INTERVAL := 8.0
 const ELEPHANT_INTERVAL := 20.0
 const CANNON_INTERVAL := 14.0
 const SUPERSAIYAN_INTERVAL := 50.0
+const ELEPHANT_BASE_DAMAGE := 15000000.0
+const CANNON_BASE_DAMAGE := 5000000000.0
+const SUPERSAIYAN_BASE_DAMAGE := 15000000000.0
 const MANUAL_DELIVERY_BASE_TIME := 0.46
 const JOE_STARTING_HIGH := 90.0
 const JOE_HIGH_PER_COCAINE_UNIT := 0.00011
-const PHASE_CLEANING_EFFICIENCY := [0.00024, 0.000022, 0.0000013, 0.00000011, 0.00000001]
+const PHASE_CLEANING_EFFICIENCY := [0.00024, 0.0000002, 0.000000005, 0.00000000003, 0.000000000001]
 const ANOTHER_LINE_INTERVAL := 120.0
 const ANOTHER_LINE_WARNING := 8.0
 const ANOTHER_LINE_HIGH_GAIN := 0.5
 const ANOTHER_LINE_MINING_THRESHOLDS := [1000.0, 5000.0, 20000.0, 100000.0, 500000.0, 2000000.0]
 const ANOTHER_LINE_GRAIN_TIERS := [240, 360, 600, 1000, 1600, 2600, 4000]
 const ANOTHER_LINE_DROP_INTERVAL := 0.035
-const LUNG_INTERVAL := 300.0
-const LUNG_WARNING := 150.0
-const LUNG_STEAL_RATIO := 0.20
-const LUNG_HIGH_GAIN := 20.0
 const CHALK_INTERVAL := 180.0
 const CHALK_UNITS := 600.0
 const SPRAY_INTERVAL := 240.0
@@ -114,7 +115,6 @@ const BACTERIA_TEXTURE := preload("res://assets/art/gameplay/sprites/bacteria.pn
 const GRAIN_TEXTURE := preload("res://assets/art/gameplay/sprites/cocaine_grain.png")
 const PLAYER_GRAIN_MATERIAL := preload("res://assets/art/gameplay/materials/player_grain_outline.tres")
 const WALL_CHUNK_SHEET := preload("res://assets/art/gameplay/sprites/cocaine_wall_chunks.png")
-const UMBRELLA_TEXTURE := preload("res://assets/art/gameplay/sprites/umbrella_pink.png")
 const SPONGE_TEXTURE := preload("res://assets/art/gameplay/sprites/sponge_yellow.png")
 const CATAPULT_TEXTURE := preload("res://assets/art/gameplay/sprites/mucus_catapult.png")
 const CART_TEXTURE := preload("res://assets/art/gameplay/sprites/vesicular_cart.png")
@@ -125,9 +125,10 @@ const CONTAINER_TEXTURE := preload("res://assets/art/gameplay/infrastructure/sto
 const SILO_TEXTURE := preload("res://assets/art/gameplay/infrastructure/cocaine_silo.png")
 const PLANT_TEXTURE := preload("res://assets/art/gameplay/infrastructure/processing_plant.png")
 const ELEPHANT_TEXTURE := preload("res://assets/art/gameplay/sprites/leukocyte_elephant.png")
-const PUGILIST_CANNON_TEXTURE := preload("res://assets/art/gameplay/sprites/pugilist_cannon.png")
+const RAM_TEXTURE := preload("res://assets/art/gameplay/sprites/leukocyte_ram.png")
+const PLASMA_CANNON_TEXTURE := preload("res://assets/art/gameplay/sprites/plasma_cannon.png")
 const SUPERSAIYAN_TEXTURE := preload("res://assets/art/gameplay/sprites/leukocyte_supersaiyan.png")
-const SPECIAL_SPRITE_FOOT_PIXELS := {"elephant":337.0, "cannon":306.0, "supersaiyan":461.0}
+const SPECIAL_SPRITE_FOOT_PIXELS := {"ram":434.0, "elephant":337.0, "plasma":353.0, "supersaiyan":461.0}
 const MUSIC_NASAL_SHIFT := preload("res://assets/audio/nasal_shift_loop.wav")
 const SFX_PUNCH := preload("res://assets/audio/punch.wav")
 const SFX_ELEPHANT := preload("res://assets/audio/elephant_hit.wav")
@@ -236,7 +237,7 @@ var compaction_announced := false
 var manual_mining_click_times: Array[float] = []
 var current_phase := 1
 var phase_work := 0.0
-var phase_events := {"line":0, "lungs":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
+var phase_events := {"line":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
 var contamination := 0.0
 var tissue_damage := 0.0
 var infection := 0.0
@@ -247,6 +248,7 @@ var bacteria_handled := 0
 var bacteria_clock := 0.0
 var blood_drop_clock := 0.0
 var punch_clock := 0.0
+var punch_round_count := 0
 var contamination_band := 0
 var box_jammed := false
 var another_line_clock := ANOTHER_LINE_INTERVAL
@@ -259,8 +261,6 @@ var mined_since_line := 0.0
 var pending_line_grains := ANOTHER_LINE_GRAIN_TIERS[0]
 var current_line_grains := 0
 var last_line_grains := ANOTHER_LINE_GRAIN_TIERS[0]
-var lung_clock := LUNG_INTERVAL
-var lung_warned := false
 var chalk_clock := CHALK_INTERVAL
 var spray_clock := SPRAY_INTERVAL
 var spray_followup_clock := 0.0
@@ -476,12 +476,12 @@ func _technology_owned_count(unit_id: String) -> int:
 		"manual": return 1
 		"pawn": return 2 + int(levels.pawn)
 		"pugilist": return _puncher_count()
+		"ram": return int(levels.ram)
 		"leukophant": return int(levels.elephant)
-		"cannon": return int(levels.pugilist_cannon)
+		"plasma_cannon": return int(levels.plasma_cannon)
 		"supersaiyan": return int(levels.supersaiyan)
 		"breaker":
 			return pawns.get_children().filter(func(pawn: Node) -> bool: return bool(pawn.get_meta("specialist", false))).size()
-		"umbrella": return int(levels.umbrella)
 		"detector": return int(levels.detector)
 		"sponge": return int(levels.sponge)
 		"platelet": return int(levels.platelets) * 2
@@ -499,12 +499,14 @@ func _technology_stats(unit_id: String) -> String:
 			var sweep := "BLOQUEADO" if int(levels.continuous_sweep) == 0 else "1 GRANO / %.2f S" % _continuous_sweep_interval()
 			return "POTENCIA DE CLIC: %s\nBARRIDO: %s\nNUDILLOS: NV. %d" % [_number(_click_power()), sweep, int(levels.click_burst)]
 		"pawn": return "UNIDADES: %d\nFUNCIÓN: RECOGIDA Y TRANSPORTE\nCARGA: %d BOLAS × %d GRANOS  ·  VELOCIDAD: %s" % [2 + int(levels.pawn), _transport_capacity(), _smart_clump_size(), _number(_pawn_speed())]
-		"pugilist": return "UNIDADES: %d / 8\nDAÑO POR GOLPE: %s\nGOLPE CADA %.2f S" % [_puncher_count(), _number(_punch_output()), _punch_interval()]
+		"pugilist":
+			var combo := "CADA 5ª RONDA: DAÑO ×2" if int(levels.get("punch_combo", 0)) > 0 else "COMBO: SIN INVESTIGAR"
+			return "UNIDADES: %d / 8\nDAÑO POR GOLPE: %s\nGOLPE CADA %.2f S\n%s" % [_puncher_count(), _number(_punch_output()), _punch_interval(), combo]
+		"ram": return "UNIDADES: %d / 1\nEMBESTIDA: %s\nCARGA CADA %.0f S" % [int(levels.ram), _number(_special_extractor_damage("ram")), _special_extractor_interval("ram")]
 		"leukophant": return "UNIDADES: %d / 1\nCABEZAZO: %s\nEMBESTIDA CADA %.0f S" % [int(levels.elephant), _number(_special_extractor_damage("elephant")), ELEPHANT_INTERVAL]
-		"cannon": return "UNIDADES: %d / 1\nPROYECTIL: %s\nDISPARO CADA %.0f S" % [int(levels.pugilist_cannon), _number(_special_extractor_damage("cannon")), CANNON_INTERVAL]
+		"plasma_cannon": return "UNIDADES: %d / 1\nDESCARGA: %s\nDISPARO CADA %.0f S" % [int(levels.plasma_cannon), _number(_special_extractor_damage("plasma")), CANNON_INTERVAL]
 		"supersaiyan": return "UNIDADES: %d / 1\nKAMEHAMEHA: %s\nATAQUE CADA %.0f S" % [int(levels.supersaiyan), _number(_special_extractor_damage("supersaiyan")), SUPERSAIYAN_INTERVAL]
 		"breaker": return "CASCOS ACTIVOS: %d\nDAÑO AL APELMAZADO: %d\nLÍMITE ACTUAL: %d PEDRUSCOS" % [_technology_owned_count(unit_id), _breaker_damage(), _compaction_rock_limit()]
-		"umbrella": return "UNIDADES: %d / 3\nCOCAÍNA PROTEGIDA: %d%%\nPULMONES CADA %.0f S" % [int(levels.umbrella), roundi(_umbrella_reduction() * 100.0), LUNG_INTERVAL]
 		"detector": return "UNIDADES: %d\nIMPUREZAS FILTRADAS: %d\nCONTAMINACIÓN INTERNA: %d%%" % [int(levels.detector), impurities_cleaned, roundi(contamination)]
 		"sponge": return "UNIDADES: %d / 2\nABSORCIÓN: %s DE SPRAY/S\nPELÍCULA RESTANTE: %s" % [int(levels.sponge), _number(_sponge_absorb_rate()), _number(spray_film_hp)]
 		"platelet": return "UNIDADES: %d\nREPARACIÓN: %s TEJIDO/S\nDAÑO NASAL: %d%%" % [int(levels.platelets) * 2, _number(_platelet_repair_rate()), roundi(tissue_damage)]
@@ -676,7 +678,10 @@ func _box_x() -> float:
 	return box.position.x + box.size.x * 0.35
 
 func _storage_tier() -> int:
-	if int(levels.get("plant", 0)) > 0: return 6
+	if int(levels.get("plant_capacity", 0)) > 0: return 9
+	if int(levels.get("plant", 0)) > 0: return 8
+	if int(levels.get("vault_capacity", 0)) > 0: return 7
+	if int(levels.get("vault", 0)) > 0: return 6
 	if int(levels.get("silo_capacity", 0)) > 0: return 5
 	if int(levels.get("silo", 0)) > 0: return 4
 	if int(levels.get("warehouse", 0)) > 0: return 3
@@ -2043,6 +2048,27 @@ func _rebuild_punchers() -> void:
 			union_pin.color = Color("77d7f0")
 			union_pin.z_index = 3
 			puncher.add_child(union_pin)
+		if int(levels.get("bronchial_rage", 0)) > 0:
+			var rage_patch := Polygon2D.new()
+			rage_patch.name = "BronchialPatch"
+			rage_patch.polygon = PackedVector2Array([Vector2(72, -164), Vector2(142, -148), Vector2(130, -82), Vector2(62, -94)])
+			rage_patch.color = Color("dd5b9b")
+			rage_patch.z_index = 3
+			puncher.add_child(rage_patch)
+		if int(levels.get("punch_combo", 0)) > 0:
+			var combo_mark := Polygon2D.new()
+			combo_mark.name = "ComboMark"
+			combo_mark.polygon = PackedVector2Array([Vector2(-54, -230), Vector2(-12, -268), Vector2(30, -230), Vector2(-12, -205)])
+			combo_mark.color = Color("ffd447")
+			combo_mark.z_index = 3
+			puncher.add_child(combo_mark)
+		if int(levels.get("uranium_wraps", 0)) > 0:
+			var uranium_wrap := Polygon2D.new()
+			uranium_wrap.name = "UraniumWrap"
+			uranium_wrap.polygon = PackedVector2Array([Vector2(-218, 72), Vector2(-163, 66), Vector2(-149, 126), Vector2(-204, 139)])
+			uranium_wrap.color = Color("a9f05e")
+			uranium_wrap.z_index = 4
+			puncher.add_child(uranium_wrap)
 		if rank >= 1:
 			var belt := Polygon2D.new()
 			belt.name = "RankBelt"
@@ -2080,7 +2106,7 @@ func _place_puncher(puncher: Sprite2D) -> void:
 
 func _set_puncher_facing(puncher: Sprite2D, faces_right: bool) -> void:
 	_set_pawn_facing(puncher, faces_right)
-	for layer_name in ["BoxingGlove", "ProteinWrap", "UnionPin"]:
+	for layer_name in ["BoxingGlove", "ProteinWrap", "UnionPin", "BronchialPatch", "UraniumWrap"]:
 		var directional_layer := puncher.get_node_or_null(layer_name) as Polygon2D
 		if directional_layer:
 			var width := absf(directional_layer.scale.x)
@@ -2112,16 +2138,19 @@ func _puncher_strike_position(puncher: Sprite2D) -> Vector2:
 
 func _punch_interval() -> float:
 	var rank := clampi(int(levels.punch_power), 0, PUGILIST_INTERVALS.size() - 1)
-	return float(PUGILIST_INTERVALS[rank]) * (0.625 if int(levels.punch_speed) > 0 else 1.0)
+	var result := float(PUGILIST_INTERVALS[rank]) * (0.625 if int(levels.punch_speed) > 0 else 1.0)
+	if int(levels.get("uranium_wraps", 0)) > 0: result *= 0.8
+	return result
 
 func _punch_output() -> int:
 	var output := float(PUGILIST_DAMAGE[clampi(int(levels.punch_power), 0, PUGILIST_DAMAGE.size() - 1)])
 	if int(levels.get("punch_training", 0)) > 0: output *= 3.0
+	if int(levels.get("bronchial_rage", 0)) > 0: output *= 2.0
 	if int(levels.get("punch_collective", 0)) > 0: output *= 3.0
 	return roundi(output)
 
 func _puncher_count() -> int:
-	return mini(8, int(levels.puncher) + (2 if int(levels.punch_union) > 0 else 0))
+	return mini(8, int(levels.puncher) + (2 if int(levels.punch_union) > 0 else 0) + (2 if int(levels.get("punch_reserves", 0)) > 0 else 0))
 
 func _punch_evolution_locked() -> bool:
 	# El púgil base pertenece a la fase 1. Cada descenso posterior del colocón
@@ -2135,7 +2164,8 @@ func _wall_mining_blocked() -> bool:
 func _auto_hit_rate() -> float:
 	if _puncher_count() == 0 or box_jammed or _wall_mining_blocked() or _nearest_fallen_wall_chunk(active_side):
 		return 0.0
-	return float(_puncher_count()) * float(_punch_output()) / _punch_interval()
+	var combo_average := 1.2 if int(levels.get("punch_combo", 0)) > 0 else 1.0
+	return float(_puncher_count()) * float(_punch_output()) * combo_average / _punch_interval()
 
 func _update_punchers(delta: float) -> void:
 	if _puncher_count() == 0:
@@ -2177,6 +2207,8 @@ func _recall_punchers(delta: float) -> void:
 	punch_clock = maxf(punch_clock, 0.35)
 
 func _perform_punch_round(debut: bool) -> void:
+	punch_round_count += 1
+	var combo_round := int(levels.get("punch_combo", 0)) > 0 and punch_round_count % 5 == 0
 	for node in punchers.get_children():
 		var puncher := node as Sprite2D
 		if not puncher:
@@ -2187,6 +2219,7 @@ func _perform_punch_round(debut: bool) -> void:
 			puncher.set_meta("side", side)
 			_place_puncher(puncher)
 		puncher.set_meta("debut", debut and int(puncher.get_meta("index", 0)) == 0)
+		puncher.set_meta("combo_round", combo_round)
 		puncher.set_meta("strike_target", _puncher_strike_position(puncher))
 		puncher.set_meta("state", "to_wall")
 
@@ -2244,26 +2277,30 @@ func _resolve_punch(puncher: Sprite2D) -> void:
 	if _wall_hp(side) <= 0.0:
 		return
 	var debut := bool(puncher.get_meta("debut", false))
-	var output := mini(_punch_output(), ceili(_wall_hp(side)))
+	var combo_round := bool(puncher.get_meta("combo_round", false))
+	var output := mini(_punch_output() * (2 if combo_round else 1), ceili(_wall_hp(side)))
 	_damage_wall(float(output), side)
 	total_clicks += output
 	var direction := -1.0 if side == "left" else 1.0
 	var impact_x := _wall_free_x(side) + direction * 4.0
 	_spawn_extraction_payload(side, float(output), impact_x, PUGILIST_GRAINS_PER_HIT)
 	_spawn_impact_dust(Vector2(impact_x, _ground_y() - 10.0), Color("d6b8bc"), 4)
-	_impact_shake(1.6 if not debut else 3.0)
-	_play_sfx(SFX_PUNCH, -9.0, randf_range(0.92, 1.08))
-	_float_text(("¡¡PUM!!  -" if debut else "¡PUM!  -") + _number(output), Vector2(impact_x, _ground_y() - 95.0))
+	_impact_shake(3.0 if combo_round or debut else 1.6)
+	_play_sfx(SFX_PUNCH, -7.0 if combo_round else -9.0, randf_range(0.86, 1.08))
+	var impact_label := "¡¡COMBO!!  -" if combo_round else ("¡¡PUM!!  -" if debut else "¡PUM!  -")
+	_float_text(impact_label + _number(output), Vector2(impact_x, _ground_y() - 95.0))
 	if debut:
 		_show_toast("DEBUT DEL PÚGIL  ·  ESO SÍ HA SIDO UN PUÑETAZO")
 	puncher.set_meta("debut", false)
 	_update_world()
 
 func _add_special_extractors() -> void:
+	if int(levels.ram) > 0:
+		_add_special_extractor("ram", RAM_TEXTURE, 0.07, _special_extractor_interval("ram"))
 	if int(levels.elephant) > 0:
 		_add_special_extractor("elephant", ELEPHANT_TEXTURE, 0.115, ELEPHANT_INTERVAL)
-	if int(levels.pugilist_cannon) > 0:
-		_add_special_extractor("cannon", PUGILIST_CANNON_TEXTURE, 0.10, CANNON_INTERVAL)
+	if int(levels.plasma_cannon) > 0:
+		_add_special_extractor("plasma", PLASMA_CANNON_TEXTURE, 0.08, CANNON_INTERVAL)
 	if int(levels.supersaiyan) > 0:
 		_add_special_extractor("supersaiyan", SUPERSAIYAN_TEXTURE, 0.09, SUPERSAIYAN_INTERVAL)
 
@@ -2286,7 +2323,8 @@ func _add_special_extractor(kind: String, texture: Texture2D, scale_factor: floa
 
 func _special_home_position(kind: String, side: String) -> Vector2:
 	var direction := -1.0 if side == "left" else 1.0
-	var distance := 250.0 if kind == "elephant" else (385.0 if kind == "cannon" else 520.0)
+	var distances := {"ram":220.0, "elephant":360.0, "plasma":500.0, "supersaiyan":640.0}
+	var distance := float(distances.get(kind, 640.0))
 	return Vector2(_pile_outer_x(side) + direction * distance, _ground_y())
 
 func _place_special_extractor(root: Node2D) -> void:
@@ -2304,21 +2342,24 @@ func _anchor_special_sprite(kind: String, sprite: Sprite2D, bob: float = 0.0) ->
 	sprite.position.y = -foot_pixels * sprite.scale.y + bob
 
 func _special_extractor_interval(kind: String) -> float:
+	if kind == "ram": return RAM_INTERVAL * (0.75 if int(levels.ram_speed) > 0 else 1.0)
 	if kind == "elephant": return ELEPHANT_INTERVAL
-	if kind == "cannon": return CANNON_INTERVAL
+	if kind == "plasma": return CANNON_INTERVAL
 	return SUPERSAIYAN_INTERVAL
 
 func _special_extractor_damage(kind: String) -> float:
-	if kind == "elephant": return 120000.0 * pow(5.0, int(levels.elephant_power))
-	if kind == "cannon": return 750000.0 * pow(6.0, int(levels.cannon_power))
-	return 50000000.0 * pow(10.0, int(levels.supersaiyan_power))
+	if kind == "ram": return float(RAM_DAMAGE[clampi(int(levels.ram_power), 0, RAM_DAMAGE.size() - 1)])
+	if kind == "elephant": return ELEPHANT_BASE_DAMAGE * pow(5.0, int(levels.elephant_power))
+	if kind == "plasma": return CANNON_BASE_DAMAGE * pow(6.0, int(levels.plasma_power))
+	return SUPERSAIYAN_BASE_DAMAGE * pow(10.0, int(levels.supersaiyan_power))
 
 func _special_extraction_rate(theoretical: bool = false) -> float:
 	if not theoretical and (box_jammed or _wall_mining_blocked() or _nearest_fallen_wall_chunk(active_side)):
 		return 0.0
 	var result := 0.0
+	if int(levels.ram) > 0: result += _special_extractor_damage("ram") / _special_extractor_interval("ram")
 	if int(levels.elephant) > 0: result += _special_extractor_damage("elephant") / ELEPHANT_INTERVAL
-	if int(levels.pugilist_cannon) > 0: result += _special_extractor_damage("cannon") / CANNON_INTERVAL
+	if int(levels.plasma_cannon) > 0: result += _special_extractor_damage("plasma") / CANNON_INTERVAL
 	if int(levels.supersaiyan) > 0: result += _special_extractor_damage("supersaiyan") / SUPERSAIYAN_INTERVAL
 	return result
 
@@ -2334,8 +2375,8 @@ func _update_special_extractors(delta: float) -> void:
 		var sprite := root.get_node_or_null("Sprite") as Sprite2D
 		if not sprite: continue
 		var blocked := box_jammed or _wall_mining_blocked() or _nearest_fallen_wall_chunk(active_side)
-		if kind == "elephant":
-			_update_elephant_extractor(root, sprite, delta, blocked)
+		if kind in ["ram", "elephant"]:
+			_update_charge_extractor(root, sprite, delta, blocked)
 		else:
 			root.position = _special_home_position(kind, str(root.get_meta("side", active_side)))
 			var timer := float(root.get_meta("timer", 0.0))
@@ -2348,29 +2389,44 @@ func _update_special_extractors(delta: float) -> void:
 			_anchor_special_sprite(kind, sprite)
 			if timer <= 0.0 and not blocked:
 				root.set_meta("timer", _special_extractor_interval(kind))
-				if kind == "cannon": _fire_pugilist_cannon(root)
+				if kind == "plasma": _fire_plasma_cannon(root)
 				else: _fire_supersaiyan(root)
 
-func _update_elephant_extractor(root: Node2D, sprite: Sprite2D, delta: float, blocked: bool) -> void:
+func _update_charge_extractor(root: Node2D, sprite: Sprite2D, delta: float, blocked: bool) -> void:
 	var state: String = root.get_meta("state", "idle")
+	var kind: String = root.get_meta("extraction_kind", "elephant")
 	var side: String = root.get_meta("side", active_side)
 	var direction := -1.0 if side == "left" else 1.0
-	var home := _special_home_position("elephant", side)
-	var strike := Vector2(_wall_free_x(side) + direction * 76.0, _ground_y())
+	var home := _special_home_position(kind, side)
+	var strike_distance := 52.0 if kind == "ram" else 76.0
+	var strike := Vector2(_wall_free_x(side) + direction * strike_distance, _ground_y())
+	var base_scale := 0.07 if kind == "ram" else 0.115
+	var attack_speed := 150.0 if kind == "ram" else 82.0
+	var return_speed := 180.0 if kind == "ram" else 105.0
 	if state == "idle":
 		root.position = home
-		_anchor_special_sprite("elephant", sprite)
+		_anchor_special_sprite(kind, sprite)
 		var timer := float(root.get_meta("timer", 0.0))
 		if not blocked: timer -= delta
 		root.set_meta("timer", timer)
-		if timer <= 0.0 and not blocked: root.set_meta("state", "to_wall")
+		if timer <= 0.0 and not blocked:
+			root.set_meta("state", "winding" if kind == "ram" else "to_wall")
+	elif state == "winding":
+		if blocked: return
+		var windup := home + Vector2(direction * 42.0, 0.0)
+		sprite.flip_h = windup.x > root.position.x
+		root.position = root.position.move_toward(windup, 72.0 * delta)
+		_anchor_special_sprite(kind, sprite, -absf(sin(Time.get_ticks_msec() * 0.026)) * 2.0)
+		if root.position.distance_to(windup) < 1.0:
+			root.position = windup
+			root.set_meta("state", "to_wall")
 	elif state == "to_wall":
 		if blocked: return
 		sprite.flip_h = strike.x > root.position.x
-		root.position = root.position.move_toward(strike, 82.0 * delta)
+		root.position = root.position.move_toward(strike, attack_speed * delta)
 		var gait := Time.get_ticks_msec() * 0.025
 		sprite.rotation = sin(gait) * 0.025
-		_anchor_special_sprite("elephant", sprite, absf(sin(gait)) * -3.0)
+		_anchor_special_sprite(kind, sprite, absf(sin(gait)) * (-2.0 if kind == "ram" else -3.0))
 		var step_clock := float(root.get_meta("step_clock", 0.0)) - delta
 		if step_clock <= 0.0:
 			step_clock = 0.34
@@ -2380,50 +2436,61 @@ func _update_elephant_extractor(root: Node2D, sprite: Sprite2D, delta: float, bl
 			root.position = strike
 			root.set_meta("state", "impact")
 			root.set_meta("timer", 0.55)
-			_special_extraction_hit("elephant", root.position)
-			_anchor_special_sprite("elephant", sprite)
+			_special_extraction_hit(kind, root.position)
+			_anchor_special_sprite(kind, sprite)
 			var impact_tween := create_tween()
-			impact_tween.tween_property(sprite, "scale", Vector2(0.128, 0.098), 0.10).set_trans(Tween.TRANS_BACK)
-			impact_tween.tween_property(sprite, "scale", Vector2.ONE * 0.115, 0.24)
+			impact_tween.tween_property(sprite, "scale", Vector2(base_scale * 1.13, base_scale * 0.84), 0.10).set_trans(Tween.TRANS_BACK)
+			impact_tween.tween_property(sprite, "scale", Vector2.ONE * base_scale, 0.24)
 	elif state == "impact":
-		_anchor_special_sprite("elephant", sprite)
+		_anchor_special_sprite(kind, sprite)
 		var timer := float(root.get_meta("timer", 0.0)) - delta
 		root.set_meta("timer", timer)
 		if timer <= 0.0: root.set_meta("state", "returning")
 	elif state == "returning":
 		sprite.flip_h = home.x > root.position.x
-		root.position = root.position.move_toward(home, 105.0 * delta)
+		root.position = root.position.move_toward(home, return_speed * delta)
 		sprite.rotation = sin(Time.get_ticks_msec() * 0.021) * 0.018
-		_anchor_special_sprite("elephant", sprite, absf(sin(Time.get_ticks_msec() * 0.021)) * -2.0)
+		_anchor_special_sprite(kind, sprite, absf(sin(Time.get_ticks_msec() * 0.021)) * -2.0)
 		if root.position.distance_to(home) < 1.0:
 			root.position = home
 			sprite.rotation = 0.0
 			sprite.flip_h = side == "left"
 			root.set_meta("state", "idle")
-			root.set_meta("timer", ELEPHANT_INTERVAL)
+			root.set_meta("timer", _special_extractor_interval(kind))
 
-func _fire_pugilist_cannon(root: Node2D) -> void:
+func _plasma_disc(radius: float, points := 12) -> PackedVector2Array:
+	var polygon := PackedVector2Array()
+	for index in range(points):
+		var angle := TAU * float(index) / float(points)
+		polygon.append(Vector2(cos(angle), sin(angle)) * radius)
+	return polygon
+
+func _fire_plasma_cannon(root: Node2D) -> void:
 	var side: String = root.get_meta("side", active_side)
-	var projectile := Sprite2D.new()
-	projectile.texture = PAWN_EMPTY
-	projectile.scale = Vector2.ONE * 0.038
-	projectile.position = root.position + Vector2(-54.0 if side == "right" else 54.0, -48.0)
-	projectile.flip_h = side == "left"
-	var glove := Polygon2D.new()
-	glove.polygon = PackedVector2Array([Vector2(-270, 30), Vector2(-225, 15), Vector2(-181, 37), Vector2(-166, 75), Vector2(-190, 118), Vector2(-240, 120), Vector2(-274, 82)])
-	glove.color = Color("f05261")
-	glove.scale.x = -1.0 if side == "left" else 1.0
-	glove.z_index = 2
-	projectile.add_child(glove)
+	var projectile := Node2D.new()
+	projectile.name = "PlasmaOrb"
+	projectile.position = root.position + Vector2(-58.0 if side == "right" else 58.0, -52.0)
+	var outer := Polygon2D.new()
+	outer.name = "OuterGlow"
+	outer.polygon = _plasma_disc(19.0, 14)
+	outer.color = Color("27cfe5", 0.84)
+	projectile.add_child(outer)
+	var core := Polygon2D.new()
+	core.name = "Core"
+	core.polygon = _plasma_disc(10.0, 12)
+	core.color = Color("e9ffff")
+	core.z_index = 2
+	projectile.add_child(core)
 	var trail := Line2D.new()
-	trail.points = PackedVector2Array([Vector2(-115.0 if side == "right" else 115.0, 0.0), Vector2.ZERO])
-	trail.width = 13.0
-	trail.default_color = Color("f79a72", 0.72)
+	trail.points = PackedVector2Array([Vector2(90.0 if side == "right" else -90.0, 0.0), Vector2.ZERO])
+	trail.width = 16.0
+	trail.default_color = Color("3c8cff", 0.68)
 	trail.z_index = -1
 	projectile.add_child(trail)
 	effects.add_child(projectile)
+	_spawn_energy_ring(projectile.position, Color("53efff"), 14.0)
 	_play_sfx(SFX_CANNON, -5.0)
-	_spawn_impact_dust(root.position + Vector2(0.0, -5.0), Color("784951"), 6)
+	_spawn_impact_dust(root.position + Vector2(0.0, -5.0), Color("397ca3"), 6)
 	var recoil := create_tween()
 	recoil.tween_property(root, "scale", Vector2(1.14, 0.88), 0.08).set_trans(Tween.TRANS_BACK)
 	recoil.tween_property(root, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_ELASTIC)
@@ -2431,12 +2498,12 @@ func _fire_pugilist_cannon(root: Node2D) -> void:
 	var tween := create_tween()
 	tween.set_parallel()
 	tween.tween_property(projectile, "position", target, 0.48).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tween.tween_property(projectile, "rotation", (3.0 if side == "right" else -3.0), 0.48)
-	tween.chain().tween_callback(_finish_cannon_shot.bind(projectile, root.position))
+	tween.tween_property(projectile, "scale", Vector2.ONE * 1.35, 0.48)
+	tween.chain().tween_callback(_finish_plasma_shot.bind(projectile, root.position))
 
-func _finish_cannon_shot(projectile: Sprite2D, origin: Vector2) -> void:
+func _finish_plasma_shot(projectile: Node2D, origin: Vector2) -> void:
 	if is_instance_valid(projectile): projectile.queue_free()
-	_special_extraction_hit("cannon", origin)
+	_special_extraction_hit("plasma", origin)
 
 func _fire_supersaiyan(root: Node2D) -> void:
 	var side: String = root.get_meta("side", active_side)
@@ -2470,15 +2537,18 @@ func _special_extraction_hit(kind: String, origin: Vector2) -> void:
 	total_clicks += roundi(damage)
 	var impact_x := _wall_free_x(side)
 	_spawn_extraction_payload(side, damage, impact_x, 24)
-	_spawn_impact_dust(Vector2(impact_x, _ground_y() - 8.0), Color("eef4e7"), 10 if kind != "elephant" else 14)
-	if kind == "elephant":
+	_spawn_impact_dust(Vector2(impact_x, _ground_y() - 8.0), Color("64d9ed") if kind == "plasma" else Color("eef4e7"), 14 if kind in ["ram", "elephant"] else 10)
+	if kind == "ram":
+		_play_sfx(SFX_PUNCH, -4.0, 0.76)
+		_impact_shake(4.0)
+	elif kind == "elephant":
 		_play_sfx(SFX_ELEPHANT, -3.0)
 		_impact_shake(8.0)
-	elif kind == "cannon":
+	elif kind == "plasma":
 		_impact_shake(5.0)
 	else:
 		_impact_shake(12.0)
-	var title := "¡¡¡CABEZAZO!!!" if kind == "elephant" else ("¡¡CÉLULA BALA!!" if kind == "cannon" else "¡¡¡KAMEHAMEHA LEUCOCITARIO!!!")
+	var title := "¡¡¡EMBESTIDA!!!" if kind == "ram" else ("¡¡¡CABEZAZO!!!" if kind == "elephant" else ("¡¡PLASMA NASAL!!" if kind == "plasma" else "¡¡¡KAMEHAMEHA LEUCOCITARIO!!!"))
 	_float_text("%s  -%s" % [title, _number(damage)], Vector2(impact_x, _ground_y() - 145.0))
 	_show_toast("%s  ·  %s UNIDADES DE DAÑO" % [title, _number(damage)])
 	_update_world()
@@ -2535,9 +2605,13 @@ func _buy(id: String) -> void:
 			puncher_debut_clock = 1.35
 			punch_clock = _punch_interval()
 			_show_toast("EL NUEVO PÚGIL ESTÁ CALENTANDO EL BRAZO...")
-	elif upgrade.kind in ["auto_power", "punch_training", "punch_collective"]:
+	elif upgrade.kind in ["auto_power", "punch_training", "punch_multiplier", "punch_reserves", "punch_combo", "punch_late_speed", "punch_collective"]:
 		_rebuild_punchers()
-		_show_toast("LA CUADRILLA PÚGIL HA EVOLUCIONADO" if upgrade.kind == "auto_power" else "LA CUADRILLA PÚGIL SE HA PUESTO SERIA")
+		var punch_message := "LA CUADRILLA PÚGIL HA EVOLUCIONADO" if upgrade.kind == "auto_power" else "LA CUADRILLA PÚGIL SE HA PUESTO SERIA"
+		if upgrade.kind == "punch_reserves": punch_message = "DOS BECARIOS PÚGILES SE INCORPORAN AL TURNO"
+		elif upgrade.kind == "punch_combo": punch_message = "COMBO APRENDIDO  ·  CADA QUINTA RONDA PEGA DOBLE"
+		elif upgrade.kind == "punch_late_speed": punch_message = "VENDAS DE URANIO  ·  DESCANSO REDUCIDO UN 20%"
+		_show_toast(punch_message)
 	elif upgrade.kind == "punch_union":
 		_rebuild_punchers()
 		_show_toast("SINDICATO DEL PUÑO  ·  +2 PÚGILES")
@@ -2548,8 +2622,8 @@ func _buy(id: String) -> void:
 	elif upgrade.kind in ["transport_cart", "transport_capacity", "transport_ox", "transport_ox_capacity", "transport_train"]:
 		_rebuild_transporters()
 	elif upgrade.kind == "platelet": _rebuild_platelets()
-	elif upgrade.kind in ["elephant", "elephant_power", "pugilist_cannon", "cannon_power", "supersaiyan", "supersaiyan_power"]: _rebuild_punchers()
-	elif upgrade.kind in ["umbrella", "umbrella_power", "sponge", "sponge_power", "catapult", "catapult_power"]: _rebuild_adaptations()
+	elif upgrade.kind in ["ram", "ram_power", "ram_speed", "elephant", "elephant_power", "plasma_cannon", "plasma_power", "supersaiyan", "supersaiyan_power"]: _rebuild_punchers()
+	elif upgrade.kind in ["sponge", "sponge_power", "catapult", "catapult_power"]: _rebuild_adaptations()
 	_update_ui()
 	_check_phase_progress()
 	_save()
@@ -2564,7 +2638,7 @@ func _debug_set_phase(next_phase: int) -> void:
 	playing = true
 	current_phase = clampi(next_phase, 1, PHASES.size())
 	phase_work = 0.0
-	phase_events = {"line":0, "lungs":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
+	phase_events = {"line":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
 	joe_high = minf(96.0, float(PHASE_HIGH_THRESHOLDS[current_phase - 1]) + 4.0)
 	joe_high_display = joe_high
 	contamination = 0.0 if current_phase < 3 else 42.0
@@ -2583,8 +2657,6 @@ func _debug_set_phase(next_phase: int) -> void:
 	pending_line_grains = int(ANOTHER_LINE_GRAIN_TIERS[0])
 	current_line_grains = 0
 	last_line_grains = int(ANOTHER_LINE_GRAIN_TIERS[0])
-	lung_clock = LUNG_INTERVAL
-	lung_warned = false
 	chalk_clock = CHALK_INTERVAL
 	spray_clock = SPRAY_INTERVAL
 	spray_followup_clock = 0.0
@@ -2714,7 +2786,7 @@ func _start_another_line(source: String) -> void:
 	if source == "normal":
 		_change_joe_high(ANOTHER_LINE_HIGH_GAIN, true)
 		_play_sfx(SFX_JOE_INHALE, -13.0, 1.12)
-	var source_text := "PULMONES DE DROGATA" if source == "lungs" else ("RAYITA CON SERRÍN" if source == "adulterated" else "OTRA RAYITA")
+	var source_text := "RAYITA CON SERRÍN" if source == "adulterated" else "OTRA RAYITA"
 	_show_toast("%s  ·  +%s GRANOS" % [source_text, _number(grain_count)])
 	_float_text("+%s GRANOS" % _number(grain_count), Vector2(_pile_center(active_side), _ground_y() - 250.0))
 
@@ -2741,17 +2813,6 @@ func _finish_another_line() -> void:
 	_save()
 
 func _update_joe_events(delta: float) -> void:
-	if current_phase >= 2:
-		lung_clock -= delta
-		if lung_clock <= LUNG_WARNING and not lung_warned:
-			lung_warned = true
-			var warning_attempt := floorf(cells * LUNG_STEAL_RATIO)
-			var warning_loss := maxf(0.0, warning_attempt - floorf(warning_attempt * _umbrella_reduction()))
-			_show_toast("PULMONES EN %d SEGUNDOS  ·  AHORA ARRIESGAS %s GRANOS" % [ceili(lung_clock), _number(warning_loss)])
-		if lung_clock <= 0.0:
-			lung_clock = LUNG_INTERVAL
-			lung_warned = false
-			_trigger_lungs()
 	if current_phase >= 3:
 		chalk_clock -= delta
 		if chalk_clock <= 0.0:
@@ -2783,25 +2844,6 @@ func _update_joe_events(delta: float) -> void:
 		if catapult_clock <= 0.0:
 			catapult_clock = CATAPULT_INTERVAL
 			_launch_catapults()
-
-func _trigger_lungs() -> void:
-	phase_events.lungs = int(phase_events.lungs) + 1
-	var attempted := floorf(cells * LUNG_STEAL_RATIO)
-	var protected := floorf(attempted * _umbrella_reduction())
-	var stolen := maxf(0.0, attempted - protected)
-	cells = maxf(0.0, cells - stolen)
-	_start_another_line("lungs")
-	_play_sfx(SFX_JOE_INHALE, -4.0, 0.78)
-	_impact_shake(4.0)
-	_change_joe_high(LUNG_HIGH_GAIN, true)
-	_show_toast("TE HAN ROBADO %s  ·  LOS PARAGUAS HAN SALVADO %s  ·  COLOCÓN +20" % [_number(stolen), _number(protected)])
-	_float_text("-%s GRANOS" % _number(stolen), Vector2(_box_x(), _ground_y() - 105.0))
-	if protected > 0.0:
-		_float_text("PARAGUAS SALVAN %s" % _number(protected), Vector2(_box_x() - 95.0, _ground_y() - 150.0))
-	_pulse_adaptation("umbrella")
-
-func _umbrella_reduction() -> float:
-	return minf(0.90, float(levels.umbrella) * 0.05 + float(levels.umbrella_power) * 0.15)
 
 func _trigger_chalk() -> void:
 	phase_events.chalk = int(phase_events.chalk) + 1
@@ -3038,9 +3080,10 @@ func _platelet_rate_for(repair_rank: int) -> float:
 
 func _future_special_damage(kind: String, owned_level: int) -> float:
 	if owned_level <= 0: return 0.0
-	if kind == "elephant": return 120000.0 * pow(5.0, int(levels.elephant_power))
-	if kind == "cannon": return 750000.0 * pow(6.0, int(levels.cannon_power))
-	return 50000000.0 * pow(10.0, int(levels.supersaiyan_power))
+	if kind == "ram": return float(RAM_DAMAGE[clampi(int(levels.ram_power), 0, RAM_DAMAGE.size() - 1)])
+	if kind == "elephant": return ELEPHANT_BASE_DAMAGE * pow(5.0, int(levels.elephant_power))
+	if kind == "plasma": return CANNON_BASE_DAMAGE * pow(6.0, int(levels.plasma_power))
+	return SUPERSAIYAN_BASE_DAMAGE * pow(10.0, int(levels.supersaiyan_power))
 
 func _improve_joe(clean_units: float, mining_feedback := false) -> void:
 	var efficiency := float(PHASE_CLEANING_EFFICIENCY[clampi(current_phase - 1, 0, PHASE_CLEANING_EFFICIENCY.size() - 1)])
@@ -3067,6 +3110,10 @@ func _show_mining_feedback(extracted: float, reduction: float) -> void:
 
 func _change_joe_high(amount: float, pulse: bool = false) -> void:
 	joe_high = clampf(joe_high + amount, 0.0, 100.0)
+	# Los cambios discretos (minado, rayitas y eventos) se reflejan al instante.
+	# Así la barra nunca sigue subiendo por una animación antigua mientras el
+	# jugador está picando y reduciendo ya el valor real.
+	joe_high_display = joe_high
 	if joe_high >= 100.0:
 		_trigger_overdose()
 	if not pulse or not is_instance_valid(joe_portrait):
@@ -3102,16 +3149,13 @@ func _return_to_menu_after_overdose() -> void:
 
 func _update_joe_high(delta: float) -> void:
 	joe_high_feedback_clock = maxf(0.0, joe_high_feedback_clock - delta)
-	var pile_rise := 0.0
-	if current_phase == 1:
-		# Al principio solo la porquería que añade Joe contrarresta la limpieza.
-		# El polvo recién minado por el jugador ya ha salido de la pared y no debe
-		# borrar inmediatamente ese progreso por culpa de una logística todavía básica.
-		var joe_burden := float(joe_grain_load_cache.left) + float(joe_grain_load_cache.right)
-		pile_rise = clampf((joe_burden - 240.0) / 6000.0, 0.0, 1.0) * 0.006
-	else:
-		var pile_burden := _pile_load("left") + _pile_load("right") + _fallen_wall_chunk_load()
-		pile_rise = clampf((pile_burden - 900.0) / 9000.0, 0.0, 1.0) * 0.018
+	# La cocaína arrancada por el jugador ya ha reducido el colocón al salir de
+	# la pared. Solo el polvo que añade Joe puede ejercer presión desde el suelo.
+	var joe_burden := float(joe_grain_load_cache.left) + float(joe_grain_load_cache.right)
+	var threshold := 240.0 if current_phase == 1 else 900.0
+	var span := 6000.0 if current_phase == 1 else 9000.0
+	var maximum_rise := 0.006 if current_phase == 1 else 0.025
+	var pile_rise := clampf((joe_burden - threshold) / span, 0.0, 1.0) * maximum_rise
 	var contamination_rise := contamination / 100.0 * 0.010 if current_phase >= 3 else 0.0
 	var jam_rise := 0.08 if box_jammed else 0.0
 	var tissue_rise := tissue_damage / 100.0 * 0.015 if current_phase >= 5 else 0.0
@@ -3156,7 +3200,7 @@ func _check_phase_progress() -> void:
 func _advance_phase() -> void:
 	current_phase = mini(PHASES.size(), current_phase + 1)
 	phase_work = 0.0
-	phase_events = {"line":0, "lungs":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
+	phase_events = {"line":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
 	bacteria_clock = 0.0
 	blood_drop_clock = 0.0
 	if current_phase == 2: rocks_opened = 0
@@ -3204,12 +3248,11 @@ func _run_phase_debut(phase_number: int) -> void:
 		return
 	pending_phase_debut = 0
 	_trigger_phase_debut()
+	call_deferred("_focus_required_upgrade")
 	_check_phase_progress()
 
 func _trigger_phase_debut() -> void:
-	if current_phase == 2:
-		_trigger_lungs()
-	elif current_phase == 3:
+	if current_phase == 3:
 		_start_another_line("adulterated")
 		_change_joe_high(8.0, true)
 	elif current_phase == 4:
@@ -3266,22 +3309,24 @@ func _rebuild_infrastructure() -> void:
 	for child in infrastructure.get_children(): child.queue_free()
 	box.visible = int(levels.get("container", 0)) == 0
 	if int(levels.get("silo", 0)) > 0:
-		var silo_scale := 0.17 if int(levels.get("silo_capacity", 0)) > 0 else 0.14
-		var silo_title := "SILO DE ALTO TONELAJE" if int(levels.get("silo_capacity", 0)) > 0 else "SILO DE NIEVE ESTRATÉGICA"
+		var silo_scale := 0.23 if int(levels.get("vault_capacity", 0)) > 0 else (0.20 if int(levels.get("vault", 0)) > 0 else (0.17 if int(levels.get("silo_capacity", 0)) > 0 else 0.14))
+		var silo_title := "BÓVEDA DE NIEVE HIPERBÁRICA" if int(levels.get("vault_capacity", 0)) > 0 else ("BÓVEDA DE NIEVE PRESURIZADA" if int(levels.get("vault", 0)) > 0 else ("SILO DE ALTO TONELAJE" if int(levels.get("silo_capacity", 0)) > 0 else "SILO DE NIEVE ESTRATÉGICA"))
 		_add_infrastructure_sprite(SILO_TEXTURE, Vector2(SILO_X, _ground_y() - 80.0), silo_scale, silo_title)
 	elif int(levels.get("container", 0)) > 0:
 		var container_scale := 0.145 if int(levels.get("warehouse", 0)) > 0 else (0.13 if int(levels.get("container_capacity", 0)) > 0 else 0.115)
 		var container_title := "ALMACÉN ALVEOLAR MODULAR" if int(levels.get("warehouse", 0)) > 0 else ("CONTENEDOR CON DOBLE FONDO" if int(levels.get("container_capacity", 0)) > 0 else "CONTENEDOR DE EMERGENCIA")
 		_add_infrastructure_sprite(CONTAINER_TEXTURE, Vector2(CONTAINER_X, _ground_y() - 43.0), container_scale, container_title)
 	if int(levels.get("plant", 0)) > 0:
-		_add_infrastructure_sprite(PLANT_TEXTURE, Vector2(PLANT_X, _ground_y() - 62.0), 0.17, "PLANTA DE NIEVE INDUSTRIAL")
+		var plant_scale := 0.21 if int(levels.get("plant_capacity", 0)) > 0 else 0.17
+		var plant_title := "PLANTA DE FUSIÓN SUPERSAIYAN" if int(levels.get("plant_capacity", 0)) > 0 else "PLANTA DE NIEVE INDUSTRIAL"
+		_add_infrastructure_sprite(PLANT_TEXTURE, Vector2(PLANT_X, _ground_y() - 62.0), plant_scale, plant_title)
 	if int(levels.get("train", 0)) > 0 and septum_open:
 		_add_train_tunnels()
 	_add_storage_readout()
 	_update_storage_visual()
 
 func _storage_feedback_position() -> Vector2:
-	var height: float = [82.0, 155.0, 155.0, 155.0, 200.0, 200.0, 200.0][_storage_tier()]
+	var height: float = [82.0, 155.0, 155.0, 155.0, 200.0, 200.0, 220.0, 235.0, 245.0, 255.0][_storage_tier()]
 	return Vector2(_box_x(), _ground_y() - height)
 
 func _add_storage_readout() -> void:
@@ -3393,6 +3438,10 @@ func _cart_capacity() -> float:
 
 func _ox_capacity(level := -1) -> float:
 	var resolved_level := int(levels.get("ox_capacity", 0)) if level < 0 else level
+	if level < 0 and int(levels.get("ox_plasma_capacity", 0)) > 0:
+		resolved_level = 4
+	elif level < 0 and int(levels.get("ox_vault_capacity", 0)) > 0:
+		resolved_level = 3
 	return float(OX_CAPACITIES[clampi(resolved_level, 0, OX_CAPACITIES.size() - 1)])
 
 func _add_ground_transporter(kind: String, capacity: float, speed: float) -> void:
@@ -3687,21 +3736,6 @@ func _move_train_ground(root: Node2D, target_x: float, delta: float) -> bool:
 
 func _rebuild_adaptations() -> void:
 	for child in adaptations.get_children(): child.queue_free()
-	for index in range(int(levels.umbrella)):
-		var root := _adaptation_root("umbrella", index, Vector2(_box_x() - 215.0 - float(index) * 45.0, _ground_y() - 14.0))
-		var body := Sprite2D.new()
-		body.name = "Body"
-		body.texture = PAWN_EMPTY
-		body.scale = Vector2.ONE * 0.043
-		body.offset = Vector2(0.0, PAWN_FOOT_DEPTH / body.scale.y - PAWN_EMPTY.get_height() * 0.5)
-		root.add_child(body)
-		var umbrella := Sprite2D.new()
-		umbrella.name = "Accessory"
-		umbrella.texture = UMBRELLA_TEXTURE
-		umbrella.scale = Vector2.ONE * 0.031
-		umbrella.position = Vector2(-2.0, -29.0)
-		umbrella.z_index = 2
-		root.add_child(umbrella)
 	for index in range(int(levels.sponge)):
 		var root := _adaptation_root("sponge", index, Vector2(_box_x() - 80.0 - float(index) * 52.0, _ground_y() - 14.0))
 		var sponge := Sprite2D.new()
@@ -3749,10 +3783,7 @@ func _update_adaptations(_delta: float) -> void:
 		item.rotation = 0.0
 		var accessory := item.get_node_or_null("Accessory") as Sprite2D
 		if not accessory: continue
-		if kind == "umbrella":
-			accessory.position.y = -29.0 + sin(now * 1.7 + index * 0.8) * 1.2
-			accessory.rotation = sin(now * 1.1 + index) * 0.025
-		elif kind == "sponge":
+		if kind == "sponge":
 			accessory.position.y = -15.0 + sin(now * 1.5 + index) * 0.7
 			accessory.rotation = sin(now * 1.0 + index) * 0.012
 
@@ -3803,6 +3834,9 @@ func _upgrade_available(upgrade: Dictionary) -> bool:
 	var phase := int(upgrade.phase)
 	if current_phase < phase:
 		return false
+	var required_event := str(upgrade.get("requires_event", ""))
+	if not required_event.is_empty() and int(phase_events.get(required_event, 0)) == 0:
+		return false
 	if bool(upgrade.get("requires_septum", false)) and not septum_open:
 		return false
 	if bool(upgrade.get("requires_puncher_unlock", false)) and not puncher_unlocked and current_phase == 1:
@@ -3815,6 +3849,10 @@ func _upgrade_available(upgrade: Dictionary) -> bool:
 	var dependencies: Array = upgrade.get("requires_upgrades", [])
 	for required_id in dependencies:
 		if int(levels.get(str(required_id), 0)) == 0:
+			return false
+	var required_levels: Dictionary = upgrade.get("requires_levels", {})
+	for required_id in required_levels:
+		if int(levels.get(str(required_id), 0)) < int(required_levels[required_id]):
 			return false
 	var alternatives: Array = upgrade.get("requires_any_upgrades", [])
 	if not alternatives.is_empty():
@@ -3832,6 +3870,9 @@ func _upgrade_available(upgrade: Dictionary) -> bool:
 func _upgrade_lock_reason(upgrade: Dictionary) -> String:
 	if current_phase < int(upgrade.phase):
 		return "SE DESBLOQUE CUANDO JOE COMETA MÁS LOCURAS"
+	var required_event := str(upgrade.get("requires_event", ""))
+	if not required_event.is_empty() and int(phase_events.get(required_event, 0)) == 0:
+		return "JOE AÚN NO HA PROVOCADO ESTE PROBLEMA"
 	if bool(upgrade.get("requires_septum", false)) and not septum_open:
 		return "REQUIERE ABRIR EL TABIQUE"
 	if bool(upgrade.get("requires_puncher_unlock", false)) and not puncher_unlocked and current_phase == 1:
@@ -3847,6 +3888,14 @@ func _upgrade_lock_reason(upgrade: Dictionary) -> String:
 			missing.append(str(_upgrade(str(required_id)).name))
 	if not missing.is_empty():
 		return "REQUIERE " + " + ".join(missing)
+	var missing_levels: Array[String] = []
+	var required_levels: Dictionary = upgrade.get("requires_levels", {})
+	for required_id in required_levels:
+		var required_level := int(required_levels[required_id])
+		if int(levels.get(str(required_id), 0)) < required_level:
+			missing_levels.append("%s NV. %d" % [str(_upgrade(str(required_id)).name), required_level])
+	if not missing_levels.is_empty():
+		return "REQUIERE " + " + ".join(missing_levels)
 	var alternatives: Array = upgrade.get("requires_any_upgrades", [])
 	if not alternatives.is_empty():
 		var names: Array[String] = []
@@ -3941,7 +3990,9 @@ func _update_ui() -> void:
 		elif upgrade.kind == "transport_cart": effect = "12 GRANOS POR VIAJE  ·  NO MINA"
 		elif upgrade.kind == "transport_capacity": effect = "CARGA DEL CARRITO  %s → %s" % [_number(_cart_capacity()), _number(float(upgrade.power))]
 		elif upgrade.kind == "transport_ox": effect = "%s GRANOS POR VIAJE  ·  NO MINA" % _number(_ox_capacity())
-		elif upgrade.kind == "transport_ox_capacity": effect = "CARGA DEL MUGIDÓFILO  %s → %s" % [_number(_ox_capacity(level)), _number(_ox_capacity(level + 1))]
+		elif upgrade.kind == "transport_ox_capacity":
+			var next_ox_capacity := _ox_capacity(level + 1) if str(upgrade.id) == "ox_capacity" else float(upgrade.power)
+			effect = "CARGA DEL MUGIDÓFILO  %s → %s" % [_number(_ox_capacity()), _number(next_ox_capacity)]
 		elif upgrade.kind == "transport_train": effect = "RECOGE TODO EL POLVO SUELTO  ·  NO MINA"
 		elif upgrade.kind == "coordination": effect = "reparto entre fosas" if level == 0 else "prioridad a pedruscos"
 		elif upgrade.kind == "specialist": effect = "+1 CASCO AZUL  ·  %d → %d ESPECIALISTAS" % [level, level + 1]
@@ -3955,12 +4006,16 @@ func _update_ui() -> void:
 		elif upgrade.kind == "autoclicker": effect = "+1 púgil automático"
 		elif upgrade.kind == "punch_union": effect = "+2 PÚGILES BÁSICOS  ·  50 DAÑO CADA UNO"
 		elif upgrade.kind == "punch_training": effect = "DAÑO DE TODA LA CUADRILLA  ×3"
+		elif upgrade.kind == "punch_multiplier": effect = "DAÑO DE TODA LA CUADRILLA  ×2"
+		elif upgrade.kind == "punch_reserves": effect = "+2 PÚGILES BÁSICOS"
+		elif upgrade.kind == "punch_combo": effect = "CADA QUINTA RONDA  ·  DAÑO ×2"
+		elif upgrade.kind == "punch_late_speed": effect = "INTERVALO %.2f → %.2f S" % [_punch_interval(), _punch_interval() * 0.8]
 		elif upgrade.kind == "punch_collective": effect = "DAÑO DE TODA LA CUADRILLA  ×3"
 		elif upgrade.kind == "auto_power":
 			if evolution_locked:
 				effect = "SIGUIENTE EVOLUCIÓN EN FASE %d" % mini(PHASES.size(), level + 2)
 			else:
-				var training_multiplier := (3.0 if int(levels.get("punch_training", 0)) > 0 else 1.0) * (3.0 if int(levels.get("punch_collective", 0)) > 0 else 1.0)
+				var training_multiplier := (3.0 if int(levels.get("punch_training", 0)) > 0 else 1.0) * (2.0 if int(levels.get("bronchial_rage", 0)) > 0 else 1.0) * (3.0 if int(levels.get("punch_collective", 0)) > 0 else 1.0)
 				var current_ball := float(PUGILIST_DAMAGE[clampi(level, 0, PUGILIST_DAMAGE.size() - 1)]) * training_multiplier / float(PUGILIST_GRAINS_PER_HIT)
 				var next_ball := float(PUGILIST_DAMAGE[clampi(level + 1, 0, PUGILIST_DAMAGE.size() - 1)]) * training_multiplier / float(PUGILIST_GRAINS_PER_HIT)
 				effect = "%d BOLAS DE %s → %s" % [PUGILIST_GRAINS_PER_HIT, _number(current_ball), _number(next_ball)]
@@ -3971,20 +4026,19 @@ func _update_ui() -> void:
 		elif upgrade.kind == "manual_sweep": effect = "MANTENER PULSADO  ·  %.2f S POR GRANO" % _continuous_sweep_interval_for(level + 1)
 		elif upgrade.kind == "click_burst": effect = "RÁFAGA  %d BOLAS DE %s" % [level if maxed else level + 1, _number(_click_power())]
 		elif upgrade.kind == "click_rhythm": effect = "-1 clic para provocar la ráfaga"
-		elif upgrade.kind in ["umbrella", "umbrella_power"]:
-			var future_umbrellas := level + 1 if upgrade.kind == "umbrella" else int(levels.umbrella)
-			var future_fabric := level + 1 if upgrade.kind == "umbrella_power" else int(levels.umbrella_power)
-			effect = "PROTECCIÓN TOTAL  %d%%" % roundi(100.0 * minf(0.90, float(future_umbrellas) * 0.05 + float(future_fabric) * 0.15))
 		elif upgrade.kind in ["sponge", "sponge_power"]:
 			var future_sponges := level + 1 if upgrade.kind == "sponge" else int(levels.sponge)
 			var future_foam := level + 1 if upgrade.kind == "sponge_power" else int(levels.sponge_power)
 			effect = "ABSORBE %s UNIDADES DE SPRAY/S" % _number(float(future_sponges) * 40.0 * pow(1.8, future_foam))
+		elif upgrade.kind == "ram": effect = "EMBESTIDA %s  ·  CADA 8 S" % _number(_future_special_damage("ram", level + 1))
+		elif upgrade.kind == "ram_power": effect = "EMBESTIDA %s → %s" % [_number(float(RAM_DAMAGE[clampi(level, 0, RAM_DAMAGE.size() - 1)])), _number(float(RAM_DAMAGE[clampi(level + 1, 0, RAM_DAMAGE.size() - 1)]))]
+		elif upgrade.kind == "ram_speed": effect = "CARRERILLA  8 → 6 S"
 		elif upgrade.kind == "elephant": effect = "CABEZAZO %s  ·  CADA 20 S" % _number(_future_special_damage("elephant", level + 1))
-		elif upgrade.kind == "elephant_power": effect = "CABEZAZO %s → %s" % [_number(120000.0 * pow(5.0, level)), _number(120000.0 * pow(5.0, level + 1))]
-		elif upgrade.kind == "pugilist_cannon": effect = "PROYECTIL %s  ·  CADA 14 S" % _number(_future_special_damage("cannon", level + 1))
-		elif upgrade.kind == "cannon_power": effect = "PROYECTIL %s → %s" % [_number(750000.0 * pow(6.0, level)), _number(750000.0 * pow(6.0, level + 1))]
+		elif upgrade.kind == "elephant_power": effect = "CABEZAZO %s → %s" % [_number(ELEPHANT_BASE_DAMAGE * pow(5.0, level)), _number(ELEPHANT_BASE_DAMAGE * pow(5.0, level + 1))]
+		elif upgrade.kind == "plasma_cannon": effect = "DESCARGA %s  ·  CADA 14 S" % _number(_future_special_damage("plasma", level + 1))
+		elif upgrade.kind == "plasma_power": effect = "PLASMA %s → %s" % [_number(CANNON_BASE_DAMAGE * pow(6.0, level)), _number(CANNON_BASE_DAMAGE * pow(6.0, level + 1))]
 		elif upgrade.kind == "supersaiyan": effect = "KAMEHAMEHA %s  ·  CADA 50 S" % _number(_future_special_damage("supersaiyan", level + 1))
-		elif upgrade.kind == "supersaiyan_power": effect = "KAMEHAMEHA %s → %s" % [_number(50000000.0 * pow(10.0, level)), _number(50000000.0 * pow(10.0, level + 1))]
+		elif upgrade.kind == "supersaiyan_power": effect = "KAMEHAMEHA %s → %s" % [_number(SUPERSAIYAN_BASE_DAMAGE * pow(10.0, level)), _number(SUPERSAIYAN_BASE_DAMAGE * pow(10.0, level + 1))]
 		elif upgrade.kind == "catapult": effect = "+1 LANZAMIENTO DE %s" % _number(CATAPULT_BASE_DAMAGE * pow(2.0, int(levels.catapult_power)))
 		elif upgrade.kind == "catapult_power": effect = "IMPACTO %s → %s" % [_number(CATAPULT_BASE_DAMAGE * pow(2.0, level)), _number(CATAPULT_BASE_DAMAGE * pow(2.0, level + 1))]
 		var price_line := "◆ COSTE  %s COCAÍNA" % _number(cost)
@@ -4020,7 +4074,9 @@ func _required_upgrade_id() -> String:
 		if int(levels.container) == 0 and phase_work >= 150.0: return "container"
 		if int(levels.container) > 0 and int(levels.cart) == 0: return "cart"
 		if int(levels.pawn) + int(levels.shift) == 0: return "pawn"
-	if current_phase == 2: return "breaker" if int(levels.breaker) == 0 else "umbrella"
+	if current_phase == 2:
+		if int(levels.breaker) == 0: return "breaker"
+		return ""
 	if current_phase == 3: return "detector"
 	if current_phase == 4: return "sponge" if int(levels.sponge) == 0 else "catapult"
 	if current_phase == 5: return "platelets" if int(levels.platelets) == 0 else "handlers"
@@ -4234,11 +4290,11 @@ func _save() -> void:
 			"rocks_opened":rocks_opened, "impurities_cleaned":impurities_cleaned, "tissue_repaired":tissue_repaired,
 			"another_line_clock":another_line_clock, "another_line_wave":another_line_wave, "another_line_spawn_index":another_line_spawn_index, "another_line_events":another_line_events,
 			"mined_since_line":mined_since_line, "pending_line_grains":pending_line_grains, "current_line_grains":current_line_grains, "last_line_grains":last_line_grains,
-			"lung_clock":lung_clock, "chalk_clock":chalk_clock, "spray_clock":spray_clock, "spray_pending":spray_pending, "spray_followup_clock":spray_followup_clock, "spray_side":spray_side,
+			"chalk_clock":chalk_clock, "spray_clock":spray_clock, "spray_pending":spray_pending, "spray_followup_clock":spray_followup_clock, "spray_side":spray_side,
 			"spray_film_hp":spray_film_hp, "spray_film_max":spray_film_max,
 			"scratch_clock":scratch_clock, "mucus_clock":mucus_clock, "mucus_hp":mucus_hp, "mucus_max_hp":mucus_max_hp, "catapult_clock":catapult_clock,
 			"puncher_unlocked":puncher_unlocked, "puncher_debut_pending":puncher_debut_pending,
-			"puncher_debut_clock":puncher_debut_clock, "manual_clicks_since_burst":manual_clicks_since_burst,
+			"puncher_debut_clock":puncher_debut_clock, "punch_round_count":punch_round_count, "manual_clicks_since_burst":manual_clicks_since_burst,
 			"phase_event_pending":phase_event_pending
 		}))
 
@@ -4262,6 +4318,12 @@ func _load() -> void:
 	var saved_levels: Dictionary = data.get("levels", {})
 	for id in saved_levels:
 		if levels.has(id): levels[id] = int(saved_levels[id])
+	# Migración semántica: el antiguo cañón de púgiles se convierte en plasma
+	# sin hacer perder una compra válida a quien continúe una partida reciente.
+	if int(levels.plasma_cannon) == 0 and int(saved_levels.get("pugilist_cannon", 0)) > 0:
+		levels.plasma_cannon = int(saved_levels.pugilist_cannon)
+	if int(levels.plasma_power) == 0 and int(saved_levels.get("cannon_power", 0)) > 0:
+		levels.plasma_power = int(saved_levels.cannon_power)
 	_restore_pile_compact(data.get("pile_compact", []))
 	_restore_fallen_wall_chunks(data.get("fallen_wall_chunks", []))
 	var saved_steps = data.get("compaction_steps", {})
@@ -4273,7 +4335,7 @@ func _load() -> void:
 	if current_phase == 0:
 		current_phase = 2 if compaction_announced or int(levels.breaker) > 0 else 1
 	phase_work = float(data.get("phase_work", cells))
-	phase_events = {"line":0, "lungs":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
+	phase_events = {"line":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
 	var saved_phase_events = data.get("phase_events", {})
 	if typeof(saved_phase_events) == TYPE_DICTIONARY:
 		for event_name in phase_events:
@@ -4299,8 +4361,6 @@ func _load() -> void:
 	pending_line_grains = maxi(1, int(data.get("pending_line_grains", ANOTHER_LINE_GRAIN_TIERS[0])))
 	current_line_grains = maxi(another_line_wave, int(data.get("current_line_grains", another_line_wave)))
 	last_line_grains = maxi(1, int(data.get("last_line_grains", ANOTHER_LINE_GRAIN_TIERS[0])))
-	lung_clock = clampf(float(data.get("lung_clock", LUNG_INTERVAL)), 0.0, LUNG_INTERVAL)
-	lung_warned = lung_clock <= LUNG_WARNING
 	chalk_clock = clampf(float(data.get("chalk_clock", CHALK_INTERVAL)), 0.0, CHALK_INTERVAL)
 	spray_clock = clampf(float(data.get("spray_clock", SPRAY_INTERVAL)), 0.0, SPRAY_INTERVAL)
 	spray_pending = bool(data.get("spray_pending", false))
@@ -4316,6 +4376,7 @@ func _load() -> void:
 	puncher_unlocked = bool(data.get("puncher_unlocked", current_phase >= 2 or int(levels.puncher) > 0))
 	puncher_debut_pending = bool(data.get("puncher_debut_pending", false))
 	puncher_debut_clock = maxf(0.0, float(data.get("puncher_debut_clock", 0.0)))
+	punch_round_count = maxi(0, int(data.get("punch_round_count", 0)))
 	manual_clicks_since_burst = maxi(0, int(data.get("manual_clicks_since_burst", 0)))
 	manual_mining_click_times.clear()
 	another_line_warned = another_line_clock <= ANOTHER_LINE_WARNING
@@ -4323,6 +4384,7 @@ func _load() -> void:
 	bacteria_clock = 0.0
 	blood_drop_clock = 0.0
 	punch_clock = 0.0
+	punch_round_count = 0
 	# Las versiones antiguas podían guardar una ventana de fase pendiente. Las
 	# transiciones actuales son mensajes no modales, así que nunca se restaura.
 	phase_event_pending = false
@@ -4365,7 +4427,7 @@ func _new_game() -> void:
 	compaction_announced = false
 	current_phase = 1
 	phase_work = 0.0
-	phase_events = {"line":0, "lungs":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
+	phase_events = {"line":0, "chalk":0, "spray":0, "scratch":0, "mucus":0}
 	joe_high = JOE_STARTING_HIGH
 	joe_high_display = joe_high
 	contamination = 0.0
@@ -4391,8 +4453,6 @@ func _new_game() -> void:
 	pending_line_grains = int(ANOTHER_LINE_GRAIN_TIERS[0])
 	current_line_grains = 0
 	last_line_grains = int(ANOTHER_LINE_GRAIN_TIERS[0])
-	lung_clock = LUNG_INTERVAL
-	lung_warned = false
 	chalk_clock = CHALK_INTERVAL
 	spray_clock = SPRAY_INTERVAL
 	spray_followup_clock = 0.0

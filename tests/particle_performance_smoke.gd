@@ -68,6 +68,19 @@ func _run() -> void:
 	_check(is_equal_approx(game.cells, float(GRAIN_COUNT)), "Batched train delivery must preserve every individual grain's value.")
 	_check(claim_ms < 3000.0 and delivery_ms < 3000.0, "Mass transport must stay bounded: claim %.0f ms, delivery %.0f ms." % [claim_ms, delivery_ms])
 
+	game.levels.plant_capacity = 1
+	game.cells = 0.0
+	var final_payload_piece: float = float(game.SUPERSAIYAN_BASE_DAMAGE) * pow(10.0, 2) / 24.0
+	game._create_piece("grain", "right", final_payload_piece, 0, 0, 0.072, "", "player")
+	var final_cargo: Array = game._claim_transport_cocaine("right", game._storage_claim_space(), true)
+	var final_train := Node2D.new()
+	final_train.set_meta("cargo", final_cargo)
+	final_train.set_meta("side", "right")
+	final_train.set_meta("transport_kind", "train")
+	game._deliver_transport_cargo(final_train, Vector2.ZERO)
+	final_train.free()
+	_check(final_cargo.size() == 1 and is_equal_approx(game.cells, final_payload_piece), "The Express and hundred-billion plant must accept one indivisible maxed Supersaiyan payload particle.")
+
 	print("PARTICLE_PERFORMANCE  grains=%d  spawn=%.0fms  compaction=%.1fms  save=%.0fms  claim=%.0fms  deliver=%.0fms  bytes=%d  batches=%d  particle_nodes=%d" % [GRAIN_COUNT, spawn_ms, compact_ms, save_ms, claim_ms, delivery_ms, save_bytes, game.pile_renderer.batch_count(), game.chunks.get_child_count()])
 	if FileAccess.file_exists(game.save_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(game.save_path))
