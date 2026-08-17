@@ -284,6 +284,7 @@ var rocks_opened := 0
 var impurities_cleaned := 0
 var tissue_repaired := 0.0
 var phase_event_pending := false
+var pending_phase_debut := 0
 var camera_x := 0.0
 var camera_goal := -1.0
 var playing := false
@@ -296,6 +297,7 @@ var platelet_feedback_clock := 0.0
 var music_player: AudioStreamPlayer
 var impact_shake_tween: Tween
 var joe_high_feedback_tween: Tween
+var toast_tween: Tween
 var joe_high_feedback_clock := 0.0
 var music_volume := 0.75
 var sfx_volume := 0.85
@@ -311,6 +313,14 @@ func _ready() -> void:
 	_setup_audio()
 	_start_music()
 	technology_lab.setup(UNIT_CATALOG)
+	# La barra superior solo conserva las tres cifras que sirven para decidir:
+	# dinero disponible, potencia manual y extracción automática.
+	phase_label.hide()
+	pressure_label.hide()
+	wall_label.hide()
+	click_counter.hide()
+	world_subtitle.hide()
+	phase_progress.hide()
 	overdose_dialog = ConfirmationDialog.new()
 	overdose_dialog.title = "JOE SE HA MUERTO"
 	overdose_dialog.dialog_text = "Joe se ha muerto por gilipollas y por sobredosis.\n\n¿Quieres cargar la última partida guardada?"
@@ -488,12 +498,12 @@ func _technology_stats(unit_id: String) -> String:
 		"manual":
 			var sweep := "BLOQUEADO" if int(levels.continuous_sweep) == 0 else "1 GRANO / %.2f S" % _continuous_sweep_interval()
 			return "POTENCIA DE CLIC: %s\nBARRIDO: %s\nNUDILLOS: NV. %d" % [_number(_click_power()), sweep, int(levels.click_burst)]
-		"pawn": return "UNIDADES: %d\nRASPADO: 1 POR VIAJE\nCARGA: %d BOLAS × %d GRANOS  ·  VELOCIDAD: %s" % [2 + int(levels.pawn), _transport_capacity(), _smart_clump_size(), _number(_pawn_speed())]
+		"pawn": return "UNIDADES: %d\nFUNCIÓN: RECOGIDA Y TRANSPORTE\nCARGA: %d BOLAS × %d GRANOS  ·  VELOCIDAD: %s" % [2 + int(levels.pawn), _transport_capacity(), _smart_clump_size(), _number(_pawn_speed())]
 		"pugilist": return "UNIDADES: %d / 8\nDAÑO POR GOLPE: %s\nGOLPE CADA %.2f S" % [_puncher_count(), _number(_punch_output()), _punch_interval()]
 		"leukophant": return "UNIDADES: %d / 1\nCABEZAZO: %s\nEMBESTIDA CADA %.0f S" % [int(levels.elephant), _number(_special_extractor_damage("elephant")), ELEPHANT_INTERVAL]
 		"cannon": return "UNIDADES: %d / 1\nPROYECTIL: %s\nDISPARO CADA %.0f S" % [int(levels.pugilist_cannon), _number(_special_extractor_damage("cannon")), CANNON_INTERVAL]
 		"supersaiyan": return "UNIDADES: %d / 1\nKAMEHAMEHA: %s\nATAQUE CADA %.0f S" % [int(levels.supersaiyan), _number(_special_extractor_damage("supersaiyan")), SUPERSAIYAN_INTERVAL]
-		"breaker": return "CASCOS ACTIVOS: %d\nDAÑO AL APELMAZADO: %d\nLÍMITE ACTUAL: %d PEDRUSCOS" % [_technology_owned_count(unit_id), 1 + int(levels.breaker), _compaction_rock_limit()]
+		"breaker": return "CASCOS ACTIVOS: %d\nDAÑO AL APELMAZADO: %d\nLÍMITE ACTUAL: %d PEDRUSCOS" % [_technology_owned_count(unit_id), _breaker_damage(), _compaction_rock_limit()]
 		"umbrella": return "UNIDADES: %d / 3\nCOCAÍNA PROTEGIDA: %d%%\nPULMONES CADA %.0f S" % [int(levels.umbrella), roundi(_umbrella_reduction() * 100.0), LUNG_INTERVAL]
 		"detector": return "UNIDADES: %d\nIMPUREZAS FILTRADAS: %d\nCONTAMINACIÓN INTERNA: %d%%" % [int(levels.detector), impurities_cleaned, roundi(contamination)]
 		"sponge": return "UNIDADES: %d / 2\nABSORCIÓN: %s DE SPRAY/S\nPELÍCULA RESTANTE: %s" % [int(levels.sponge), _number(_sponge_absorb_rate()), _number(spray_film_hp)]
@@ -738,6 +748,9 @@ func _ground_transport_speed(base_speed: float) -> float:
 func _transport_capacity() -> int:
 	return BASE_CAPACITY + int(levels.get("pawn_capacity", 0))
 
+func _breaker_damage() -> int:
+	return 1 + int(levels.get("breaker_power", 0))
+
 func _smart_clump_size(level := -1) -> int:
 	var resolved_level := int(levels.get("smart_clump", 0)) if level < 0 else level
 	return int(SMART_CLUMP_SIZES[clampi(resolved_level, 0, SMART_CLUMP_SIZES.size() - 1)])
@@ -814,6 +827,18 @@ func _update_pawns(delta: float) -> void:
 			pawn.rotation = 0.0
 			continue
 		var state: String = pawn.get_meta("state", "to_pile")
+		var cargo: Array = pawn.get_meta("cargo", [])
+		# Recuperación barata frente a estados incompletos tras reconstruir la caja,
+		# cambiar de fosa o retirar una pieza mientras el peón iba hacia ella.
+		if state not in ["to_pile", "working", "lifting", "to_box", "deposit"]:
+			state = "to_box" if not cargo.is_empty() else "to_pile"
+			pawn.set_meta("state", state)
+		elif state in ["lifting", "to_box", "deposit"] and cargo.is_empty():
+			state = "to_pile"
+			pawn.set_meta("state", state)
+		elif state in ["to_pile", "working"] and not cargo.is_empty():
+			state = "to_box"
+			pawn.set_meta("state", state)
 		var side: String = pawn.get_meta("side", active_side)
 		var speed := _pawn_speed() * (1.0 + float(int(pawn.get_meta("index", 0)) % 3) * 0.025)
 		var lane_x := float(pawn.get_meta("lane_x", 0.0))
@@ -834,33 +859,25 @@ func _update_pawns(delta: float) -> void:
 				pawn.position = work_point
 				pawn.set_meta("state", "working")
 				pawn.set_meta("timer", 0.18 / (1.0 + float(levels.shift) * 0.12))
-				pawn.set_meta("did_mine", false)
 		elif state == "working":
 			_set_pawn_facing(pawn, side == "left")
 			var timer: float = float(pawn.get_meta("timer", 0.0)) - delta
 			pawn.set_meta("timer", timer)
 			pawn.position.x = work_point.x + sin(Time.get_ticks_msec() * 0.018 + int(pawn.get_meta("index", 0))) * 1.8
 			if timer <= 0.0:
-				if not bool(pawn.get_meta("did_mine", false)):
-					if not _wall_mining_blocked() and _wall_hp(side) > 0.0:
-						_damage_wall(1.0, side)
-						_spawn_chunk(Vector2(_mine_x(side) + lane_x * 0.35, _ground_y() - 245.0), 1.0, side)
-					pawn.set_meta("did_mine", true)
-					pawn.set_meta("timer", 0.86 / (1.0 + float(levels.shift) * 0.12))
+				var rock := _top_untreated_rock(side)
+				if bool(pawn.get_meta("specialist", false)) and is_instance_valid(rock):
+					_chip_rock(rock, _breaker_damage())
+					pawn.set_meta("timer", 0.34 / (1.0 + float(levels.shift) * 0.12))
 				else:
-					var rock := _top_untreated_rock(side)
-					if bool(pawn.get_meta("specialist", false)) and is_instance_valid(rock):
-						_chip_rock(rock, 1 + int(levels.breaker))
-						pawn.set_meta("timer", 0.34 / (1.0 + float(levels.shift) * 0.12))
+					var claimed := _claim_top_pieces(side, _pawn_claim_capacity(pawn), pawn)
+					pawn.set_meta("cargo", claimed)
+					if claimed.is_empty():
+						pawn.set_meta("timer", 0.25)
 					else:
-						var cargo := _claim_top_pieces(side, _pawn_claim_capacity(pawn), pawn)
-						pawn.set_meta("cargo", cargo)
-						if cargo.is_empty():
-							pawn.set_meta("timer", 0.25)
-						else:
-							pawn.set_meta("state", "lifting")
-							pawn.set_meta("timer", 0.24)
-							_set_pawn_carrying(pawn, true)
+						pawn.set_meta("state", "lifting")
+						pawn.set_meta("timer", 0.24)
+						_set_pawn_carrying(pawn, true)
 		elif state == "lifting":
 			var timer: float = float(pawn.get_meta("timer", 0.0)) - delta
 			pawn.set_meta("timer", timer)
@@ -1279,6 +1296,30 @@ func _surface_piece_at(world_pos: Vector2) -> PilePiece:
 			nearest_x = distance_x
 	return nearest
 
+func _direct_loose_piece_at(world_pos: Vector2) -> PilePiece:
+	var side := "left" if world_pos.x < SEPTUM_X else "right"
+	if side == "left" and not septum_open:
+		return null
+	var nearest: PilePiece = null
+	var nearest_distance := INF
+	var center_column := roundi((world_pos.x - _pile_center(side)) / GRAIN_SPACING)
+	var columns: Dictionary = pile_columns[side]
+	# Solo se consultan las cinco columnas cercanas; el clic sigue siendo barato
+	# incluso con decenas de miles de granos renderizados por lotes.
+	for column in range(center_column - 2, center_column + 3):
+		if not columns.has(column): continue
+		for value in columns[column]:
+			var piece := value as PilePiece
+			if not _piece_is_in_pile(piece, side): continue
+			var kind: String = piece.get_meta("kind", "grain")
+			if kind in ["rock", "bacteria"]: continue
+			var radius := maxf(5.5, minf(9.0, piece.texture.get_width() * absf(piece.scale.x) * 0.72))
+			var distance := world_pos.distance_squared_to(piece.position)
+			if distance <= radius * radius and distance < nearest_distance:
+				nearest = piece
+				nearest_distance = distance
+	return nearest
+
 func _nearest_fallen_wall_chunk(side: String, from := Vector2.ZERO) -> Sprite2D:
 	var nearest: Sprite2D = null
 	var nearest_distance := INF
@@ -1342,7 +1383,11 @@ func _mine_fallen_wall_chunk(chunk: Sprite2D, amount: float) -> void:
 	collapse.chain().tween_callback(chunk.queue_free)
 
 func _manual_collect_at(world_pos: Vector2, _show_feedback: bool = true) -> bool:
-	var piece := _surface_piece_at(world_pos)
+	# Un grano visible y señalado con precisión gana al área de selección grande
+	# del pedrusco. Así el apelmazado estorba, pero no secuestra los clics vecinos.
+	var piece := _direct_loose_piece_at(world_pos)
+	if not piece:
+		piece = _surface_piece_at(world_pos)
 	if not piece:
 		return false
 	if box_jammed:
@@ -1639,7 +1684,7 @@ func _maybe_compact(side: String) -> void:
 	create_tween().tween_property(rock, "scale", Vector2.ONE * float(rock.get_meta("base_scale", 0.18)), 0.24).set_trans(Tween.TRANS_BACK)
 	if not compaction_announced:
 		compaction_announced = true
-		_show_toast("EL POLVO SE APELMAZA  ·  HACEN FALTA ESPECIALISTAS")
+		_show_toast("EL POLVO SE APELMAZA  ·  NECESITAS UN CASCO AZUL", 4.2)
 		_update_ui()
 		call_deferred("_focus_required_upgrade")
 		_save()
@@ -1930,19 +1975,21 @@ func _rebuild_pawns() -> void:
 			piece.scale = Vector2.ONE * float(piece.get_meta("base_scale", 0.07))
 	_rebuild_pile_index()
 	_restack_pile()
-	var count: int = mini(2 + int(levels.pawn), 18)
+	# Los cascos azules son refuerzos propios: comprarlos nunca sacrifica uno de
+	# los recolectores normales que el jugador ya había pagado.
+	var count: int = mini(2 + int(levels.pawn) + int(levels.breaker), 26)
 	var handler_count := mini(int(levels.handlers), count)
 	var detector_count := mini(int(levels.detector), count - handler_count)
+	var specialist_count := mini(int(levels.breaker), count - handler_count - detector_count)
 	for index in range(count):
 		var pawn := Sprite2D.new()
 		pawn.scale = Vector2(0.047, 0.047)
 		pawn.z_index = 8 + index % 3
 		pawn.set_meta("index", index)
 		pawn.set_meta("lane_x", float(index % 5 - 2) * 7.0)
-		var specialist_stride := maxi(1, 4 - int(levels.breaker))
 		var handler := handler_count > 0 and index >= count - handler_count
 		var detector := not handler and detector_count > 0 and index >= count - handler_count - detector_count
-		var specialist := not handler and not detector and int(levels.breaker) > 0 and index % specialist_stride == 0
+		var specialist := not handler and not detector and index < specialist_count
 		pawn.set_meta("handler", handler)
 		pawn.set_meta("detector", detector)
 		pawn.set_meta("specialist", specialist)
@@ -2028,6 +2075,8 @@ func _place_puncher(puncher: Sprite2D) -> void:
 	puncher.position = _puncher_home_position(puncher)
 	puncher.rotation = 0.0
 	puncher.set_meta("state", "idle")
+	puncher.set_meta("strike_target", Vector2.ZERO)
+	puncher.set_meta("home_target", puncher.position)
 
 func _set_puncher_facing(puncher: Sprite2D, faces_right: bool) -> void:
 	_set_pawn_facing(puncher, faces_right)
@@ -2122,6 +2171,7 @@ func _recall_punchers(delta: float) -> void:
 		var state: String = puncher.get_meta("state", "idle")
 		if state != "idle" and state != "returning":
 			puncher.rotation = 0.0
+			puncher.set_meta("home_target", _puncher_home_position(puncher))
 			puncher.set_meta("state", "returning")
 	_update_puncher_motion(delta)
 	punch_clock = maxf(punch_clock, 0.35)
@@ -2137,6 +2187,7 @@ func _perform_punch_round(debut: bool) -> void:
 			puncher.set_meta("side", side)
 			_place_puncher(puncher)
 		puncher.set_meta("debut", debut and int(puncher.get_meta("index", 0)) == 0)
+		puncher.set_meta("strike_target", _puncher_strike_position(puncher))
 		puncher.set_meta("state", "to_wall")
 
 func _punchers_idle() -> bool:
@@ -2160,7 +2211,7 @@ func _update_puncher_motion(delta: float) -> void:
 			puncher.position = puncher.position.move_toward(home, speed * delta)
 			puncher.rotation = move_toward(puncher.rotation, 0.0, delta * 0.8)
 		elif state == "to_wall":
-			var strike := _puncher_strike_position(puncher)
+			var strike: Vector2 = puncher.get_meta("strike_target", _puncher_strike_position(puncher))
 			_set_puncher_facing(puncher, strike.x > puncher.position.x)
 			puncher.position = puncher.position.move_toward(strike, speed * delta)
 			if puncher.position.distance_to(strike) < 0.5:
@@ -2175,9 +2226,10 @@ func _update_puncher_motion(delta: float) -> void:
 			puncher.rotation = -direction * sin(clampf(timer / PUNCHER_STRIKE_TIME, 0.0, 1.0) * PI) * 0.11
 			if timer <= 0.0:
 				puncher.rotation = 0.0
+				puncher.set_meta("home_target", _puncher_home_position(puncher))
 				puncher.set_meta("state", "returning")
 		elif state == "returning":
-			var home := _puncher_home_position(puncher)
+			var home: Vector2 = puncher.get_meta("home_target", _puncher_home_position(puncher))
 			_set_puncher_facing(puncher, home.x > puncher.position.x)
 			puncher.position = puncher.position.move_toward(home, speed * delta)
 			if puncher.position.distance_to(home) < 0.5:
@@ -2462,6 +2514,7 @@ func _rate() -> float:
 
 func _buy(id: String) -> void:
 	var upgrade := _upgrade(id)
+	if upgrade.is_empty() or not _upgrade_available(upgrade): return
 	var level: int = int(levels[id])
 	var cost: float = ceil(float(upgrade.base) * pow(float(upgrade.growth), level))
 	if upgrade.kind == "auto_power" and _punch_evolution_locked(): return
@@ -2507,6 +2560,7 @@ func _phase() -> Dictionary:
 func _debug_set_phase(next_phase: int) -> void:
 	joe_dialog.hide()
 	phase_event_pending = false
+	pending_phase_debut = 0
 	playing = true
 	current_phase = clampi(next_phase, 1, PHASES.size())
 	phase_work = 0.0
@@ -2679,10 +2733,11 @@ func _finish_another_line() -> void:
 		return
 	puncher_unlocked = true
 	_update_ui()
-	var button := buttons.get("puncher") as Button
-	if button:
-		_scroll_to_required_upgrade(button)
-	_show_toast("NUEVA ADAPTACIÓN  ·  CÉLULA PÚGIL EN PRÁCTICAS")
+	call_deferred("_focus_required_upgrade")
+	if compaction_announced and int(levels.breaker) == 0:
+		_show_toast("EL POLVO SE HA APELMAZADO  ·  NECESITAS UN CASCO AZUL", 4.2)
+	else:
+		_show_toast("NUEVA ADAPTACIÓN  ·  CÉLULA PÚGIL EN PRÁCTICAS", 3.6)
 	_save()
 
 func _update_joe_events(delta: float) -> void:
@@ -3094,7 +3149,7 @@ func _kind_count(kind: String) -> int:
 	return int(kind_count_cache.get(kind, 0))
 
 func _check_phase_progress() -> void:
-	if phase_event_pending or current_phase >= PHASES.size(): return
+	if phase_event_pending or pending_phase_debut > 0 or current_phase >= PHASES.size(): return
 	var next_threshold := float(PHASE_HIGH_THRESHOLDS[current_phase])
 	if joe_high <= next_threshold: _advance_phase()
 
@@ -3109,8 +3164,8 @@ func _advance_phase() -> void:
 	if current_phase == 5: tissue_repaired = 0.0
 	if current_phase == 5: tissue_damage = maxf(tissue_damage, 28.0)
 	if current_phase == 5: infection = maxf(infection, 24.0)
-	phase_event_pending = true
-	playing = false
+	phase_event_pending = false
+	pending_phase_debut = current_phase
 	_rebuild_pawns()
 	_rebuild_platelets()
 	_rebuild_adaptations()
@@ -3119,27 +3174,37 @@ func _advance_phase() -> void:
 	_update_world()
 	_update_ui()
 	call_deferred("_focus_required_upgrade")
-	_show_phase_event()
+	_show_toast("JOE ESTÁ MOLESTO  ·  LE ESTÁS BAJANDO EL COLOCÓN", 4.6)
+	get_tree().create_timer(4.7).timeout.connect(_run_phase_debut.bind(current_phase))
 	_save()
 
 func _show_phase_event() -> void:
-	if not phase_event_pending:
+	# El prólogo conserva su explicación inicial. Los umbrales posteriores jamás
+	# detienen la partida: Joe protesta en pantalla y el loop continúa.
+	if phase_event_pending and current_phase == 1:
+		var phase := _phase()
+		joe_dialog.title = "BIG NOSE JOE  ·  %s" % phase.title
+		joe_dialog.dialog_text = "%s\n\n%s" % [phase.joe, phase.problem]
+		joe_dialog.popup_centered(Vector2i(590, 220))
 		return
-	var phase := _phase()
-	var required := _required_upgrade_id()
-	var requirement := ""
-	if not required.is_empty():
-		requirement = "\n\nADAPTACIÓN OBLIGATORIA: %s\nLa hemos marcado con un halo azul en el laboratorio." % _upgrade(required).name
-	joe_dialog.title = "FASE %d — %s" % [current_phase, phase.title]
-	joe_dialog.dialog_text = "%s\n\n%s%s" % [phase.joe, phase.problem, requirement]
-	joe_dialog.popup_centered(Vector2i(590, 260))
+	phase_event_pending = false
+	playing = true
+	_show_toast("JOE ESTÁ MOLESTO  ·  LE ESTÁS BAJANDO EL COLOCÓN", 4.6)
 
 func _resume_after_joe() -> void:
 	phase_event_pending = false
 	playing = true
-	_trigger_phase_debut()
+	pending_phase_debut = current_phase
+	_run_phase_debut(current_phase)
 	_update_ui()
 	_save()
+
+func _run_phase_debut(phase_number: int) -> void:
+	if pending_phase_debut != phase_number or current_phase != phase_number:
+		return
+	pending_phase_debut = 0
+	_trigger_phase_debut()
+	_check_phase_progress()
 
 func _trigger_phase_debut() -> void:
 	if current_phase == 2:
@@ -3764,6 +3829,37 @@ func _upgrade_available(upgrade: Dictionary) -> bool:
 		return false
 	return true
 
+func _upgrade_lock_reason(upgrade: Dictionary) -> String:
+	if current_phase < int(upgrade.phase):
+		return "SE DESBLOQUE CUANDO JOE COMETA MÁS LOCURAS"
+	if bool(upgrade.get("requires_septum", false)) and not septum_open:
+		return "REQUIERE ABRIR EL TABIQUE"
+	if bool(upgrade.get("requires_puncher_unlock", false)) and not puncher_unlocked and current_phase == 1:
+		return "REQUIERE LA PRIMERA RAYITA DE JOE"
+	if bool(upgrade.get("requires_compaction", false)) and not compaction_announced and current_phase == 1:
+		return "REQUIERE QUE APAREZCA EL PRIMER PEDRUSCO"
+	var dependency := str(upgrade.get("requires_upgrade", ""))
+	if not dependency.is_empty() and int(levels.get(dependency, 0)) == 0:
+		return "REQUIERE %s" % str(_upgrade(dependency).name)
+	var missing: Array[String] = []
+	for required_id in upgrade.get("requires_upgrades", []):
+		if int(levels.get(str(required_id), 0)) == 0:
+			missing.append(str(_upgrade(str(required_id)).name))
+	if not missing.is_empty():
+		return "REQUIERE " + " + ".join(missing)
+	var alternatives: Array = upgrade.get("requires_any_upgrades", [])
+	if not alternatives.is_empty():
+		var names: Array[String] = []
+		var satisfied := false
+		for required_id in alternatives:
+			if int(levels.get(str(required_id), 0)) > 0: satisfied = true
+			names.append(str(_upgrade(str(required_id)).name))
+		if not satisfied:
+			return "REQUIERE " + " O ".join(names)
+	if current_phase == int(upgrade.phase) and phase_work < float(upgrade.get("unlock_at", 0.0)) and int(levels[upgrade.id]) == 0:
+		return "AÚN NO HAS EXTRAÍDO LO SUFICIENTE"
+	return ""
+
 func _quick_upgrade_effect(upgrade_id: String, level: int) -> String:
 	match upgrade_id:
 		"nails": return "CLIC %s → %s" % [_number(_click_power_for(level)), _number(_click_power_for(level + 1))]
@@ -3771,7 +3867,7 @@ func _quick_upgrade_effect(upgrade_id: String, level: int) -> String:
 		"pawn": return "+1 PEÓN RECOLECTOR"
 		"pawn_capacity": return "CARGA %d → %d" % [_transport_capacity(), _transport_capacity() + 1]
 		"smart_clump": return "%d → %d GRANOS POR BOLA  ·  %d → %d POR VIAJE" % [_smart_clump_size(level), _smart_clump_size(level + 1), _transport_capacity() * _smart_clump_size(level), _transport_capacity() * _smart_clump_size(level + 1)]
-		"breaker": return "APELMAZADO %d → %d" % [1 + level, 2 + level]
+		"breaker": return "CASCOS %d → %d" % [level, level + 1]
 		"detector": return "+1 QUIMIORRECEPTOR"
 		"sponge_power":
 			var count := maxf(1.0, float(levels.sponge))
@@ -3809,11 +3905,11 @@ func _update_ui() -> void:
 	joe_high_progress.value = joe_high_display
 	if joe_high_feedback_clock <= 0.0:
 		joe_high_progress.modulate = Color("7b67d8").lerp(Color("ffcc58"), joe_high_display / 100.0)
-		joe_high_feedback.text = "PICA LA PARED  →  BAJA EL COLOCÓN"
+		joe_high_feedback.text = "MINA PARA BAJARLO"
 		joe_high_feedback.modulate = Color("8bcbd1")
-	joe_high_label.text = "COLOCÓN DE JOE  %.1f%%  ·  %s" % [joe_high_display, _high_state()]
+	joe_high_label.text = "COLOCÓN DE JOE  %.1f / 100" % joe_high_display
 	cells_label.text = "COCAÍNA  %s / %s" % [_number(cells), _number(_storage_capacity())]
-	rate_label.text = "+%s/s  ·  %s/clic  ·  AUTO %s/s" % [_number(_rate()), _number(_click_power()), _number(_auto_hit_rate() + _special_extraction_rate())]
+	rate_label.text = "%s / CLIC  ·  AUTO %s / S" % [_number(_click_power()), _number(_auto_hit_rate() + _special_extraction_rate())]
 	var tunnel_ready := current_phase >= TUNNEL_UNLOCK_PHASE
 	click_counter.text = "DOS FOSAS ACTIVAS" if septum_open else ("TUNELADORA DISPONIBLE" if tunnel_ready else "TUNELADORA  ·  TECNOLOGÍA BLOQUEADA")
 	var hp := left_hp if active_side == "left" else right_hp
@@ -3821,9 +3917,12 @@ func _update_ui() -> void:
 	wall_label.text = "PARED %s  ·  RESISTENCIA %s" % [wall_side, _number(maxf(0.0, hp)) if int(levels.wall_scan) > 0 else "???"]
 	var required_upgrade := _required_upgrade_id()
 	technology_button.text = "★ ADAPTACIÓN NECESARIA\nABRIR LABORATORIO" if not required_upgrade.is_empty() and int(levels.get(required_upgrade, 0)) == 0 else "ABRIR LABORATORIO\nUNIDADES Y TECNOLOGÍAS"
+	var selected_unit := _catalog_unit(selected_technology_unit)
+	var selected_unit_unlocked := not selected_unit.is_empty() and _technology_unit_unlocked(selected_unit)
 	for upgrade in UPGRADES:
 		var button := buttons[upgrade.id] as Button
-		button.visible = _upgrade_available(upgrade) and _technology_unit_for_upgrade(str(upgrade.id)) == selected_technology_unit
+		var available := _upgrade_available(upgrade)
+		button.visible = selected_unit_unlocked and _technology_unit_for_upgrade(str(upgrade.id)) == selected_technology_unit
 		var level: int = int(levels[upgrade.id])
 		var required: bool = str(upgrade.id) == _required_upgrade_id() and level == 0
 		button.custom_minimum_size.y = 82.0
@@ -3845,7 +3944,8 @@ func _update_ui() -> void:
 		elif upgrade.kind == "transport_ox_capacity": effect = "CARGA DEL MUGIDÓFILO  %s → %s" % [_number(_ox_capacity(level)), _number(_ox_capacity(level + 1))]
 		elif upgrade.kind == "transport_train": effect = "RECOGE TODO EL POLVO SUELTO  ·  NO MINA"
 		elif upgrade.kind == "coordination": effect = "reparto entre fosas" if level == 0 else "prioridad a pedruscos"
-		elif upgrade.kind == "specialist": effect = "CASCO ROMPE %d → %d RESISTENCIA" % [1 + level, 2 + level]
+		elif upgrade.kind == "specialist": effect = "+1 CASCO AZUL  ·  %d → %d ESPECIALISTAS" % [level, level + 1]
+		elif upgrade.kind == "specialist_power": effect = "DAÑO AL PEDRUSCO  %d → %d" % [1 + level, 2 + level]
 		elif upgrade.kind == "detector": effect = "NORMALES IGNORAN BASURA  ·  +1 FILTRADOR"
 		elif upgrade.kind == "sorting": effect = "-8% de impurezas por nivel"
 		elif upgrade.kind == "platelet": effect = "+2 plaquetas visibles"
@@ -3890,11 +3990,13 @@ func _update_ui() -> void:
 		var price_line := "◆ COSTE  %s COCAÍNA" % _number(cost)
 		if maxed:
 			price_line = "✓ MEJORA COMPLETA"
+		elif not available:
+			price_line = "🔒 " + _upgrade_lock_reason(upgrade)
 		elif cells < cost:
 			price_line += "  ·  FALTAN %s" % _number(cost - cells)
 		var title_prefix := "★ NECESARIA  ·  " if required else ""
 		button.text = "%s%s  [NV. %d]\n%s\n%s\n%s" % [title_prefix, upgrade.name, level, price_line, upgrade.desc, effect]
-		button.disabled = cells < cost or maxed or evolution_locked
+		button.disabled = not available or cells < cost or maxed or evolution_locked
 
 func _high_state() -> String:
 	if joe_high_display < 25.0: return "CASI SERENO"
@@ -3998,13 +4100,15 @@ func _box_bump() -> void:
 		tween.tween_property(box, "rotation", -0.025, 0.05)
 		tween.tween_property(box, "rotation", 0.0, 0.1)
 
-func _show_toast(message: String) -> void:
+func _show_toast(message: String, duration := 3.8) -> void:
+	if toast_tween and toast_tween.is_valid():
+		toast_tween.kill()
 	toast.text = message
 	toast.modulate.a = 0.0
-	var tween := create_tween()
-	tween.tween_property(toast, "modulate:a", 1.0, 0.15)
-	tween.tween_interval(1.15)
-	tween.tween_property(toast, "modulate:a", 0.0, 0.25)
+	toast_tween = create_tween()
+	toast_tween.tween_property(toast, "modulate:a", 1.0, 0.15)
+	toast_tween.tween_interval(maxf(1.0, duration))
+	toast_tween.tween_property(toast, "modulate:a", 0.0, 0.3)
 
 func _upgrade(id: String) -> Dictionary:
 	for upgrade in UPGRADES:
@@ -4219,7 +4323,9 @@ func _load() -> void:
 	bacteria_clock = 0.0
 	blood_drop_clock = 0.0
 	punch_clock = 0.0
-	phase_event_pending = bool(data.get("phase_event_pending", false))
+	# Las versiones antiguas podían guardar una ventana de fase pendiente. Las
+	# transiciones actuales son mensajes no modales, así que nunca se restaura.
+	phase_event_pending = false
 	overdose_active = false
 
 func _continue_game() -> void:

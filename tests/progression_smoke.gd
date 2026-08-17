@@ -31,6 +31,9 @@ func _run() -> void:
 	_check((game.technology_lab.cards.leukophant as Button).icon == game.ELEPHANT_TEXTURE and (game.technology_lab.cards.supersaiyan as Button).icon == game.SUPERSAIYAN_TEXTURE, "Technology cards must reuse the real in-game unit sprites.")
 	game._close_technology_lab()
 	game._update_ui()
+	_check(not game.phase_label.visible and not game.pressure_label.visible and not game.wall_label.visible and not game.click_counter.visible, "The top HUD must remove phase, pressure, wall and tunneller legacy readouts.")
+	_check(game.rate_label.text.contains("/ CLIC") and game.rate_label.text.contains("AUTO") and not game.rate_label.text.begins_with("+"), "The top HUD must retain only click and automatic extraction beside stored cocaine.")
+	_check(game.joe_high_label.text.contains("/ 100") and not game.joe_high_label.text.contains("VIENDO"), "Joe's central meter must explain its number without an unrelated mood label.")
 	_check(not (game.quick_buttons.nails as Button).visible, "A repeatable technology must not enter quick access before its first laboratory purchase.")
 	game.levels.nails = 1
 	game.cells = 1000.0
@@ -81,6 +84,10 @@ func _run() -> void:
 	_check(is_equal_approx(game.cells, 2000.0) and is_equal_approx(game._store_automatic_cocaine(3000.0), 3000.0), "Manual cargo must arrive first without losing later automatic deliveries that still fit.")
 	game._clear_pile()
 	game.cells = 0.0
+	var buried_grain = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
+	game._create_piece("rock", "right", 6.0, 4, 0, 0.18)
+	_check(game._manual_collect_at(buried_grain.position) and bool(buried_grain.get_meta("manual_flying", false)), "A precise click on a visible grain below a clump must select the grain instead of the clump's broad hit area.")
+	game._clear_pile()
 	game.levels.container = 0
 	game.cells = 457.0
 	var aggregated_grain = game._create_piece("grain", "right", 1000.0, 0, 0, 0.072)
@@ -132,6 +139,17 @@ func _run() -> void:
 	game.levels.pawn_capacity = 0
 	_check(game.levels.has("smart_clump"), "Smart clumping must exist as a voluntary logistics technology, separate from hostile rocks.")
 	game.levels.cart = 1
+	game.levels.breaker = 0
+	_check(not game._upgrade_available(game._upgrade("smart_clump")), "Smart Clumping must require at least one blue helmet before normal pawns may learn it.")
+	game.compaction_announced = true
+	game._select_technology_unit("breaker")
+	_check((game.buttons.breaker as Button).visible and (game.buttons.breaker_power as Button).visible, "The blue-helmet page must always show both quantity and strength upgrade branches once discovered.")
+	game.puncher_unlocked = false
+	game._finish_another_line()
+	_check(game.toast.text.contains("CASCO AZUL") and not game.toast.text.contains("PÚGIL"), "The first clumping warning must point to blue helmets, never to pugilists.")
+	game.puncher_unlocked = false
+	game.levels.breaker = 1
+	_check(game._upgrade_available(game._upgrade("smart_clump")), "Smart Clumping must unlock after cart logistics and the first blue helmet exist.")
 	game.levels.smart_clump = 1
 	var smart_collector := Sprite2D.new()
 	for index in range(9):
@@ -146,6 +164,8 @@ func _run() -> void:
 	helmet_probe.free()
 	game._clear_pile()
 	game.levels.smart_clump = 0
+	game.levels.breaker = 0
+	game.compaction_announced = false
 	game.levels.cart = 0
 	game.another_line_events = 1
 	_check(game._compaction_unlocked() and game._compaction_rock_limit() == 2, "The first Joe rain must introduce up to two clumps before phase two.")
@@ -250,16 +270,15 @@ func _run() -> void:
 	game.right_cleared = 0
 	game._update_world()
 
-	# Every transport pawn contributes exactly one basal scrape before collecting.
+	# Transport pawns only collect: wall extraction belongs to the player and pugilists.
 	var basal_pawn := game.pawns.get_child(0) as Sprite2D
 	var wall_before_scrape: float = game.right_hp
 	var pile_before_scrape: int = game.loose_chunks.size()
 	basal_pawn.set_meta("state", "working")
 	basal_pawn.set_meta("timer", 0.0)
-	basal_pawn.set_meta("did_mine", false)
 	game._update_pawns(0.01)
-	_check(is_equal_approx(game.right_hp, wall_before_scrape - 1.0), "A transport pawn must scratch exactly one unit from the wall per trip.")
-	_check(game.loose_chunks.size() == pile_before_scrape + 1, "The basal scrape must create one visible grain.")
+	_check(is_equal_approx(game.right_hp, wall_before_scrape), "A transport pawn must never mine the cocaine wall.")
+	_check(game.loose_chunks.size() == pile_before_scrape, "A transport pawn must not create grains while collecting.")
 	game._clear_pile()
 
 	# The unavoidable two-minute line is low-value logistical sabotage scaled from recent mining.
@@ -328,13 +347,14 @@ func _run() -> void:
 	_check(game._upgrade_available(game._upgrade("cart_reinforced")) and game._upgrade_available(game._upgrade("punch_union")), "The cart jump must wait for the 25K store while the Punch Union remains a parallel extraction choice.")
 	game._select_technology_unit("cart")
 	_check((game.buttons.cart_reinforced as Button).visible, "The cart capacity upgrade must appear inside the cart page.")
-	_check(not (game.buttons.cart_upgrade as Button).visible, "The 300-unit cart tier must wait for the modular warehouse.")
-	_check(not (game.buttons.shift as Button).visible, "The motorway must remain hidden until the player buys one of the two tier upgrades.")
+	_check((game.buttons.cart_upgrade as Button).visible and (game.buttons.cart_upgrade as Button).disabled, "The 300-unit cart tier must stay visible but locked until the modular warehouse.")
+	_check((game.buttons.shift as Button).visible and (game.buttons.shift as Button).disabled, "The motorway must stay visible but locked until the player buys one of the two tier upgrades.")
 	game.cells = 200000.0
 	game._buy("cart_reinforced")
 	game._buy("warehouse")
 	game._buy("cart_upgrade")
 	await process_frame
+	game._select_technology_unit("cart")
 	var upgraded_cart := game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart").front() as Node2D
 	_check(is_equal_approx(float(upgraded_cart.get_meta("capacity", 0.0)), 300.0) and upgraded_cart.get_node_or_null("Trailer") == null, "Cart upgrades must create a real 300-unit logistics jump without spawning another unit or wagon.")
 	_check(is_equal_approx(game._storage_capacity(), 100000.0), "The 300-unit cart may only arrive after storage has expanded to one hundred thousand.")
@@ -479,12 +499,16 @@ func _run() -> void:
 	game._update_ui()
 	var upgrade_lines := (game.buttons.nails as Button).text.split("\n")
 	_check(upgrade_lines.size() >= 2 and upgrade_lines[1].begins_with("◆ COSTE"), "Every purchasable upgrade must place its prominent price on the same fixed second line.")
+	game.current_phase = 1
+	game.phase_event_pending = false
+	game.pending_phase_debut = 0
 	game.joe_high = 70.0
 	game._check_phase_progress()
 	_check(game.current_phase == 2, "Pulmones de Drogata must unlock exactly when Joe falls to seventy percent high.")
+	_check(game.playing and not game.joe_dialog.visible, "A high threshold must never stop play with a phase modal.")
 	game._resume_after_joe()
 	_check(game.joe_high >= 89.9 and int(game.phase_events.lungs) == 1, "The phase-two debut must immediately fire Pulmones de Drogata and rebound Joe by twenty points.")
-	game._update_ui()
+	game._select_technology_unit("breaker")
 	_check((game.buttons.breaker as Button).text.contains("NECESARIA"), "A new phase must explain which adaptation is mandatory.")
 	_check((game.buttons.breaker as Button).has_theme_stylebox_override("normal"), "The mandatory adaptation must receive a blue halo.")
 	game.levels.punch_training = 1
@@ -507,9 +531,10 @@ func _run() -> void:
 	game._buy("ox_capacity")
 	game._buy("ox_capacity")
 	_check(is_equal_approx(game._ox_capacity(), 125000.0), "Two heavy-load upgrades must produce a visible 10K to 50K to 125K Mugidophile curve.")
-	_check(not (game.buttons.coord as Button).visible, "Work in Chain must remain hidden before the septum is open.")
-	game.septum_open = true
 	game._select_technology_unit("pawn")
+	_check((game.buttons.coord as Button).visible and (game.buttons.coord as Button).disabled, "Work in Chain must be visible but locked before the septum is open.")
+	game.septum_open = true
+	game._update_ui()
 	_check((game.buttons.coord as Button).visible, "Work in Chain may appear only after both fossae are unlocked.")
 	game.septum_open = false
 
@@ -540,6 +565,7 @@ func _run() -> void:
 	game._clear_pile()
 
 	game.levels.breaker = 1
+	game._rebuild_pawns()
 	game.rocks_opened = 12
 	game._update_ui()
 	_check(not (game.buttons.breaker as Button).has_theme_stylebox_override("normal"), "The halo must disappear after buying the mandatory adaptation.")
@@ -553,7 +579,7 @@ func _run() -> void:
 	game.contamination = 0.0
 	game._select_technology_unit("detector")
 	_check((game.buttons.detector as Button).text.contains("NECESARIA"), "Phase 3 must point directly at the receptor adaptation.")
-	_check(not (game.buttons.wall_scan as Button).visible and game.wall_label.text.contains("???"), "Exact wall resistance must remain unavailable until the adulterant detector exists.")
+	_check((game.buttons.wall_scan as Button).visible and (game.buttons.wall_scan as Button).disabled and game.wall_label.text.contains("???"), "Exact wall resistance must remain visible but unavailable until the adulterant detector exists.")
 	game.levels.detector = 1
 	game.cells = 10000.0
 	game._update_ui()
