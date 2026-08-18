@@ -1777,9 +1777,15 @@ func _click_wall(side: String) -> void:
 		_float_text("PELÍCULA DE SPRAY  %s" % _number(spray_film_hp), Vector2(_mine_x(side), _ground_y() - 235.0))
 		return
 	for node in punchers.get_children():
-		if node is Sprite2D:
-			node.set_meta("side", side)
-			_place_puncher(node as Sprite2D)
+		if not node is Sprite2D:
+			continue
+		var puncher := node as Sprite2D
+		# Picar la misma pared no debe reiniciar la carrera automática. Antes cada
+		# clic teletransportaba la cuadrilla a casa y la devolvía a estado idle.
+		if str(puncher.get_meta("side", active_side)) == side:
+			continue
+		puncher.set_meta("side", side)
+		_place_puncher(puncher)
 	total_clicks += 1
 	_record_manual_mining_click()
 	var hit := minf(_click_power(), _wall_hp(side))

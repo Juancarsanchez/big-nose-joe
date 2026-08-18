@@ -343,6 +343,12 @@ func _run() -> void:
 	game._update_punchers(0.10)
 	_check(debut_puncher.position.x < debut_home_x, "A right-side pugilist must physically approach the cocaine wall.")
 	_check(not debut_puncher.flip_h, "A right-side pugilist walking left toward the wall must visibly face left.")
+	var advancing_x := debut_puncher.position.x
+	for manual_click in range(4):
+		game._click_wall("right")
+	_check(debut_puncher.get_meta("state", "") == "to_wall" and is_equal_approx(debut_puncher.position.x, advancing_x), "Manual mining on the same wall must never reset or teleport a Pugilist that is already advancing.")
+	game._clear_pile()
+	clicks_before_debut = game.total_clicks
 	var debut_safety := 80
 	while game.loose_chunks.size() < game.PUGILIST_GRAINS_PER_HIT and debut_safety > 0:
 		game._update_punchers(0.08)
