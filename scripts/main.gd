@@ -11,6 +11,7 @@ const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
 const UNIT_CATALOG := ProgressionData.UNIT_CATALOG
 const QUICK_UPGRADE_IDS := ["nails", "continuous_sweep", "pawn", "pawn_capacity", "smart_clump", "breaker", "detector", "sponge_power", "repair"]
+const MAX_PINNED_UPGRADES := 3
 const PHASE_HIGH_THRESHOLDS := [90.0, 70.0, 52.0, 34.0, 18.0]
 const STAGE_WIDTH := 7800.0
 const SEPTUM_X := 3800.0
@@ -238,7 +239,10 @@ var septum_open := false
 var active_side := "right"
 var levels := _empty_levels()
 var buttons := {}
+var pin_buttons := {}
 var quick_buttons := {}
+var pinned_buttons := {}
+var pinned_upgrade_ids: Array[String] = []
 var loose_chunks: Array[PilePiece] = []
 var fallen_wall_chunks: Array[Sprite2D] = []
 var pile_renderer: PileRenderer
@@ -371,14 +375,25 @@ func _ready() -> void:
 	victory_dialog.close_requested.connect(_return_to_menu_after_victory)
 	add_child(victory_dialog)
 	for upgrade in UPGRADES:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
 		var button := Button.new()
-		button.custom_minimum_size = Vector2(248, 64)
+		button.custom_minimum_size = Vector2(0, 64)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		button.add_theme_font_size_override("font_size", 11)
 		button.pressed.connect(_buy.bind(upgrade.id))
-		upgrade_list.add_child(button)
+		var pin_button := Button.new()
+		pin_button.custom_minimum_size = Vector2(58, 0)
+		pin_button.text = "FIJAR"
+		pin_button.tooltip_text = "Mostrar esta tecnología junto a los accesos rápidos"
+		pin_button.pressed.connect(_toggle_upgrade_pin.bind(str(upgrade.id)))
+		row.add_child(button)
+		row.add_child(pin_button)
+		upgrade_list.add_child(row)
 		buttons[upgrade.id] = button
+		pin_buttons[upgrade.id] = pin_button
 	for upgrade_id in QUICK_UPGRADE_IDS:
 		var quick_button := Button.new()
 		quick_button.custom_minimum_size = Vector2(0.0, 62.0)
@@ -2817,6 +2832,8 @@ func _buy(id: String) -> void:
 		box_jammed = false
 		_update_box()
 		_show_toast("QUIMIORRECEPTOR DE URGENCIAS  ·  LA CAJA VUELVE A TRAGAR", 5.2)
+	if level + 1 >= int(upgrade.get("max", 1)) and id in pinned_upgrade_ids:
+		_remove_upgrade_pin(id)
 	_update_ui()
 	_check_phase_progress()
 	_save()
@@ -4186,20 +4203,116 @@ func _quick_upgrade_effect(upgrade_id: String, level: int) -> String:
 		"repair": return "TEJIDO %s → %s/S" % [_number(_platelet_rate_for(level)), _number(_platelet_rate_for(level + 1))]
 	return "MEJORA NUMÉRICA"
 
-func _update_quick_access() -> void:
+func _toggle_upgrade_pin(upgrade_id: String) -> void:
+	if upgrade_id in pinned_upgrade_ids:
+		_remove_upgrade_pin(upgrade_id)
+		_show_toast("OBJETIVO RETIRADO")
+	elif pinned_upgrade_ids.size() >= MAX_PINNED_UPGRADES:
+		_show_toast("SOLO PUEDES FIJAR %d TECNOLOGÍAS" % MAX_PINNED_UPGRADES)
+		return
+	else:
+		var upgrade := _upgrade(upgrade_id)
+		if upgrade.is_empty() or int(levels.get(upgrade_id, 0)) >= int(upgrade.get("max", 1)):
+			return
+		pinned_upgrade_ids.append(upgrade_id)
+		_create_pinned_button(upgrade_id)
+		_show_toast("TECNOLOGÍA FIJADA  ·  %s" % str(upgrade.name))
+	_update_ui()
+	_save()
+
+func _create_pinned_button(upgrade_id: String) -> void:
+	if pinned_buttons.has(upgrade_id):
+		return
+	var row := HBoxContainer.new()
+	row.name = "Pinned_" + upgrade_id
+	row.add_theme_constant_override("separation", 4)
+	var button := Button.new()
+	button.custom_minimum_size = Vector2(0.0, 62.0)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	button.add_theme_font_size_override("font_size", 9)
+	button.pressed.connect(_buy.bind(upgrade_id))
+	var remove := Button.new()
+	remove.custom_minimum_size = Vector2(28.0, 62.0)
+	remove.text = "×"
+	remove.tooltip_text = "Dejar de seguir esta tecnología"
+	remove.pressed.connect(_toggle_upgrade_pin.bind(upgrade_id))
+	row.add_child(button)
+	row.add_child(remove)
+	quick_list.add_child(row)
+	quick_list.move_child(row, pinned_upgrade_ids.find(upgrade_id))
+	pinned_buttons[upgrade_id] = {"row":row, "button":button, "remove":remove}
+
+func _remove_upgrade_pin(upgrade_id: String) -> void:
+	pinned_upgrade_ids.erase(upgrade_id)
+	var entry: Dictionary = pinned_buttons.get(upgrade_id, {})
+	var row := entry.get("row") as Control
+	if is_instance_valid(row):
+		row.queue_free()
+	pinned_buttons.erase(upgrade_id)
+
+func _restore_pinned_upgrades(data: Variant) -> void:
+	for upgrade_id in pinned_buttons.keys():
+		_remove_upgrade_pin(str(upgrade_id))
+	pinned_upgrade_ids.clear()
+	if typeof(data) != TYPE_ARRAY:
+		return
+	for value in data:
+		var upgrade_id := str(value)
+		var upgrade := _upgrade(upgrade_id)
+		if upgrade.is_empty() or upgrade_id in pinned_upgrade_ids:
+			continue
+		if int(levels.get(upgrade_id, 0)) >= int(upgrade.get("max", 1)):
+			continue
+		pinned_upgrade_ids.append(upgrade_id)
+		_create_pinned_button(upgrade_id)
+		if pinned_upgrade_ids.size() >= MAX_PINNED_UPGRADES:
+			break
+
+func _update_pinned_access() -> int:
 	var visible_count := 0
+	for upgrade_id in pinned_upgrade_ids.duplicate():
+		var upgrade := _upgrade(upgrade_id)
+		var level := int(levels.get(upgrade_id, 0))
+		if upgrade.is_empty() or level >= int(upgrade.get("max", 1)):
+			_remove_upgrade_pin(upgrade_id)
+			continue
+		if not pinned_buttons.has(upgrade_id):
+			_create_pinned_button(upgrade_id)
+		var entry: Dictionary = pinned_buttons[upgrade_id]
+		var button := entry.button as Button
+		var available := _upgrade_available(upgrade)
+		var cost := _upgrade_cost(upgrade, level)
+		var status := "◆ %s COCAÍNA" % _number(cost)
+		if not available:
+			status = "BLOQUEADA  ·  " + _upgrade_lock_reason(upgrade)
+		elif cells < cost:
+			status += "  ·  FALTAN %s" % _number(cost - cells)
+		else:
+			status += "  ·  LISTA"
+		button.text = "◆ %s  [NV. %d]\n%s" % [str(upgrade.name), level, status]
+		button.tooltip_text = "%s\n%s" % [str(upgrade.get("desc", "")), status]
+		button.disabled = not available or cells < cost
+		button.modulate = Color("86d9e8") if available and cells >= cost else Color.WHITE
+		visible_count += 1
+	return visible_count
+
+func _update_quick_access() -> void:
+	var visible_count := _update_pinned_access()
 	for upgrade_id in QUICK_UPGRADE_IDS:
 		var button := quick_buttons.get(upgrade_id) as Button
 		if not button: continue
 		var upgrade := _upgrade(upgrade_id)
 		var level := int(levels.get(upgrade_id, 0))
 		var max_level := int(upgrade.get("max", 1))
-		button.visible = level > 0 and level < max_level and _upgrade_available(upgrade)
+		button.visible = upgrade_id not in pinned_upgrade_ids and level > 0 and level < max_level and _upgrade_available(upgrade)
 		if not button.visible: continue
 		visible_count += 1
 		var cost := _upgrade_cost(upgrade, level)
 		button.text = "%s  [NV. %d]\n%s\n◆ %s COCAÍNA" % [upgrade.name, level, _quick_upgrade_effect(upgrade_id, level), _number(cost)]
 		button.disabled = cells < cost
+	quick_title.text = "OBJETIVOS Y ACCESOS RÁPIDOS" if not pinned_upgrade_ids.is_empty() else "ACCESOS RÁPIDOS"
 	quick_title.visible = visible_count > 0
 	quick_scroll.visible = visible_count > 0
 
@@ -4236,8 +4349,10 @@ func _update_ui() -> void:
 	var selected_unit_unlocked := not selected_unit.is_empty() and _technology_unit_unlocked(selected_unit)
 	for upgrade in UPGRADES:
 		var button := buttons[upgrade.id] as Button
+		var pin_button := pin_buttons[upgrade.id] as Button
 		var available := _upgrade_available(upgrade)
 		button.visible = selected_unit_unlocked and _technology_unit_for_upgrade(str(upgrade.id)) == selected_technology_unit
+		pin_button.visible = button.visible
 		var level: int = int(levels[upgrade.id])
 		var required: bool = str(upgrade.id) == _required_upgrade_id() and level == 0
 		button.custom_minimum_size.y = 82.0
@@ -4246,6 +4361,9 @@ func _update_ui() -> void:
 		if not button.visible: continue
 		var cost := _upgrade_cost(upgrade, level)
 		var maxed: bool = level >= int(upgrade.get("max", 999))
+		pin_button.text = "QUITAR" if str(upgrade.id) in pinned_upgrade_ids else "FIJAR"
+		pin_button.disabled = maxed
+		pin_button.tooltip_text = "Dejar de seguir esta tecnología" if str(upgrade.id) in pinned_upgrade_ids else "Mostrar esta tecnología junto a los accesos rápidos"
 		var evolution_locked: bool = upgrade.kind == "auto_power" and _punch_evolution_locked() and not maxed
 		var effect := "CLIC %s → %s" % [_number(_click_power_for(level)), _number(_click_power_for(level + 1))]
 		if upgrade.kind == "pawn": effect = "+1 peón"
@@ -4571,6 +4689,7 @@ func _save() -> void:
 	if file:
 		file.store_string(JSON.stringify({
 			"version":SAVE_VERSION, "cells":cells,
+			"pinned_upgrades":pinned_upgrade_ids,
 			"right_hp":right_hp, "right_max":right_max, "left_hp":left_hp, "left_max":left_max,
 			"right_cleared":right_cleared, "left_cleared":left_cleared,
 			"septum_open":septum_open, "active_side":active_side, "levels":levels,
@@ -4624,6 +4743,7 @@ func _load() -> void:
 		levels.plasma_cannon = int(saved_levels.pugilist_cannon)
 	if int(levels.plasma_power) == 0 and int(saved_levels.get("cannon_power", 0)) > 0:
 		levels.plasma_power = int(saved_levels.cannon_power)
+	_restore_pinned_upgrades(data.get("pinned_upgrades", []))
 	_restore_pile_compact(data.get("pile_compact", []))
 	_restore_fallen_wall_chunks(data.get("fallen_wall_chunks", []))
 	var saved_steps = data.get("compaction_steps", {})
@@ -4726,6 +4846,7 @@ func _new_game() -> void:
 	septum_open = false
 	active_side = "right"
 	levels = _empty_levels()
+	_restore_pinned_upgrades([])
 	compaction_steps = {"left":0, "right":0}
 	compaction_announced = false
 	current_phase = 1
