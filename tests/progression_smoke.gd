@@ -27,8 +27,8 @@ func _run() -> void:
 	_check(game.get_node_or_null("PhaseLab") == null and is_equal_approx((game.get_node("World") as Control).anchor_right, 1.0), "The obsolete phase-selector bar must be removed and the playable viewport must use the freed right edge.")
 	game._open_technology_lab()
 	_check(game.technology_lab.visible and game.technology_lab.cards.size() == game.UNIT_CATALOG.size(), "The technology laboratory must expose one persistent card for every unit, vehicle and infrastructure family.")
-	_check(game.technology_lab.cards.has("ram") and game.technology_lab.cards.has("leukophant") and game.technology_lab.cards.has("plasma_cannon") and game.technology_lab.cards.has("supersaiyan"), "Ram, Leukophant, Plasma Cannon and Supersaiyan must be independent technology pages.")
-	_check((game.technology_lab.cards.ram as Button).icon == game.RAM_TEXTURE and (game.technology_lab.cards.plasma_cannon as Button).icon == game.PLASMA_CANNON_TEXTURE and (game.technology_lab.cards.supersaiyan as Button).icon == game.SUPERSAIYAN_TEXTURE, "Technology cards must reuse the real in-game unit sprites.")
+	_check(game.technology_lab.cards.has("ram") and game.technology_lab.cards.has("leukophant") and game.technology_lab.cards.has("hammer") and game.technology_lab.cards.has("plasma_cannon") and game.technology_lab.cards.has("meteor") and game.technology_lab.cards.has("supersaiyan"), "Every extraction actor from Leucoram to Supersaiyan must own an independent technology page.")
+	_check((game.technology_lab.cards.ram as Button).icon == game.RAM_TEXTURE and (game.technology_lab.cards.hammer as Button).icon == game.HAMMER_TEXTURE and (game.technology_lab.cards.meteor as Button).icon == game.METEOR_TEXTURE and (game.technology_lab.cards.supersaiyan as Button).icon == game.SUPERSAIYAN_TEXTURE, "Technology cards must reuse the real in-game unit sprites, including both new bridges.")
 	var plasma_card_data: Dictionary = game.UNIT_CATALOG.filter(func(unit: Dictionary) -> bool: return str(unit.id) == "plasma_cannon")[0]
 	var supersaiyan_card_data: Dictionary = game.UNIT_CATALOG.filter(func(unit: Dictionary) -> bool: return str(unit.id) == "supersaiyan")[0]
 	_check(int(plasma_card_data.phase) == 4 and int(supersaiyan_card_data.phase) == 5, "The Plasma Cannon must precede the final Supersaiyan in the technology catalogue.")
@@ -106,7 +106,7 @@ func _run() -> void:
 	game.cells = 0.0
 
 	_check(game.PHASE_HIGH_THRESHOLDS == [90.0, 70.0, 52.0, 34.0, 18.0] and not game.PHASES[0].has("survive"), "Phases must unlock when Joe's high crosses its descending thresholds, never through timers or delivery targets.")
-	_check(is_equal_approx(game.FIRST_WALL_HP, 1000000000000.0) and is_equal_approx(game.FIRST_LEFT_WALL_HP, 1000000000000.0), "Both fossae must begin with one trillion resistance for the expanded extraction ladder.")
+	_check(is_equal_approx(game.FIRST_WALL_HP, 100000000000000.0) and is_equal_approx(game.FIRST_LEFT_WALL_HP, 100000000000000.0), "Both fossae must begin with one hundred trillion resistance for the complete extraction ladder.")
 	_check(is_equal_approx(game.joe_high, 90.0), "Joe must begin dangerously high at ninety percent.")
 	game._improve_joe(90000.0)
 	_check(game.joe_high <= 68.5, "The phase-one coefficient must turn roughly ninety thousand extracted units into the first twenty-point high threshold.")
@@ -183,7 +183,7 @@ func _run() -> void:
 	_check(is_equal_approx(game.joe_high, 80.0), "Player-mined powder on the opening pile must not cancel the high reduction it already produced.")
 	game._create_piece("grain", "right", 6240.0, 0, 1, 0.072, "", "joe")
 	game._update_joe_high(1.0)
-	_check(is_equal_approx(game.joe_high, 80.006), "Only Joe's loose opening nuisance must add a tightly capped amount of high.")
+	_check(is_equal_approx(game.joe_high, 80.025), "An unattended Joe wave must always restore exactly 1.5 high points per minute, even in the opening.")
 	game._clear_pile()
 	game.current_phase = 2
 	game.joe_high = 80.0
@@ -241,7 +241,7 @@ func _run() -> void:
 	game._update_pawns(30.0)
 	_check(is_equal_approx(float(blocking_chunk.get_meta("hp", 0.0)), block_hp_before_pawn) and is_equal_approx(game.right_hp, wall_before_block_scrape), "Only the player may damage a fallen wall block.")
 	_check(basic_block_pawn.position.x >= blocking_chunk.position.x + 42.0 and basic_block_pawn.get_meta("state", "") == "to_pile", "An empty pawn must wait on the box side of a fallen wall block.")
-	_check(blocking_chunk.get_parent() == game.wall_chunks_layer and game.wall_chunks_layer.get_index() > game.chunks.get_index(), "Fallen wall blocks must stay in a foreground layer above loose powder.")
+	_check(blocking_chunk.get_parent() == game.wall_chunks_layer and not blocking_chunk.z_as_relative and blocking_chunk.z_index >= 90, "Fallen wall blocks must use an absolute foreground layer that no pile or worker can cover.")
 	game.levels.puncher = 1
 	game._rebuild_punchers()
 	var recalled_puncher := game.punchers.get_child(0) as Sprite2D
@@ -311,7 +311,8 @@ func _run() -> void:
 	_check(is_equal_approx(game.ANOTHER_LINE_INTERVAL, 120.0) and expected_flood == 240 and game.loose_chunks.size() == expected_flood, "The first Otra rayita must be a clearly visible rain of 240 real grains.")
 	_check(is_equal_approx(game._pile_load("right"), 240.0) and game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), 1.0) and piece.get_meta("source", "") == "joe"), "Every Joe grain must remain an indivisible one-unit nuisance rather than an aggregated transport shortcut.")
 	_check(game._another_line_grain_count(100000.0) == 1600 and game._another_line_grain_count(2000000.0) == 4000, "Joe's line must scale into a real logistical storm at industrial extraction levels.")
-	_check(game.joe_high > high_before_line, "Joe's extra line must visibly increase his high.")
+	game._update_joe_high(1.0)
+	_check(is_equal_approx(game.joe_high, high_before_line + game.ANOTHER_LINE_HIGH_GAIN + game.ANOTHER_LINE_MAX_PRESSURE), "Joe's extra line must immediately add half a point and then exert exactly 1.5 points per minute while all its powder remains unattended.")
 	var wave_columns := {}
 	for piece in game.loose_chunks:
 		var column := int(piece.get_meta("column", 0))
@@ -369,7 +370,9 @@ func _run() -> void:
 	game._select_technology_unit("cart")
 	_check((game.buttons.cart_reinforced as Button).visible, "The cart capacity upgrade must appear inside the cart page.")
 	_check((game.buttons.cart_upgrade as Button).visible and (game.buttons.cart_upgrade as Button).disabled, "The 300-unit cart tier must stay visible but locked until the modular warehouse.")
-	_check((game.buttons.shift as Button).visible and (game.buttons.shift as Button).disabled, "The motorway must stay visible but locked until the player buys one of the two tier upgrades.")
+	_check((game.buttons.cart_speed as Button).visible and (game.buttons.cart_speed as Button).disabled, "The cart's own speed branch must stay visible but locked until its compressed-load tier.")
+	game._select_technology_unit("pawn")
+	_check((game.buttons.shift as Button).visible and (game.buttons.shift as Button).disabled, "The pedestrian motorway must stay visible but locked until the player buys one of the two tier upgrades.")
 	game.cells = 200000.0
 	game._buy("cart_reinforced")
 	game._buy("warehouse")
@@ -379,7 +382,9 @@ func _run() -> void:
 	var upgraded_cart := game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart").front() as Node2D
 	_check(is_equal_approx(float(upgraded_cart.get_meta("capacity", 0.0)), 300.0) and upgraded_cart.get_node_or_null("Trailer") == null, "Cart upgrades must create a real 300-unit logistics jump without spawning another unit or wagon.")
 	_check(is_equal_approx(game._storage_capacity(), 100000.0), "The 300-unit cart may only arrive after storage has expanded to one hundred thousand.")
-	_check((game.buttons.shift as Button).visible, "Buying either tier upgrade must reveal the late phase-one speed jump.")
+	_check((game.buttons.cart_speed as Button).visible, "The compressed cart must reveal its own granular speed branch.")
+	game._select_technology_unit("pawn")
+	_check((game.buttons.shift as Button).visible, "Buying either tier upgrade must reveal the late phase-one pedestrian speed jump.")
 	game._select_technology_unit("pugilist")
 	game._buy("punch_union")
 	game._buy("punch_training")
@@ -390,10 +395,15 @@ func _run() -> void:
 	_check(game.punchers.get_child(0).get_node_or_null("ProteinWrap") != null, "The large numerical Pugilist training must receive a small layered wrist-wrap variation.")
 	game._buy("shift")
 	await process_frame
-	_check(is_equal_approx(game._pawn_speed(), game.BASE_PAWN_SPEED * 1.60), "The Lymphatic Motorway must increase pawn movement by sixty percent.")
+	_check(is_equal_approx(game._pawn_speed(), game.BASE_PAWN_SPEED * 1.50), "The pedestrian motorway must increase pawn movement by fifty percent.")
 	var motorway_cart := game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart").back() as Node2D
-	_check(is_equal_approx(float(motorway_cart.get_meta("speed", 0.0)), game.CART_SPEED * 2.0), "The Lymphatic Motorway must double ground-transport speed.")
-	_check(is_equal_approx(game._ox_capacity(), 10000.0) and is_equal_approx(game._ox_capacity(2), 6500000.0), "The Mugidophile must begin with its ten-thousand to six-and-a-half-million phase-two curve.")
+	_check(is_equal_approx(float(motorway_cart.get_meta("speed", 0.0)), game.CART_SPEED), "A pawn-wide upgrade must no longer multiply the cart for free.")
+	game.cells = 500000.0
+	game._buy("cart_speed")
+	await process_frame
+	motorway_cart = game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart").back() as Node2D
+	_check(is_equal_approx(float(motorway_cart.get_meta("speed", 0.0)), game.CART_SPEED * 1.40), "The cart's first dedicated wheel upgrade must increase only its own speed by forty percent.")
+	_check(is_equal_approx(game._ox_capacity(), 40000.0) and is_equal_approx(game._ox_capacity(2), 600000.0) and is_equal_approx(game._ox_capacity(4), 6500000.0), "The Mugidophile must expose a granular forty-thousand to six-and-a-half-million curve.")
 	game.levels.cart_upgrade = 0
 	game.levels.cart_reinforced = 0
 	game.levels.warehouse = 0
@@ -402,6 +412,7 @@ func _run() -> void:
 	game.levels.punch_training = 0
 	game.levels.punch_speed = 0
 	game.levels.shift = 0
+	game.levels.cart_speed = 0
 	game._rebuild_transporters()
 	game._rebuild_punchers()
 
@@ -453,7 +464,7 @@ func _run() -> void:
 		var sprite := extractor.get_node("Sprite") as Sprite2D
 		var visual_foot := (extractor as Node2D).position.y + sprite.position.y + float(game.SPECIAL_SPRITE_FOOT_PIXELS[kind]) * sprite.scale.y
 		_check(absf(visual_foot - game._ground_y()) < 0.1, "%s must be anchored by its last opaque pixel instead of sinking below the floor." % kind)
-	_check(is_equal_approx(game._special_extractor_damage("ram"), 500000.0) and is_equal_approx(game._special_extractor_damage("elephant"), 15000000.0) and is_equal_approx(game._special_extractor_damage("plasma"), 5000000000.0) and is_equal_approx(game._special_extractor_damage("supersaiyan"), 15000000000.0), "The extraction ladder must rise from a five-hundred-thousand ram charge to a fifteen-billion final Kamehameha.")
+	_check(is_equal_approx(game._special_extractor_damage("ram"), 500000.0) and is_equal_approx(game._special_extractor_damage("elephant"), 15000000.0) and is_equal_approx(game._special_extractor_damage("plasma"), 5000000000.0) and is_equal_approx(game._special_extractor_damage("supersaiyan"), 1000000000000.0), "The extraction ladder must rise from a five-hundred-thousand ram charge to a one-trillion final Kamehameha.")
 	game.right_hp = game.right_max
 	var ram := special_extractors.filter(func(node: Node) -> bool: return node.get_meta("extraction_kind", "") == "ram")[0] as Node2D
 	var ram_home_x := ram.position.x
@@ -499,7 +510,7 @@ func _run() -> void:
 	var supersaiyan := waiting_supersaiyan
 	supersaiyan.set_meta("timer", 0.0)
 	game._update_special_extractors(0.01)
-	_check(is_equal_approx(game.right_hp, wall_before_supersaiyan - 15000000000.0), "The final Supersaiyan must resolve into a fifteen-billion Kamehameha without erasing a trillion-point wall.")
+	_check(is_equal_approx(game.right_hp, wall_before_supersaiyan - 1000000000000.0), "The final Supersaiyan must resolve into a one-trillion Kamehameha without erasing a hundred-trillion-point wall.")
 	game._clear_pile()
 	game.levels.ram = 0
 	game.levels.elephant = 0
@@ -574,36 +585,43 @@ func _run() -> void:
 	game._buy("silo")
 	_check(is_equal_approx(game._storage_capacity(), 2000000.0), "Phase two must open a two-million-unit silo before its first freight-scale transport purchase.")
 	game._buy("punch_combo")
-	game.punch_round_count = 4
+	game.punch_round_count = 2
 	game._perform_punch_round(false)
-	_check(bool((game.punchers.get_child(0) as Sprite2D).get_meta("combo_round", false)), "Combo de Bar must mark every fifth squad round as a double hit.")
+	_check(bool((game.punchers.get_child(0) as Sprite2D).get_meta("combo_round", false)), "Combo de Bar must mark every third squad round as a double hit.")
 	var pre_wrap_interval: float = game._punch_interval()
 	game._buy("uranium_wraps")
 	await process_frame
-	_check(is_equal_approx(game._punch_interval(), pre_wrap_interval * 0.8), "Uranium wraps must visibly cut another twenty percent from Pugilist rest time.")
+	_check(is_equal_approx(game._punch_interval(), pre_wrap_interval * 0.75), "Uranium wraps must visibly cut another twenty-five percent from Pugilist rest time.")
 	_check((game.punchers.get_child(0) as Sprite2D).get_node_or_null("UraniumWrap") != null, "Uranium wraps must remain an independent editable art layer.")
 	game._buy("cart_freight")
 	_check(is_equal_approx(game._cart_capacity(), 1500.0), "Palletized freight must raise the existing cart to 1,500 units without adding another vehicle.")
+	game._buy("cart_bulk")
+	_check(is_equal_approx(game._cart_capacity(), 6000.0), "The bulk trailer must keep the same cart relevant at six thousand units per trip.")
 	game._buy("ox_convoy")
+	game._buy("ox_capacity")
+	game._buy("ox_capacity")
+	_check(is_equal_approx(game._ox_capacity(), 600000.0), "The first two Mugidophile upgrades must stop at a readable six-hundred-thousand-unit middle tier.")
 	game._buy("silo_capacity")
-	_check(is_equal_approx(game._storage_capacity(), 10000000.0), "The heavy convoy upgrade path must expand storage to ten million before improving the Mugidophile.")
-	game._buy("ox_capacity")
-	game._buy("ox_capacity")
-	_check(is_equal_approx(game._ox_capacity(), 6500000.0), "Two heavy-load upgrades must produce a visible 10K to 150K to 6.5M Mugidophile curve.")
+	_check(is_equal_approx(game._storage_capacity(), 10000000.0), "The heavy convoy upgrade path must expand storage to ten million before its final capacities.")
+	game._buy("cart_tanker")
+	_check(is_equal_approx(game._cart_capacity(), 24000.0), "The final cart body must remain useful beside the early Mugidophile at twenty-four thousand units.")
+	game._buy("ox_heavy_capacity")
+	game._buy("ox_heavy_capacity")
+	_check(is_equal_approx(game._ox_capacity(), 6500000.0), "The final two heavy-load upgrades must continue through two million before reaching six and a half million.")
 	game.current_phase = 3
 	game.levels.vault = 1
-	game.cells = 50000000.0
-	game._buy("ox_vault_capacity")
-	_check(is_equal_approx(game._ox_capacity(), 100000000.0), "Vault Ruminating must raise the existing Mugidophile to one hundred million without spawning a second unit.")
+	game.cells = 1000000000.0
+	for step in range(4): game._buy("ox_vault_capacity")
+	_check(is_equal_approx(game._ox_capacity(), 2000000000.0), "Vault Ruminating must raise the existing Mugidophile through four readable tiers to two billion without spawning another unit.")
 	game.cells = 75000000.0
 	game._buy("vault_capacity")
 	_check(is_equal_approx(game._storage_capacity(), 1000000000.0), "The same vault must gain a one-billion intermediate storage tier before the plant.")
 	game.current_phase = 4
 	game.septum_open = true
 	game.levels.plant = 1
-	game.cells = 400000000.0
-	game._buy("ox_plasma_capacity")
-	_check(is_equal_approx(game._ox_capacity(), 10000000000.0), "Plasma Logistics must raise the existing Mugidophile to ten billion without spawning a second unit.")
+	game.cells = 50000000000.0
+	for step in range(3): game._buy("ox_plasma_capacity")
+	_check(is_equal_approx(game._ox_capacity(), 80000000000.0), "Plasma Logistics must raise the existing Mugidophile through three tiers to eighty billion without spawning another unit.")
 	game.current_phase = 2
 	game.septum_open = false
 	game._select_technology_unit("pawn")
@@ -630,7 +648,7 @@ func _run() -> void:
 	_check((game.buttons.detector as Button).text.contains("NECESARIA"), "Phase 3 must point directly at the receptor adaptation.")
 	_check((game.buttons.wall_scan as Button).visible and (game.buttons.wall_scan as Button).disabled and game.wall_label.text.contains("???"), "Exact wall resistance must remain visible but unavailable until the adulterant detector exists.")
 	game.levels.detector = 1
-	game.cells = 10000.0
+	game.cells = 10000000.0
 	game._update_ui()
 	_check((game.buttons.wall_scan as Button).visible, "The wall scan may appear only after the phase-three adulterant analysis.")
 	game._buy("wall_scan")
@@ -674,7 +692,7 @@ func _run() -> void:
 	game.levels.detector = 1
 	game.levels.sponge = 1
 	game._update_box_jam(4.0)
-	_check(game.box_jammed and game.contamination < 100.0, "Quimioreceptors must clean a jammed box slowly while visible workers remain stopped.")
+	_check(game.box_jammed and is_equal_approx(game.contamination, 98.8), "Emergency purging plus one receptor must cut the 100-to-85 lockout to about fifty seconds.")
 	game.contamination = 85.0
 	game._update_box_jam(0.0)
 	_check(not game.box_jammed, "Workers must resume only after the emergency cleaning threshold is reached.")
@@ -726,11 +744,14 @@ func _run() -> void:
 	_check(spray_coats.size() == 7 and spray_coats.all(func(node: Node) -> bool: return absf((node as Node2D).position.x - game._wall_center_x("right")) <= 40.0), "The blue spray coat must form a clearly readable curtain attached to the cocaine wall.")
 	_check(is_equal_approx(game.spray_film_hp, game.SPRAY_FILM_UNITS), "Spray must create a persistent film measured in real units.")
 	game.playing = true
+	game.levels.sponge = 0
 	game._click_wall("right")
-	_check(is_equal_approx(game.right_hp, wall_before_spray_line), "Neither the player nor automatic miners may mine through the spray film.")
+	var spray_after_manual_scrape: float = game.spray_film_hp
+	_check(is_equal_approx(game.right_hp, wall_before_spray_line) and is_equal_approx(spray_after_manual_scrape, game.SPRAY_FILM_UNITS - game.SPRAY_MANUAL_SCRAPE), "Manual scraping must provide a slow emergency exit without mining through spray or replacing Sponge Macrophages.")
+	game.levels.sponge = 2
 	var sponge_rate: float = game._sponge_absorb_rate()
 	game._update_joe_events(1.0)
-	_check(is_equal_approx(game.spray_film_hp, maxf(0.0, game.SPRAY_FILM_UNITS - sponge_rate)), "Sponge upgrades must remove the exact number of spray units shown in the shop.")
+	_check(is_equal_approx(game.spray_film_hp, maxf(0.0, spray_after_manual_scrape - sponge_rate)), "Sponge upgrades must remove the exact number of spray units shown in the shop.")
 	game._update_joe_events(1.0)
 	_check(is_zero_approx(game.spray_film_hp), "Two fully upgraded sponge macrophages must visibly clear the film instead of supplying an abstract percentage.")
 
@@ -847,7 +868,17 @@ func _run() -> void:
 	_check(is_equal_approx(game.spray_film_hp, 500.0) and is_equal_approx(game.spray_film_max, 2400.0), "Save version 18 must preserve the persistent spray film.")
 	_check(game.fallen_wall_chunks.size() == 1 and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), game.WALL_CHUNK_HEALTH) and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("mass", 0.0)), 11.0), "Save version 18 must preserve wall-block health and mass independently.")
 	_check(game.rocks_opened == 9 and game.impurities_cleaned == 13 and is_equal_approx(game.tissue_repaired, 21.0), "Save version 6 must preserve mechanical phase objectives.")
-	_check(int(game.levels.vault_capacity) == 1 and int(game.levels.ox_vault_capacity) == 1 and int(game.levels.ox_plasma_capacity) == 1 and is_equal_approx(game._ox_capacity(), 10000000000.0), "Save version 18 must preserve the intermediate vault and both late numerical Mugidophile upgrades.")
+	_check(int(game.levels.vault_capacity) == 1 and int(game.levels.ox_vault_capacity) == 1 and int(game.levels.ox_plasma_capacity) == 1 and is_equal_approx(game._ox_capacity(), 5000000000.0), "Save version 18 must preserve the intermediate vault and the exact levels of both late Mugidophile ladders.")
+	game.current_phase = 5
+	game.joe_high = 0.1
+	game.joe_high_display = 0.1
+	game.victory_reached = false
+	game.playing = true
+	game._change_joe_high(-0.1, true)
+	_check(game.victory_reached and game.victory_active and not game.playing and game.victory_dialog.visible, "Reaching zero high must end the run with a visible victory instead of continuing forever.")
+	_check(game.victory_dialog.dialog_text.contains("Joe está sobrio, pero triste") and game.victory_dialog.dialog_text.contains("salvado la vida"), "The victory dialog must deliver Joe's requested sober-but-sad ending.")
+	game._continue_after_victory()
+	_check(game.playing and not game.victory_active, "The winner may continue in sandbox mode after acknowledging the ending.")
 
 	var obsolete := FileAccess.open(game.save_path, FileAccess.WRITE)
 	obsolete.store_string(JSON.stringify({"version":17, "cells":999999.0}))
