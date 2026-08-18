@@ -33,8 +33,8 @@ func _run() -> void:
 	var spawn_ms := float(Time.get_ticks_usec() - spawn_started) / 1000.0
 	_check(game.loose_chunks.size() == GRAIN_COUNT, "The compact model must retain twenty thousand individually addressable grains.")
 	_check(is_equal_approx(game._pile_load("right"), float(GRAIN_COUNT)), "Cached pile load must stay exact under a twenty-thousand-grain stress load.")
-	_check(game.chunks.get_child_count() == 0, "Ordinary grains must add zero Sprite2D nodes to the SceneTree.")
-	_check(game.pile_renderer.instance_count() == GRAIN_COUNT and game.pile_renderer.batch_count() == 1, "Twenty thousand identical grains must render through one MultiMesh batch.")
+	_check(game.chunks.get_child_count() == 1 and game.chunks.get_child(0) == game.powder_surface, "The whole settled pile must use one powder surface and zero grain nodes.")
+	_check(game.pile_renderer.instance_count() == 0, "Twenty thousand settled grains must collapse into the powder surface instead of twenty thousand rendered balls.")
 	_check(spawn_ms < 15000.0, "Creating twenty thousand indexed grains took too long: %.0f ms." % spawn_ms)
 
 	var compact_started := Time.get_ticks_usec()

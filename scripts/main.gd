@@ -6,6 +6,7 @@ const SAVE_VERSION := 18
 const ProgressionData = preload("res://scripts/progression_data.gd")
 const PilePieceData = preload("res://scripts/pile_piece.gd")
 const PileBatchRenderer = preload("res://scripts/pile_renderer.gd")
+const PowderSurfaceData = preload("res://scripts/powder_surface.gd")
 const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
 const UNIT_CATALOG := ProgressionData.UNIT_CATALOG
@@ -241,6 +242,7 @@ var quick_buttons := {}
 var loose_chunks: Array[PilePiece] = []
 var fallen_wall_chunks: Array[Sprite2D] = []
 var pile_renderer: PileRenderer
+var powder_surface: PowderSurface
 var particle_motions: Array[Dictionary] = []
 var pile_columns := {"left":{}, "right":{}}
 var pile_heights := {"left":{}, "right":{}}
@@ -327,6 +329,11 @@ var selected_technology_unit := "manual"
 var user_paused := false
 
 func _ready() -> void:
+	powder_surface = PowderSurfaceData.new() as PowderSurface
+	powder_surface.name = "PowderSurface"
+	powder_surface.z_index = 0
+	chunks.add_child(powder_surface)
+	powder_surface.setup(self)
 	pile_renderer = PileBatchRenderer.new()
 	pile_renderer.name = "PileRenderer"
 	add_child(pile_renderer)
@@ -834,7 +841,10 @@ func _update_box_jam(delta: float) -> void:
 		return
 	if not box_jammed and contamination >= 99.9:
 		box_jammed = true
-		_show_toast("CAJA ATASCADA  ·  TODOS PARADOS")
+		if int(levels.detector) == 0:
+			_show_toast("CAJA ATASCADA  ·  QUIMIORRECEPTOR DE URGENCIAS GRATIS EN EL LABORATORIO", 6.5)
+		else:
+			_show_toast("CAJA ATASCADA  ·  TODOS PARADOS")
 	if box_jammed:
 		# La purga de emergencia impide una partida muerta. Sin detector tarda
 		# 150 s; con el primero, solo 50 s. Los siguientes siguen acelerándola.
@@ -1002,6 +1012,7 @@ func _drop_piece(piece: PilePiece, origin: Vector2) -> void:
 	piece.position = origin + Vector2(randf_range(-10.0, 10.0), 0.0)
 	piece.rotation = randf_range(-0.18, 0.18)
 	piece.set_meta("landed", false)
+	pile_renderer.refresh_group(piece)
 	var landing := _landing_position(piece)
 	_index_add_piece(piece)
 	var duration := randf_range(0.82, 1.18)
@@ -1076,6 +1087,7 @@ func _mark_landed(piece: Variant) -> void:
 	if not sprite: return
 	_index_remove_piece(sprite)
 	sprite.set_meta("landed", true)
+	pile_renderer.refresh_group(sprite)
 	_index_add_piece(sprite)
 	var side: String = sprite.get_meta("side", "right")
 	_settle_surface(side, 6)
@@ -2748,11 +2760,20 @@ func _rate() -> float:
 		result += minf(available, _storage_claim_space()) / (surface_trip + TRAIN_TUNNEL_TIME * 2.0 + 1.2)
 	return result
 
+func _emergency_detector_available(upgrade: Dictionary, level: int) -> bool:
+	return str(upgrade.get("id", "")) == "detector" and level == 0 and box_jammed
+
+func _upgrade_cost(upgrade: Dictionary, level: int) -> float:
+	if _emergency_detector_available(upgrade, level):
+		return 0.0
+	return ceil(float(upgrade.base) * pow(float(upgrade.growth), level))
+
 func _buy(id: String) -> void:
 	var upgrade := _upgrade(id)
 	if upgrade.is_empty() or not _upgrade_available(upgrade): return
 	var level: int = int(levels[id])
-	var cost: float = ceil(float(upgrade.base) * pow(float(upgrade.growth), level))
+	var emergency_detector := _emergency_detector_available(upgrade, level)
+	var cost := _upgrade_cost(upgrade, level)
 	if upgrade.kind == "auto_power" and _punch_evolution_locked(): return
 	if cells < cost or level >= int(upgrade.get("max", 999)): return
 	cells -= cost
@@ -2790,6 +2811,12 @@ func _buy(id: String) -> void:
 	elif upgrade.kind == "platelet": _rebuild_platelets()
 	elif upgrade.kind in ["ram", "ram_power", "ram_speed", "elephant", "elephant_power", "hammer", "hammer_power", "plasma_cannon", "plasma_power", "meteor", "meteor_power", "supersaiyan", "supersaiyan_power"]: _rebuild_punchers()
 	elif upgrade.kind in ["sponge", "sponge_power", "catapult", "catapult_power"]: _rebuild_adaptations()
+	if emergency_detector:
+		contamination = minf(contamination, 85.0)
+		contamination_band = int(contamination / 25.0)
+		box_jammed = false
+		_update_box()
+		_show_toast("QUIMIORRECEPTOR DE URGENCIAS  ·  LA CAJA VUELVE A TRAGAR", 5.2)
 	_update_ui()
 	_check_phase_progress()
 	_save()
@@ -2922,7 +2949,7 @@ func _update_another_line(delta: float) -> void:
 	if another_line_clock <= ANOTHER_LINE_WARNING and not another_line_warned:
 		another_line_warned = true
 		pending_line_grains = _another_line_grain_count(mined_since_line)
-		_show_toast("JOE PREPARA OTRA RAYITA  ·  CAERÁN %s GRANOS" % _number(pending_line_grains))
+		_show_toast("JOE PREPARA OTRA RAYITA  ·  CAERÁN %s DE POLVO" % _number(pending_line_grains))
 	if another_line_clock <= 0.0:
 		_start_another_line("normal")
 
@@ -2954,8 +2981,8 @@ func _start_another_line(source: String) -> void:
 			_change_joe_high(ANOTHER_LINE_HIGH_GAIN, true)
 		_play_sfx(SFX_JOE_INHALE, -13.0, 1.12)
 	var source_text := "RAYITA CON SERRÍN" if source == "adulterated" else "OTRA RAYITA"
-	_show_toast("%s  ·  +%s GRANOS" % [source_text, _number(grain_count)])
-	_float_text("+%s GRANOS" % _number(grain_count), Vector2(_pile_center(active_side), _ground_y() - 250.0))
+	_show_toast("%s  ·  +%s DE POLVO" % [source_text, _number(grain_count)])
+	_float_text("+%s DE POLVO" % _number(grain_count), Vector2(_pile_center(active_side), _ground_y() - 250.0))
 
 func _spawn_line_piece(origin: Vector2, side: String, column: int, index: int) -> void:
 	var value := 1.0
@@ -4170,7 +4197,7 @@ func _update_quick_access() -> void:
 		button.visible = level > 0 and level < max_level and _upgrade_available(upgrade)
 		if not button.visible: continue
 		visible_count += 1
-		var cost: float = ceil(float(upgrade.base) * pow(float(upgrade.growth), level))
+		var cost := _upgrade_cost(upgrade, level)
 		button.text = "%s  [NV. %d]\n%s\n◆ %s COCAÍNA" % [upgrade.name, level, _quick_upgrade_effect(upgrade_id, level), _number(cost)]
 		button.disabled = cells < cost
 	quick_title.visible = visible_count > 0
@@ -4217,7 +4244,7 @@ func _update_ui() -> void:
 		_set_upgrade_halo(button, required)
 		if not required: button.add_theme_color_override("font_disabled_color", Color("c4b1c2"))
 		if not button.visible: continue
-		var cost: float = ceil(float(upgrade.base) * pow(float(upgrade.growth), level))
+		var cost := _upgrade_cost(upgrade, level)
 		var maxed: bool = level >= int(upgrade.get("max", 999))
 		var evolution_locked: bool = upgrade.kind == "auto_power" and _punch_evolution_locked() and not maxed
 		var effect := "CLIC %s → %s" % [_number(_click_power_for(level)), _number(_click_power_for(level + 1))]
@@ -4305,7 +4332,8 @@ func _update_ui() -> void:
 		elif upgrade.kind == "supersaiyan_power": effect = "KAMEHAMEHA %s → %s" % [_number(float(SUPERSAIYAN_DAMAGE[clampi(level, 0, SUPERSAIYAN_DAMAGE.size() - 1)])), _number(float(SUPERSAIYAN_DAMAGE[clampi(level + 1, 0, SUPERSAIYAN_DAMAGE.size() - 1)]))]
 		elif upgrade.kind == "catapult": effect = "+1 LANZAMIENTO DE %s" % _number(CATAPULT_BASE_DAMAGE * pow(2.0, int(levels.catapult_power)))
 		elif upgrade.kind == "catapult_power": effect = "IMPACTO %s → %s" % [_number(CATAPULT_BASE_DAMAGE * pow(2.0, level)), _number(CATAPULT_BASE_DAMAGE * pow(2.0, level + 1))]
-		var price_line := "◆ COSTE  %s COCAÍNA" % _number(cost)
+		var emergency_detector := _emergency_detector_available(upgrade, level)
+		var price_line := "◆ RESCATE DE URGENCIAS  ·  GRATIS" if emergency_detector else "◆ COSTE  %s COCAÍNA" % _number(cost)
 		if maxed:
 			price_line = "✓ MEJORA COMPLETA"
 		elif not available:

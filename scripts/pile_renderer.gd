@@ -12,13 +12,17 @@ func setup(target_layer: CanvasItem) -> void:
 	set_process(true)
 
 func add_piece(piece: PilePiece) -> void:
+	piece.renderer = self
+	if not _should_render(piece):
+		piece.render_key = ""
+		piece.render_slot = -1
+		return
 	var key := _piece_key(piece)
 	if not groups.has(key):
 		groups[key] = _create_group(piece, key)
 	var group: Dictionary = groups[key]
 	var pieces: Array = group.pieces
 	_ensure_capacity(group, pieces.size() + 1)
-	piece.renderer = self
 	piece.render_key = key
 	piece.render_slot = pieces.size()
 	pieces.append(piece)
@@ -28,7 +32,16 @@ func add_piece(piece: PilePiece) -> void:
 		attach_auxiliary(piece.crack)
 
 func refresh_group(piece: PilePiece) -> void:
-	if not piece.alive or piece.render_slot < 0:
+	if not piece.alive:
+		return
+	var should_render := _should_render(piece)
+	if piece.render_slot < 0:
+		if should_render:
+			add_piece(piece)
+		return
+	if not should_render:
+		remove_piece(piece)
+		piece.render_key = ""
 		return
 	var next_key := _piece_key(piece)
 	if next_key == piece.render_key:
@@ -89,6 +102,16 @@ func _piece_key(piece: PilePiece) -> String:
 	elif kind == "impurity":
 		kind += "_" + str(piece.get_meta("material", "unknown"))
 	return side + ":" + kind + (":cargo" if bool(piece.get_meta("carried", false)) else ":pile")
+
+func _should_render(piece: PilePiece) -> bool:
+	# El polvo asentado y las impurezas se funden en una única superficie. Solo
+	# conservamos instancias para aquello que necesita una silueta jugable propia
+	# o durante el breve trayecto por el aire.
+	if bool(piece.get_meta("carried", false)):
+		return piece.visible
+	if not bool(piece.get_meta("landed", true)):
+		return true
+	return str(piece.get_meta("kind", "grain")) in ["rock", "bacteria"]
 
 func _create_group(piece: PilePiece, key: String) -> Dictionary:
 	var mesh := QuadMesh.new()

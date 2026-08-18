@@ -697,6 +697,16 @@ func _run() -> void:
 	game._update_box_jam(0.0)
 	_check(not game.box_jammed, "Workers must resume only after the emergency cleaning threshold is reached.")
 	game._clear_pile()
+	game.levels.detector = 0
+	game.cells = 0.0
+	game.contamination = 100.0
+	game.box_jammed = true
+	game._select_technology_unit("detector")
+	game._update_ui()
+	_check(is_zero_approx(game._upgrade_cost(game._upgrade("detector"), 0)) and (game.buttons.detector as Button).text.contains("RESCATE DE URGENCIAS") and not (game.buttons.detector as Button).disabled, "A penniless jammed run must expose one free emergency receptor instead of becoming a softlock.")
+	game._buy("detector")
+	_check(int(game.levels.detector) == 1 and not game.box_jammed and is_equal_approx(game.contamination, 85.0) and is_zero_approx(game.cells), "The emergency receptor must immediately reopen the box without creating cocaine or charging hidden debt.")
+	cells_before = game.cells
 
 	game._rebuild_pawns()
 	var ordinary_pawn: Sprite2D = null

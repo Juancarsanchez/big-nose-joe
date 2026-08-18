@@ -24,7 +24,8 @@ var scale := Vector2.ONE:
 var visible := true:
 	set(value):
 		visible = value
-		_mark_dirty()
+		if renderer:
+			renderer.refresh_group(self)
 var modulate := Color.WHITE:
 	set(value):
 		modulate = value
@@ -55,4 +56,3 @@ func queue_free() -> void:
 		renderer.remove_piece(self)
 	if is_instance_valid(crack):
 		crack.queue_free()
-
