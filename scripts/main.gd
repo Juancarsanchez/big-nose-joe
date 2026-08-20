@@ -24,6 +24,11 @@ const EDGE_SIZE := 34.0
 const PAN_SPEED := 1050.0
 const GRAIN_SPACING := 9.2
 const GRAIN_HEIGHT := 7.4
+# La masa visible crece por tramos suaves: una carga más valiosa deja una
+# montaña mayor, pero jamás se convierte en una torre absurda al llegar al
+# late game. 1 / 10 / 100 / 1K / 1M equivalen a x1 / x1.4 / x1.8 / x2.2 / x3.4.
+const GRAIN_VALUE_HEIGHT_PER_DECADE := 0.40
+const GRAIN_VALUE_HEIGHT_MAX_MULTIPLIER := 4.75
 const ROCK_HEIGHT := 18.0
 const MAX_PILE_RADIUS := 92
 const PILE_BOX_MARGIN := 118.0
@@ -302,6 +307,8 @@ var catapult_clock := 0.0
 var puncher_unlocked := false
 var puncher_debut_pending := false
 var puncher_debut_clock := 0.0
+var unit_debuts_seen := {}
+var unit_debut_pending := {}
 var manual_clicks_since_burst := 0
 var continuous_sweep_held := false
 var continuous_sweep_clock := 0.0
@@ -631,6 +638,34 @@ func _spawn_impact_dust(origin: Vector2, color: Color = Color("9b5960"), amount:
 		tween.tween_property(dust, "modulate:a", 0.0, 0.38)
 		tween.chain().tween_callback(dust.queue_free)
 
+func _spawn_debut_powder_burst(side: String, origin: Vector2, intensity: float = 1.0) -> void:
+	# Es puramente celebración: no añade cocaína ni altera la economía. El polvo
+	# económico ya cae mediante _spawn_extraction_payload con su masa real.
+	var direction := -1.0 if side == "left" else 1.0
+	var count := clampi(roundi(18.0 * intensity), 18, 46)
+	for index in range(count):
+		var flake := Sprite2D.new()
+		flake.texture = GRAIN_TEXTURE
+		flake.modulate = Color("fff9e8")
+		flake.scale = Vector2.ONE * randf_range(0.032, 0.076) * (0.85 + intensity * 0.18)
+		flake.position = origin + Vector2(direction * randf_range(-8.0, 16.0), -randf_range(8.0, 42.0))
+		flake.rotation = randf_range(-0.8, 0.8)
+		flake.z_index = 31
+		effects.add_child(flake)
+		var apex := flake.position + Vector2(direction * randf_range(34.0, 100.0) * intensity, -randf_range(54.0, 145.0) * intensity)
+		var landing := origin + Vector2(direction * randf_range(130.0, 340.0) * intensity, -randf_range(3.0, 26.0))
+		var tween := create_tween()
+		tween.tween_property(flake, "position", apex, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tween.tween_property(flake, "position", landing, 0.38).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tween.parallel().tween_property(flake, "modulate:a", 0.0, 0.22).set_delay(0.34)
+		tween.parallel().tween_property(flake, "rotation", flake.rotation + randf_range(-2.8, 2.8), 0.56)
+		tween.tween_callback(flake.queue_free)
+
+func _grain_stack_height(value: float) -> float:
+	var decades := log(maxf(1.0, value)) / log(10.0)
+	var multiplier := minf(GRAIN_VALUE_HEIGHT_MAX_MULTIPLIER, 1.0 + decades * GRAIN_VALUE_HEIGHT_PER_DECADE)
+	return GRAIN_HEIGHT * multiplier
+
 func _spawn_energy_ring(origin: Vector2, color: Color, radius: float = 20.0) -> void:
 	var ring := Line2D.new()
 	var points := PackedVector2Array()
@@ -895,13 +930,99 @@ func _set_pawn_carrying(pawn: Sprite2D, carrying: bool) -> void:
 	elif specialist:
 		target = SPECIALIST_EMPTY
 	else:
-		# La carga real se dibuja sobre el peón. Con apelmazado inteligente solo se
-		# ve una bola por paquete; las demás piezas siguen existiendo y conservan valor.
+		# Los recolectores normales llevan un pellizco de nieve, no una ristra de
+		# canicas. La carga real sigue existiendo fuera de pantalla como datos.
 		target = PAWN_EMPTY
+	if not carrying:
+		var mound := pawn.get_node_or_null("PowderMound") as Node2D
+		if mound: mound.visible = false
 	if pawn.texture == target:
 		return
 	pawn.texture = target
 	pawn.offset = Vector2(0.0, PAWN_FOOT_DEPTH / pawn.scale.y - target.get_height() * 0.5)
+
+func _pawn_carries_powder_mound(pawn: Sprite2D) -> bool:
+	if bool(pawn.get_meta("specialist", false)) or bool(pawn.get_meta("detector", false)) or bool(pawn.get_meta("handler", false)):
+		return false
+	var cargo: Array = pawn.get_meta("cargo", [])
+	if cargo.is_empty():
+		return false
+	for value in cargo:
+		var piece := value as PilePiece
+		if not is_instance_valid(piece) or str(piece.get_meta("kind", "grain")) != "grain":
+			return false
+	return true
+
+func _ensure_pawn_powder_mound(pawn: Sprite2D) -> Node2D:
+	var existing := pawn.get_node_or_null("PowderMound") as Node2D
+	if existing:
+		return existing
+	var mound := Node2D.new()
+	mound.name = "PowderMound"
+	mound.z_index = 16
+	mound.visible = false
+	var outline := Polygon2D.new()
+	outline.name = "Outline"
+	outline.polygon = PackedVector2Array([Vector2(-190, 92), Vector2(-170, 10), Vector2(-112, -58), Vector2(-40, -92), Vector2(42, -82), Vector2(122, -42), Vector2(178, 20), Vector2(194, 92)])
+	outline.color = Color("32283a")
+	mound.add_child(outline)
+	var powder := Polygon2D.new()
+	powder.name = "Powder"
+	powder.polygon = PackedVector2Array([Vector2(-166, 78), Vector2(-148, 12), Vector2(-98, -44), Vector2(-36, -68), Vector2(35, -59), Vector2(103, -28), Vector2(153, 24), Vector2(169, 78)])
+	powder.color = Color("f4f0dc")
+	mound.add_child(powder)
+	var shade := Polygon2D.new()
+	shade.name = "PowderShade"
+	shade.polygon = PackedVector2Array([Vector2(-152, 62), Vector2(-68, 34), Vector2(12, 44), Vector2(92, 18), Vector2(156, 58), Vector2(160, 78), Vector2(-160, 78)])
+	shade.color = Color("d5d0c3")
+	mound.add_child(shade)
+	var glint := Polygon2D.new()
+	glint.name = "PowderGlint"
+	glint.polygon = PackedVector2Array([Vector2(-94, -30), Vector2(-38, -54), Vector2(16, -45), Vector2(-24, -24)])
+	glint.color = Color("ffffff")
+	mound.add_child(glint)
+	pawn.add_child(mound)
+	return mound
+
+func _refresh_pawn_cargo_visual(pawn: Sprite2D) -> void:
+	var cargo: Array = pawn.get_meta("cargo", [])
+	var powder_mound := _pawn_carries_powder_mound(pawn)
+	var mound := _ensure_pawn_powder_mound(pawn) if powder_mound else pawn.get_node_or_null("PowderMound") as Node2D
+	if mound:
+		mound.visible = powder_mound
+	if powder_mound:
+		var clump_size := _pawn_smart_clump_size(pawn)
+		var bundles := ceili(float(cargo.size()) / float(clump_size))
+		mound.set_meta("load_scale", 0.82 + minf(0.46, float(bundles - 1) * 0.18) + minf(0.18, sqrt(float(clump_size - 1)) * 0.06))
+		for value in cargo:
+			var powder_piece := value as PilePiece
+			if is_instance_valid(powder_piece):
+				powder_piece.visible = false
+				pile_renderer.refresh_group(powder_piece)
+		_update_pawn_powder_mound(pawn)
+		return
+	var clump_size := _pawn_smart_clump_size(pawn)
+	var clump_scale := 1.0 + 0.08 * sqrt(float(clump_size - 1))
+	for index in range(cargo.size()):
+		var piece := cargo[index] as PilePiece
+		if not is_instance_valid(piece):
+			continue
+		var bundle_head := index % clump_size == 0
+		if bool(pawn.get_meta("handler", false)) and str(piece.get_meta("kind", "grain")) == "bacteria":
+			bundle_head = false
+		piece.set_meta("cargo_visual_index", int(index / clump_size))
+		piece.set_meta("cargo_visual_scale", clump_scale)
+		piece.visible = bundle_head
+		piece.scale = Vector2.ONE * float(piece.get_meta("base_scale", 0.07)) * clump_scale
+		pile_renderer.refresh_group(piece)
+
+func _update_pawn_powder_mound(pawn: Sprite2D) -> void:
+	var mound := pawn.get_node_or_null("PowderMound") as Node2D
+	if not mound or not mound.visible:
+		return
+	var front := 1.0 if pawn.flip_h else -1.0
+	mound.position = Vector2(front * 320.0, -248.0)
+	mound.scale = Vector2.ONE * float(mound.get_meta("load_scale", 1.0))
 
 func _update_pawns(delta: float) -> void:
 	for node in pawns.get_children():
@@ -1070,7 +1191,7 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 	piece.set_meta("side", side)
 	piece.set_meta("column", column)
 	piece.set_meta("x_jitter", randf_range(-1.8, 1.8))
-	piece.set_meta("height", ROCK_HEIGHT if kind == "rock" else (10.0 if kind == "bacteria" else GRAIN_HEIGHT))
+	piece.set_meta("height", ROCK_HEIGHT if kind == "rock" else (10.0 if kind == "bacteria" else _grain_stack_height(value)))
 	piece.set_meta("material", material)
 	piece.set_meta("source", source)
 	piece.set_meta("landed", true)
@@ -1321,8 +1442,6 @@ func _top_pieces(side: String) -> Array[PilePiece]:
 func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 	var cargo: Array = []
 	var remaining_storage := _storage_claim_space()
-	var clump_size := _pawn_smart_clump_size(pawn)
-	var clump_scale := 1.0 + 0.08 * sqrt(float(clump_size - 1))
 	while cargo.size() < capacity:
 		var collectable: Array[PilePiece] = []
 		var handler := bool(pawn.get_meta("handler", false))
@@ -1346,23 +1465,16 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 		var piece := source[randi_range(0, mini(6, source.size() - 1))]
 		var piece_kind: String = piece.get_meta("kind", "grain")
 		_index_remove_piece(piece)
-		if handler and piece_kind == "bacteria":
-			piece.visible = false
+		# La carga del peón se representa después como una única mini-pila. Ocultar
+		# aquí la pieza evita que un fotograma muestre bolitas arrancadas del polvo.
+		piece.visible = false
 		_set_piece_carried(piece, true)
 		if piece_kind != "impurity":
 			remaining_storage -= float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if piece_kind == "grain" else 1.0)
 		piece.z_index = 20
 		cargo.append(piece)
-		var cargo_index := cargo.size() - 1
-		var visual_index := int(cargo_index / clump_size)
-		var bundle_head := cargo_index % clump_size == 0
-		piece.set_meta("cargo_visual_index", visual_index)
-		piece.set_meta("cargo_visual_scale", clump_scale)
-		piece.visible = bundle_head
-		piece.scale = Vector2.ONE * float(piece.get_meta("base_scale", 0.07)) * clump_scale
-		var tween := create_tween().set_parallel()
-		tween.tween_property(piece, "position", _cargo_position(pawn, visual_index, _transport_capacity()), 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tween.tween_property(piece, "rotation", randf_range(-0.12, 0.12), 0.22)
+	pawn.set_meta("cargo", cargo)
+	_refresh_pawn_cargo_visual(pawn)
 	_settle_surface(side, maxi(2, _transport_capacity()))
 	_restack_pile(side)
 	return cargo
@@ -1596,6 +1708,9 @@ func _cargo_position(pawn: Sprite2D, index: int, capacity: int) -> Vector2:
 	return pawn.position + Vector2(front * 15.0 + (float(column) - float(columns - 1) * 0.5) * 5.0, -15.0 - float(row) * 5.0)
 
 func _update_carried_pieces(pawn: Sprite2D) -> void:
+	if _pawn_carries_powder_mound(pawn):
+		_update_pawn_powder_mound(pawn)
+		return
 	var cargo: Array = pawn.get_meta("cargo", [])
 	for piece_value in cargo:
 		var piece := piece_value as PilePiece
@@ -1604,6 +1719,10 @@ func _update_carried_pieces(pawn: Sprite2D) -> void:
 
 func _begin_deposit(pawn: Sprite2D) -> void:
 	var cargo: Array = pawn.get_meta("cargo", [])
+	var mound := pawn.get_node_or_null("PowderMound") as Node2D
+	if mound and mound.visible:
+		mound.set_meta("deposit_start", mound.position)
+		mound.set_meta("deposit_scale", mound.scale.x)
 	for piece_value in cargo:
 		var piece := piece_value as PilePiece
 		if is_instance_valid(piece): piece.set_meta("deposit_start", piece.position)
@@ -1613,6 +1732,14 @@ func _begin_deposit(pawn: Sprite2D) -> void:
 func _update_deposit(pawn: Sprite2D, progress: float) -> void:
 	var cargo: Array = pawn.get_meta("cargo", [])
 	var target := Vector2(_box_x() + 8.0, _ground_y() - 24.0)
+	var mound := pawn.get_node_or_null("PowderMound") as Node2D
+	if mound and mound.visible:
+		var mound_start: Vector2 = mound.get_meta("deposit_start", mound.position)
+		var local_target := pawn.to_local(target)
+		var mound_progress := smoothstep(0.0, 1.0, progress)
+		mound.position = mound_start.lerp(local_target, mound_progress)
+		mound.scale = Vector2.ONE * lerpf(float(mound.get_meta("deposit_scale", mound.scale.x)), 0.22, mound_progress)
+		return
 	for index in range(cargo.size()):
 		var piece := cargo[index] as PilePiece
 		if not is_instance_valid(piece): continue
@@ -2393,8 +2520,11 @@ func _resolve_punch(puncher: Sprite2D) -> void:
 	var direction := -1.0 if side == "left" else 1.0
 	var impact_x := _wall_free_x(side) + direction * 4.0
 	_spawn_extraction_payload(side, float(output), impact_x, PUGILIST_GRAINS_PER_HIT)
-	_spawn_impact_dust(Vector2(impact_x, _ground_y() - 10.0), Color("d6b8bc"), 4)
-	_impact_shake(3.0 if combo_round or debut else 1.6)
+	_spawn_impact_dust(Vector2(impact_x, _ground_y() - 10.0), Color("d6b8bc"), 14 if debut else 4)
+	if debut:
+		_spawn_debut_powder_burst(side, Vector2(impact_x, _ground_y() - 18.0), 1.0)
+		unit_debuts_seen["pugilist"] = true
+	_impact_shake(5.5 if debut else (3.0 if combo_round else 1.6))
 	_play_sfx(SFX_PUNCH, -7.0 if combo_round else -9.0, randf_range(0.86, 1.08))
 	var impact_label := "¡¡COMBO!!  -" if combo_round else ("¡¡PUM!!  -" if debut else "¡PUM!  -")
 	_float_text(impact_label + _number(output), Vector2(impact_x, _ground_y() - 95.0))
@@ -2717,13 +2847,20 @@ func _fire_supersaiyan(root: Node2D) -> void:
 func _special_extraction_hit(kind: String, origin: Vector2) -> void:
 	var side := "left" if origin.x < SEPTUM_X else "right"
 	if _wall_hp(side) <= 0.0: return
+	var debut := bool(unit_debut_pending.get(kind, false))
+	if debut:
+		unit_debut_pending.erase(kind)
+		unit_debuts_seen[kind] = true
 	var damage := minf(_special_extractor_damage(kind), _wall_hp(side))
 	_damage_wall(damage, side)
 	total_clicks += roundi(damage)
 	var impact_x := _wall_free_x(side)
 	_spawn_extraction_payload(side, damage, impact_x, 24)
 	var dust_color := Color("64d9ed") if kind in ["plasma", "meteor"] else (Color("e5b94d") if kind == "hammer" else Color("eef4e7"))
-	_spawn_impact_dust(Vector2(impact_x, _ground_y() - 8.0), dust_color, 14 if kind in ["ram", "elephant", "hammer", "meteor"] else 10)
+	_spawn_impact_dust(Vector2(impact_x, _ground_y() - 8.0), dust_color, (26 if debut else (14 if kind in ["ram", "elephant", "hammer", "meteor"] else 10)))
+	if debut:
+		var debut_intensity := {"ram":1.25, "elephant":1.65, "hammer":1.85, "plasma":2.1, "meteor":2.35, "supersaiyan":2.6}
+		_spawn_debut_powder_burst(side, Vector2(impact_x, _ground_y() - 20.0), float(debut_intensity.get(kind, 1.4)))
 	if kind == "ram":
 		_play_sfx(SFX_PUNCH, -4.0, 0.76)
 		_impact_shake(4.0)
@@ -2743,8 +2880,16 @@ func _special_extraction_hit(kind: String, origin: Vector2) -> void:
 	var titles := {"ram":"¡¡¡EMBESTIDA!!!", "elephant":"¡¡¡CABEZAZO!!!", "hammer":"¡¡¡MARTILLAZO!!!", "plasma":"¡¡PLASMA NASAL!!", "meteor":"¡¡¡IMPACTO METEORITO!!!", "supersaiyan":"¡¡¡KAMEHAMEHA LEUCOCITARIO!!!"}
 	var title := str(titles.get(kind, "¡¡¡IMPACTO!!!"))
 	_float_text("%s  -%s" % [title, _number(damage)], Vector2(impact_x, _ground_y() - 145.0))
-	_show_toast("%s  ·  %s UNIDADES DE DAÑO" % [title, _number(damage)])
+	var impact_toast := "%s  ·  %s UNIDADES DE DAÑO" % [title, _number(damage)]
+	_show_toast(("DEBUT  ·  " if debut else "") + impact_toast)
 	_update_world()
+
+func _queue_special_debut(kind: String) -> void:
+	if bool(unit_debuts_seen.get(kind, false)):
+		return
+	unit_debut_pending[kind] = true
+	var names := {"ram":"LEUCOCARNERO", "elephant":"LEUCOFANTE", "hammer":"LEUCOMARTILLO", "plasma":"CAÑÓN DE PLASMA", "meteor":"NEUTRÓFILO METEORITO", "supersaiyan":"LEUCOCITO SUPERSAIYAN"}
+	_show_toast("%s  ·  PREPARANDO SU PRIMER GOLPE" % str(names.get(kind, "NUEVA UNIDAD")), 3.8)
 
 func _spawn_extraction_payload(side: String, amount: float, impact_x: float, visuals: int) -> void:
 	if amount <= 0.0: return
@@ -2802,7 +2947,7 @@ func _buy(id: String) -> void:
 		_show_toast("AUTOVÍA PEATONAL  ·  LOS PEONES ACELERAN UN 50%")
 	elif upgrade.kind == "autoclicker":
 		_rebuild_punchers()
-		if level == 0:
+		if level == 0 and not bool(unit_debuts_seen.get("pugilist", false)):
 			puncher_debut_pending = true
 			puncher_debut_clock = 1.35
 			punch_clock = _punch_interval()
@@ -2824,7 +2969,12 @@ func _buy(id: String) -> void:
 	elif upgrade.kind in ["transport_cart", "transport_capacity", "transport_ox", "transport_ox_capacity", "transport_speed", "transport_train", "train_speed", "cart_renaissance"]:
 		_rebuild_transporters()
 	elif upgrade.kind == "platelet": _rebuild_platelets()
-	elif upgrade.kind in ["ram", "ram_power", "ram_speed", "elephant", "elephant_power", "hammer", "hammer_power", "plasma_cannon", "plasma_power", "meteor", "meteor_power", "supersaiyan", "supersaiyan_power"]: _rebuild_punchers()
+	elif upgrade.kind in ["ram", "ram_power", "ram_speed", "elephant", "elephant_power", "hammer", "hammer_power", "plasma_cannon", "plasma_power", "meteor", "meteor_power", "supersaiyan", "supersaiyan_power"]:
+		_rebuild_punchers()
+		if level == 0:
+			var debut_kind := {"ram":"ram", "elephant":"elephant", "hammer":"hammer", "plasma_cannon":"plasma", "meteor":"meteor", "supersaiyan":"supersaiyan"}
+			if debut_kind.has(str(upgrade.kind)):
+				_queue_special_debut(str(debut_kind[upgrade.kind]))
 	elif upgrade.kind in ["sponge", "sponge_power", "catapult", "catapult_power"]: _rebuild_adaptations()
 	if emergency_detector:
 		contamination = minf(contamination, 85.0)
@@ -4705,7 +4855,8 @@ func _save() -> void:
 			"spray_film_hp":spray_film_hp, "spray_film_max":spray_film_max,
 			"scratch_clock":scratch_clock, "mucus_clock":mucus_clock, "mucus_hp":mucus_hp, "mucus_max_hp":mucus_max_hp, "catapult_clock":catapult_clock,
 			"puncher_unlocked":puncher_unlocked, "puncher_debut_pending":puncher_debut_pending,
-			"puncher_debut_clock":puncher_debut_clock, "punch_round_count":punch_round_count, "manual_clicks_since_burst":manual_clicks_since_burst,
+			"puncher_debut_clock":puncher_debut_clock, "unit_debuts_seen":unit_debuts_seen, "unit_debut_pending":unit_debut_pending,
+			"punch_round_count":punch_round_count, "manual_clicks_since_burst":manual_clicks_since_burst,
 			"phase_event_pending":phase_event_pending
 		}))
 
@@ -4743,6 +4894,27 @@ func _load() -> void:
 		levels.plasma_cannon = int(saved_levels.pugilist_cannon)
 	if int(levels.plasma_power) == 0 and int(saved_levels.get("cannon_power", 0)) > 0:
 		levels.plasma_power = int(saved_levels.cannon_power)
+	var saved_pugilist_debut_pending := bool(data.get("puncher_debut_pending", false))
+	unit_debuts_seen = {}
+	var saved_debuts = data.get("unit_debuts_seen", {})
+	if data.has("unit_debuts_seen") and typeof(saved_debuts) == TYPE_DICTIONARY:
+		for kind in saved_debuts:
+			unit_debuts_seen[str(kind)] = bool(saved_debuts[kind])
+	else:
+		# Una partida anterior ya ha visto las unidades que posee. Así el cambio de
+		# versión no reproduce seis celebraciones seguidas al pulsar Continuar.
+		unit_debuts_seen = {
+			"pugilist":int(levels.puncher) > 0 and not saved_pugilist_debut_pending,
+			"ram":int(levels.ram) > 0, "elephant":int(levels.elephant) > 0,
+			"hammer":int(levels.hammer) > 0, "plasma":int(levels.plasma_cannon) > 0,
+			"meteor":int(levels.meteor) > 0, "supersaiyan":int(levels.supersaiyan) > 0
+		}
+	unit_debut_pending = {}
+	var saved_debut_pending = data.get("unit_debut_pending", {})
+	if typeof(saved_debut_pending) == TYPE_DICTIONARY:
+		for kind in saved_debut_pending:
+			if bool(saved_debut_pending[kind]) and not bool(unit_debuts_seen.get(str(kind), false)):
+				unit_debut_pending[str(kind)] = true
 	_restore_pinned_upgrades(data.get("pinned_upgrades", []))
 	_restore_pile_compact(data.get("pile_compact", []))
 	_restore_fallen_wall_chunks(data.get("fallen_wall_chunks", []))
@@ -4796,7 +4968,7 @@ func _load() -> void:
 	mucus_max_hp = maxf(mucus_hp, float(data.get("mucus_max_hp", mucus_hp)))
 	catapult_clock = maxf(0.0, float(data.get("catapult_clock", 0.0)))
 	puncher_unlocked = bool(data.get("puncher_unlocked", current_phase >= 2 or int(levels.puncher) > 0))
-	puncher_debut_pending = bool(data.get("puncher_debut_pending", false))
+	puncher_debut_pending = saved_pugilist_debut_pending
 	puncher_debut_clock = maxf(0.0, float(data.get("puncher_debut_clock", 0.0)))
 	punch_round_count = maxi(0, int(data.get("punch_round_count", 0)))
 	manual_clicks_since_burst = maxi(0, int(data.get("manual_clicks_since_burst", 0)))
@@ -4894,6 +5066,8 @@ func _new_game() -> void:
 	puncher_unlocked = false
 	puncher_debut_pending = false
 	puncher_debut_clock = 0.0
+	unit_debuts_seen = {}
+	unit_debut_pending = {}
 	manual_clicks_since_burst = 0
 	manual_mining_click_times.clear()
 	overdose_active = false

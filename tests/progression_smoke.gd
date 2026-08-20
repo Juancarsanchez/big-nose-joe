@@ -158,7 +158,8 @@ func _run() -> void:
 	for index in range(9):
 		game._create_piece("grain", "right", 1.0, 0, index, 0.072)
 	var smart_cargo: Array = game._claim_top_pieces("right", game._pawn_claim_capacity(smart_collector), smart_collector)
-	_check(smart_cargo.size() == 9 and smart_cargo.filter(func(piece) -> bool: return piece.visible).size() == 3, "Level-one Smart Clumping must turn three base slots into three visible bundles containing nine real grains.")
+	var smart_mound := smart_collector.get_node_or_null("PowderMound") as Node2D
+	_check(smart_cargo.size() == 9 and is_instance_valid(smart_mound) and smart_mound.visible and smart_cargo.all(func(piece) -> bool: return not piece.visible), "Level-one Smart Clumping must turn three base slots into one visible powder mound containing nine real grains.")
 	await create_timer(0.25).timeout
 	var helmet_probe := Sprite2D.new()
 	helmet_probe.set_meta("specialist", true)

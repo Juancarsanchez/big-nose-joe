@@ -24,6 +24,13 @@ func _run() -> void:
 	game.current_phase = 2
 	game.joe_dialog.hide()
 
+	# Una carga más valiosa deja más masa en la montaña, sin convertir los
+	# valores tardíos en picos verticales ilimitados.
+	_check(is_equal_approx(game._grain_stack_height(1.0), game.GRAIN_HEIGHT), "A one-unit grain must retain the base powder height.")
+	_check(is_equal_approx(game._grain_stack_height(100.0), game.GRAIN_HEIGHT * 1.8), "A value-one-hundred grain must visibly add more powder than a unit grain.")
+	_check(is_equal_approx(game._grain_stack_height(1000000.0), game.GRAIN_HEIGHT * 3.4), "Million-value payloads must use the intended logarithmic visual mass.")
+	_check(game._grain_stack_height(100000000000000000000.0) <= game.GRAIN_HEIGHT * game.GRAIN_VALUE_HEIGHT_MAX_MULTIPLIER, "Late-game payloads must respect the visual powder cap.")
+
 	# Build deterministic overloaded piles without waiting for drop animations.
 	seed(92741)
 	for index in range(84):
@@ -139,11 +146,12 @@ func _run() -> void:
 		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), 0.072)
 	var cargo: Array = game._claim_top_pieces("right", 6, pawn)
 	_check(cargo.size() == 6 and cargo.all(func(piece) -> bool: return piece.get_meta("kind", "") == "grain"), "Normal pawns must carry six separate grains without creating a safe clump.")
-	_check(pawn.z_index >= 8 and cargo.all(func(piece) -> bool: return piece.render_key.ends_with(":cargo")), "Carriers must stay above every storage prop and carried grains must move to the foreground render batch.")
+	var powder_mound := pawn.get_node_or_null("PowderMound") as Node2D
+	_check(pawn.z_index >= 8 and is_instance_valid(powder_mound) and powder_mound.visible and cargo.all(func(piece) -> bool: return not piece.visible), "Normal carriers must show one foreground mini-pile instead of separate visible balls.")
 	pawn.set_meta("cargo", cargo)
 	game._set_pawn_facing(pawn, true)
 	game._update_carried_pieces(pawn)
-	_check(cargo.all(func(piece) -> bool: return piece.position.x > pawn.position.x), "Every visible grain must remain in front of a right-facing carrier, never behind its body.")
+	_check(powder_mound.position.x > 0.0, "The carried powder mound must remain in front of a right-facing carrier.")
 
 	# Cargo becomes currency only after the physical deposit finishes.
 	var cargo_value := 0.0
