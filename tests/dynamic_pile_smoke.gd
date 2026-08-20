@@ -24,12 +24,14 @@ func _run() -> void:
 	game.current_phase = 2
 	game.joe_dialog.hide()
 
-	# Una carga más valiosa deja más masa en la montaña, sin convertir los
-	# valores tardíos en picos verticales ilimitados.
-	_check(is_equal_approx(game._grain_stack_height(1.0), game.GRAIN_HEIGHT), "A one-unit grain must retain the base powder height.")
-	_check(is_equal_approx(game._grain_stack_height(100.0), game.GRAIN_HEIGHT * 1.8), "A value-one-hundred grain must visibly add more powder than a unit grain.")
-	_check(is_equal_approx(game._grain_stack_height(1000000.0), game.GRAIN_HEIGHT * 3.4), "Million-value payloads must use the intended logarithmic visual mass.")
-	_check(game._grain_stack_height(100000000000000000000.0) <= game.GRAIN_HEIGHT * game.GRAIN_VALUE_HEIGHT_MAX_MULTIPLIER, "Late-game payloads must respect the visual powder cap.")
+	# Las piezas lógicas no cambian de tamaño: el valor se representa como área
+	# continua en la superficie (una unidad = un píxel de pantalla de masa).
+	_check(is_equal_approx(game._grain_stack_height(1.0), game.GRAIN_HEIGHT), "A one-unit grain must retain the base logical height.")
+	_check(is_equal_approx(game._grain_stack_height(1000000.0), game.GRAIN_HEIGHT), "Payload value must not create a taller logical sprite stack.")
+	_check(is_equal_approx(game._fossa_capacity("right"), game.FOSSA_BASE_CAPACITY), "The initial fossa capacity must be explicit.")
+	game.levels.fossa_depth = 1
+	_check(is_equal_approx(game._fossa_capacity("right"), game.FOSSA_GALLERY_CAPACITY), "The gallery upgrade must expand the fossa capacity.")
+	game.levels.fossa_depth = 0
 
 	# Build deterministic overloaded piles without waiting for drop animations.
 	seed(92741)
@@ -107,6 +109,17 @@ func _run() -> void:
 		_check(int(rock.get_meta("hardness", 0)) == 0, "A treated rock must become transportable.")
 
 	game._clear_pile()
+	# Una fosa llena debe bloquear solo la extracción; abrir la galería vuelve a
+	# dejar espacio sin falsificar recursos ni borrar la montaña.
+	game._create_piece("grain", "right", game.FOSSA_BASE_CAPACITY, 0, game.RIGHT_WALL_COLUMN, 0.072)
+	var wall_before_full: float = game.right_hp
+	game._click_wall("right")
+	_check(is_equal_approx(game.right_hp, wall_before_full), "A saturated fossa must stop manual extraction.")
+	game.levels.fossa_depth = 1
+	game._click_wall("right")
+	_check(game.right_hp < wall_before_full, "The gallery must restore extraction capacity immediately.")
+	game._clear_pile()
+	game.levels.fossa_depth = 0
 	await process_frame
 	for index in range(180):
 		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), 0.072)
@@ -137,6 +150,9 @@ func _run() -> void:
 	var rock_cargo: Array = game._claim_top_pieces("right", 1, pawn)
 	_check(rock_cargo.size() == 1 and rock_cargo[0] == treated_rock, "Only a blue-helmet specialist may carry a treated rock.")
 	game._finish_delivery(pawn)
+	var ordinary_snow = game._create_piece("grain", "right", 1.0, 0, 1, 0.072)
+	_check(game._claim_top_pieces("right", 1, pawn).is_empty(), "A blue helmet must wait for compacted snow instead of carrying ordinary powder.")
+	_check(not bool(ordinary_snow.get_meta("carried", false)), "A waiting blue helmet must leave normal snow untouched.")
 	pawn.set_meta("specialist", false)
 
 	# Without the voluntary technology, normal pawns still keep every carried grain separate.

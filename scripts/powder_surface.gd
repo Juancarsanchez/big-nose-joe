@@ -14,6 +14,7 @@ const IMPURITY_COLORS := {
 var source: Node
 var redraw_clock := 0.0
 var visual_heights := {"left":{}, "right":{}}
+var surface_profiles := {"left":{}, "right":{}}
 
 func setup(game: Node) -> void:
 	source = game
@@ -36,57 +37,72 @@ func _draw() -> void:
 	_draw_side("right")
 
 func _draw_side(side: String) -> void:
-	var columns: Dictionary = source.pile_columns[side]
-	if columns.is_empty():
+	var mass := float(source._pile_load(side))
+	if mass <= 0.001:
+		surface_profiles[side] = {}
 		return
-	var keys: Array = columns.keys()
-	keys.sort()
-	var first := int(keys.front())
-	var last := int(keys.back())
+	var columns: Dictionary = source.pile_columns[side]
 	var ground := float(source._ground_y()) - 3.0
 	var center := float(source._pile_center(side))
-	var spacing := float(source.GRAIN_SPACING)
+	# Una unidad de economía equivale a un píxel de pantalla de área. La masa se
+	# dibuja como una sola superficie suave, no como una entidad por grano.
+	var area := mass * float(source._fossa_visual_area_per_unit())
+	var max_height := maxf(260.0, ground - 265.0)
+	var desired_width := maxf(sqrt(area * 0.78), area / maxf(1.0, max_height * 0.92))
+	var physical_width := float(source._pile_radius_limit(side)) * float(source.GRAIN_SPACING)
+	desired_width = clampf(desired_width, 2.0, physical_width)
+	var samples := clampi(ceili(desired_width / 12.0) + 1, 3, 180)
+	var spacing := desired_width / float(samples - 1)
+	var start_x := center + float(source.RIGHT_WALL_COLUMN) * float(source.GRAIN_SPACING) if side == "right" else center - float(source.LEFT_WALL_COLUMN) * float(source.GRAIN_SPACING) - desired_width
 	var raw_heights := PackedFloat32Array()
-	var joe_heights := PackedFloat32Array()
-	var side_visual: Dictionary = visual_heights[side]
-	for column in range(first, last + 1):
-		var stack: Array = columns.get(column, [])
-		var total := 0.0
-		var joe_top := 0.0
-		var top_is_joe := true
-		for index in range(stack.size() - 1, -1, -1):
-			var piece = stack[index]
-			var kind := str(piece.get_meta("kind", "grain"))
-			if kind not in ["grain", "impurity"]:
-				top_is_joe = false
-				continue
-			var height := float(piece.get_meta("height", source.GRAIN_HEIGHT))
-			total += height
-			if top_is_joe and kind == "grain" and str(piece.get_meta("source", "player")) != "player":
-				joe_top += height
-			else:
-				top_is_joe = false
-		var displayed := lerpf(float(side_visual.get(column, 0.0)), total, 0.34)
-		if absf(displayed - total) < 0.15:
-			displayed = total
-		side_visual[column] = displayed
-		raw_heights.append(displayed)
-		joe_heights.append(joe_top)
+	var weight_sum := 0.0
+	for index in range(samples):
+		var t := float(index) / float(samples - 1)
+		# Valles y lomas deterministas: parece polvo acumulado, no una pirámide.
+		var weight := 0.72 + sin(t * PI) * 0.48 + sin(t * PI * 4.0 + (0.45 if side == "right" else 1.2)) * 0.13
+		weight = maxf(0.18, weight)
+		raw_heights.append(weight)
+		weight_sum += weight
+	for index in range(raw_heights.size()):
+		raw_heights[index] = area * raw_heights[index] / maxf(1.0, weight_sum * spacing)
 	var heights := _smooth(raw_heights)
+	# Tras suavizar, se conserva exactamente el área total corrigiendo una vez.
+	var smoothed_area := 0.0
+	for height in heights: smoothed_area += height * spacing
+	var correction := area / maxf(1.0, smoothed_area)
+	for index in range(heights.size()): heights[index] *= correction
+	var joe_ratio := clampf(float(source.joe_grain_load_cache.get(side, 0.0)) / mass, 0.0, 1.0)
+	var joe_heights := PackedFloat32Array()
+	for height in heights:
+		joe_heights.append(clampf(height * joe_ratio, 0.0, 22.0))
+	surface_profiles[side] = {"start":start_x, "spacing":spacing, "heights":heights}
 	var surface := PackedVector2Array()
-	var fill := PackedVector2Array([Vector2(center + float(first) * spacing - spacing * 0.6, ground)])
+	var fill := PackedVector2Array([Vector2(start_x - spacing * 0.6, ground)])
 	for index in range(heights.size()):
-		var point := Vector2(center + float(first + index) * spacing, ground - heights[index])
+		var point := Vector2(start_x + float(index) * spacing, ground - heights[index])
 		surface.append(point)
 		fill.append(point)
-	fill.append(Vector2(center + float(last) * spacing + spacing * 0.6, ground))
+	fill.append(Vector2(start_x + desired_width + spacing * 0.6, ground))
 	draw_colored_polygon(fill, POWDER)
 	_draw_lower_shade(fill, ground)
 	_draw_joe_layer(surface, joe_heights)
 	if surface.size() >= 2:
 		draw_polyline(surface, OUTLINE, 2.2, true)
-	_draw_powder_noise(side, first, heights, center, spacing, ground)
-	_draw_impurity_stains(columns, first, heights, center, spacing, ground)
+	_draw_powder_noise(side, 0, heights, start_x, spacing, ground)
+	_draw_impurity_stains(columns, start_x, heights, spacing, ground)
+
+func surface_y_at(side: String, x: float) -> float:
+	var profile: Dictionary = surface_profiles.get(side, {})
+	var heights: PackedFloat32Array = profile.get("heights", PackedFloat32Array())
+	if heights.is_empty():
+		return float(source._ground_y())
+	var spacing := float(profile.get("spacing", 1.0))
+	var start := float(profile.get("start", 0.0))
+	var progress := clampf((x - start) / maxf(0.001, spacing), 0.0, float(heights.size() - 1))
+	var low := floori(progress)
+	var high := mini(low + 1, heights.size() - 1)
+	var height := lerpf(heights[low], heights[high], progress - float(low))
+	return float(source._ground_y()) - 3.0 - height
 
 func _smooth(values: PackedFloat32Array) -> PackedFloat32Array:
 	var result := values.duplicate()
@@ -149,7 +165,7 @@ func _draw_powder_noise(side: String, first: int, heights: PackedFloat32Array, c
 		var color := Color("bbb6ab") if index % 3 else Color("ffffff")
 		draw_line(Vector2(x - 1.2, y), Vector2(x + 1.2, y + 0.4), color, 1.1, true)
 
-func _draw_impurity_stains(columns: Dictionary, first: int, heights: PackedFloat32Array, center: float, spacing: float, ground: float) -> void:
+func _draw_impurity_stains(columns: Dictionary, start_x: float, heights: PackedFloat32Array, spacing: float, ground: float) -> void:
 	var stains: Array = []
 	for stack_value in columns.values():
 		for piece in stack_value:
@@ -161,12 +177,9 @@ func _draw_impurity_stains(columns: Dictionary, first: int, heights: PackedFloat
 	for index in range(0, stains.size(), stride):
 		var piece = stains[index]
 		var pos: Vector2 = piece.position
-		var column := int(piece.get_meta("column", first))
-		var surface_index := column - first
-		if surface_index < 0 or surface_index >= heights.size():
-			continue
+		var surface_index := clampi(roundi((piece.position.x - start_x) / maxf(0.001, spacing)), 0, heights.size() - 1)
 		var surface_y := ground - float(heights[surface_index])
-		pos.x = center + float(column) * spacing + clampf(pos.x - (center + float(column) * spacing), -spacing * 0.35, spacing * 0.35)
+		pos.x = start_x + float(surface_index) * spacing + clampf(pos.x - (start_x + float(surface_index) * spacing), -spacing * 0.35, spacing * 0.35)
 		pos.y = clampf(pos.y, surface_y + 6.0, ground - 5.0)
 		var color: Color = IMPURITY_COLORS.get(str(piece.get_meta("material", "")), Color("a58b53"))
 		var size := 5.0 + float((index * 13) % 5)

@@ -24,14 +24,20 @@ const EDGE_SIZE := 34.0
 const PAN_SPEED := 1050.0
 const GRAIN_SPACING := 9.2
 const GRAIN_HEIGHT := 7.4
-# La masa visible crece por tramos suaves: una carga más valiosa deja una
-# montaña mayor, pero jamás se convierte en una torre absurda al llegar al
-# late game. 1 / 10 / 100 / 1K / 1M equivalen a x1 / x1.4 / x1.8 / x2.2 / x3.4.
-const GRAIN_VALUE_HEIGHT_PER_DECADE := 0.40
-const GRAIN_VALUE_HEIGHT_MAX_MULTIPLIER := 4.75
+# La montaña es una superficie continua: una unidad de polvo ocupa exactamente
+# un píxel de pantalla de área. No hay un Sprite por grano.
+const FOSSA_PIXEL_WORLD_AREA := 1.0 / (WORLD_SCALE * WORLD_SCALE)
+const FOSSA_BASE_CAPACITY := 75000.0
+const FOSSA_GALLERY_CAPACITY := 600000.0
+const FOSSA_COMPRESSION_CAPACITIES := [600000.0, 100000000.0, 50000000000.0, 100000000000000.0]
+const FOSSA_COMPRESSION_VISUAL_DIVISORS := [1.0, 200.0, 100000.0, 200000000.0]
+const FOSSA_BASE_RADIUS := 92
+const FOSSA_GALLERY_RADIUS := 300
+const FOSSA_GALLERY_BOX_X := 7050.0
 const ROCK_HEIGHT := 18.0
 const MAX_PILE_RADIUS := 92
 const PILE_BOX_MARGIN := 118.0
+const BASE_BOX_LEFT := 4500.0
 const MAX_SURFACE_STEP := 1.35
 const TERRAIN_BAND_SIZE := 30
 const TERRAIN_ANCHORS := [0.16, 0.68, 0.38, 0.84, 0.53]
@@ -252,6 +258,11 @@ var loose_chunks: Array[PilePiece] = []
 var fallen_wall_chunks: Array[Sprite2D] = []
 var pile_renderer: PileRenderer
 var powder_surface: PowderSurface
+var fossa_meter: PanelContainer
+var fossa_meter_title: Label
+var fossa_meter_progress: ProgressBar
+var fossa_meter_readout: Label
+var fossa_saturation_notice_clock := 0.0
 var particle_motions: Array[Dictionary] = []
 var pile_columns := {"left":{}, "right":{}}
 var pile_heights := {"left":{}, "right":{}}
@@ -345,6 +356,7 @@ func _ready() -> void:
 	powder_surface.z_index = 0
 	chunks.add_child(powder_surface)
 	powder_surface.setup(self)
+	_build_fossa_meter()
 	pile_renderer = PileBatchRenderer.new()
 	pile_renderer.name = "PileRenderer"
 	add_child(pile_renderer)
@@ -623,13 +635,20 @@ func _impact_shake(strength: float) -> void:
 	for offset in [strength, -strength * 0.7, strength * 0.4, 0.0]:
 		impact_shake_tween.tween_property(stage, "position:y", offset, 0.045)
 
+func _make_powder_flake(color: Color, size: float) -> Polygon2D:
+	var flake := Polygon2D.new()
+	flake.polygon = PackedVector2Array([
+		Vector2(-size, size * 0.18), Vector2(-size * 0.28, -size * 0.72),
+		Vector2(size * 0.82, -size * 0.24), Vector2(size * 0.44, size * 0.66),
+	])
+	flake.color = color
+	return flake
+
 func _spawn_impact_dust(origin: Vector2, color: Color = Color("9b5960"), amount: int = 5) -> void:
 	for index in range(amount):
-		var dust := Sprite2D.new()
-		dust.texture = GRAIN_TEXTURE
-		dust.modulate = color
-		dust.scale = Vector2.ONE * randf_range(0.035, 0.065)
+		var dust := _make_powder_flake(color, randf_range(2.2, 5.2))
 		dust.position = origin + Vector2(randf_range(-14.0, 14.0), -randf_range(2.0, 12.0))
+		dust.rotation = randf_range(-0.8, 0.8)
 		dust.z_index = 30
 		effects.add_child(dust)
 		var destination := dust.position + Vector2(randf_range(-32.0, 32.0), -randf_range(20.0, 55.0))
@@ -644,10 +663,7 @@ func _spawn_debut_powder_burst(side: String, origin: Vector2, intensity: float =
 	var direction := -1.0 if side == "left" else 1.0
 	var count := clampi(roundi(18.0 * intensity), 18, 46)
 	for index in range(count):
-		var flake := Sprite2D.new()
-		flake.texture = GRAIN_TEXTURE
-		flake.modulate = Color("fff9e8")
-		flake.scale = Vector2.ONE * randf_range(0.032, 0.076) * (0.85 + intensity * 0.18)
+		var flake := _make_powder_flake(Color("fff9e8"), randf_range(2.5, 6.8) * (0.85 + intensity * 0.18))
 		flake.position = origin + Vector2(direction * randf_range(-8.0, 16.0), -randf_range(8.0, 42.0))
 		flake.rotation = randf_range(-0.8, 0.8)
 		flake.z_index = 31
@@ -661,10 +677,50 @@ func _spawn_debut_powder_burst(side: String, origin: Vector2, intensity: float =
 		tween.parallel().tween_property(flake, "rotation", flake.rotation + randf_range(-2.8, 2.8), 0.56)
 		tween.tween_callback(flake.queue_free)
 
+func _spawn_powder_fall(origin: Vector2, side: String, amount: int = 6, intensity: float = 1.0) -> void:
+	# El valor económico sigue viajando como datos; este polvo es únicamente la
+	# lectura visual de que una porción de nieve ha salido de la pared o del techo.
+	var direction := -1.0 if side == "left" else 1.0
+	for index in range(clampi(amount, 1, 18)):
+		var flake := _make_powder_flake(Color("f4f0dc"), randf_range(1.8, 4.8) * intensity)
+		flake.position = origin + Vector2(randf_range(-12.0, 12.0), randf_range(-8.0, 12.0))
+		flake.rotation = randf_range(-0.8, 0.8)
+		flake.z_index = 30
+		effects.add_child(flake)
+		var landing := flake.position + Vector2(direction * randf_range(18.0, 86.0) * intensity, randf_range(42.0, 138.0) * intensity)
+		var tween := create_tween().set_parallel()
+		tween.tween_property(flake, "position", landing, randf_range(0.28, 0.52)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tween.tween_property(flake, "rotation", flake.rotation + randf_range(-2.0, 2.0), 0.46)
+		tween.tween_property(flake, "modulate:a", 0.0, 0.22).set_delay(0.25)
+		tween.chain().tween_callback(flake.queue_free)
+
+func _spawn_powder_stream(start: Vector2, target: Vector2, intensity: float = 1.0) -> void:
+	# El barrido no lanza canicas: dibuja una breve lengua de nieve que se aspira
+	# desde la superficie hasta la caja.
+	var stream := Line2D.new()
+	stream.width = 4.0 + intensity * 3.0
+	stream.default_color = Color("f4f0dc")
+	stream.points = PackedVector2Array([start, start.lerp(target, 0.48) - Vector2(0.0, 20.0 + absf(target.x - start.x) * 0.055), target])
+	stream.z_index = 31
+	effects.add_child(stream)
+	var tween := create_tween().set_parallel()
+	tween.tween_property(stream, "modulate:a", 0.0, 0.24 + intensity * 0.03)
+	tween.tween_property(stream, "width", 1.0, 0.24 + intensity * 0.03)
+	tween.chain().tween_callback(stream.queue_free)
+	for index in range(1 + int(intensity)):
+		var flake := _make_powder_flake(Color("fffdf0"), randf_range(1.8, 3.8) * intensity)
+		flake.position = start.lerp(target, randf_range(0.08, 0.36)) + Vector2(randf_range(-7.0, 7.0), randf_range(-9.0, 9.0))
+		flake.z_index = 32
+		effects.add_child(flake)
+		var flake_tween := create_tween().set_parallel()
+		flake_tween.tween_property(flake, "position", flake.position.lerp(target, randf_range(0.45, 0.72)), 0.2)
+		flake_tween.tween_property(flake, "modulate:a", 0.0, 0.2)
+		flake_tween.chain().tween_callback(flake.queue_free)
+
 func _grain_stack_height(value: float) -> float:
-	var decades := log(maxf(1.0, value)) / log(10.0)
-	var multiplier := minf(GRAIN_VALUE_HEIGHT_MAX_MULTIPLIER, 1.0 + decades * GRAIN_VALUE_HEIGHT_PER_DECADE)
-	return GRAIN_HEIGHT * multiplier
+	# Las piezas lógicas conservan una altura estable. Su valor solo cambia el
+	# área de PowderSurface, donde 1 unidad ocupa 1 píxel de pantalla.
+	return GRAIN_HEIGHT
 
 func _spawn_energy_ring(origin: Vector2, color: Color, radius: float = 20.0) -> void:
 	var ring := Line2D.new()
@@ -699,6 +755,7 @@ func _finish_layout() -> void:
 	_update_pressure_visuals()
 
 func _process(delta: float) -> void:
+	_update_fossa_meter()
 	if user_paused:
 		return
 	_update_particle_motions(delta)
@@ -751,6 +808,54 @@ func _visible_world_width() -> float:
 func _ground_y() -> float:
 	return stage.size.y - FLOOR_HEIGHT
 
+func _build_fossa_meter() -> void:
+	fossa_meter = PanelContainer.new()
+	fossa_meter.name = "FossaMeter"
+	fossa_meter.position = Vector2(28.0, 146.0)
+	fossa_meter.size = Vector2(288.0, 57.0)
+	fossa_meter.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var panel := StyleBoxFlat.new()
+	panel.bg_color = Color("180d1cdd")
+	panel.border_color = Color("b97f54")
+	panel.set_border_width_all(1)
+	panel.set_corner_radius_all(4)
+	fossa_meter.add_theme_stylebox_override("panel", panel)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 9)
+	margin.add_theme_constant_override("margin_right", 9)
+	margin.add_theme_constant_override("margin_top", 5)
+	margin.add_theme_constant_override("margin_bottom", 5)
+	fossa_meter.add_child(margin)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 1)
+	margin.add_child(content)
+	fossa_meter_title = Label.new()
+	fossa_meter_title.add_theme_font_size_override("font_size", 10)
+	fossa_meter_title.add_theme_color_override("font_color", Color("9be6ef"))
+	content.add_child(fossa_meter_title)
+	fossa_meter_progress = ProgressBar.new()
+	fossa_meter_progress.show_percentage = false
+	fossa_meter_progress.custom_minimum_size = Vector2(0, 12)
+	content.add_child(fossa_meter_progress)
+	fossa_meter_readout = Label.new()
+	fossa_meter_readout.add_theme_font_size_override("font_size", 10)
+	fossa_meter_readout.add_theme_color_override("font_color", Color("f5e9c9"))
+	content.add_child(fossa_meter_readout)
+	$World.add_child(fossa_meter)
+
+func _update_fossa_meter() -> void:
+	if not is_instance_valid(fossa_meter):
+		return
+	var side := active_side
+	var load := _pile_load(side)
+	var capacity := _fossa_capacity(side)
+	var ratio := clampf(load / maxf(1.0, capacity), 0.0, 1.0)
+	fossa_meter_title.text = "LEUCOTOPÓGRAFO DE 1927  ·  FOSA %s" % ("IZQUIERDA" if side == "left" else "DERECHA")
+	fossa_meter_progress.value = ratio * 100.0
+	fossa_meter_readout.text = "AFORO  %s / %s" % [_number(load), _number(capacity)]
+	var danger := Color("e95b61") if ratio >= 0.9 else Color("9be6ef")
+	fossa_meter_title.add_theme_color_override("font_color", danger)
+
 func _mine_x(side: String = active_side) -> float:
 	return 3618.0 if side == "left" else 3982.0
 
@@ -764,6 +869,8 @@ func _pile_center(side: String) -> float:
 	return _mine_x(side) + (-58.0 if side == "left" else 58.0)
 
 func _box_x() -> float:
+	if int(levels.get("fossa_depth", 0)) > 0:
+		return FOSSA_GALLERY_BOX_X
 	if int(levels.get("silo", 0)) > 0:
 		return SILO_X
 	if int(levels.get("container", 0)) > 0:
@@ -1049,7 +1156,13 @@ func _update_pawns(delta: float) -> void:
 		var lane_x := float(pawn.get_meta("lane_x", 0.0))
 		var floor_y := _ground_y() - 14.0
 		var depot := Vector2(_box_x() + lane_x, floor_y)
+		var specialist := bool(pawn.get_meta("specialist", false))
+		var specialist_rock := _specialist_rock_target(side, pawn.position) if specialist else null
 		var work_point := _pile_access_point(side) + Vector2(lane_x, 0.0)
+		# Los cascos azules trepan hasta el pedrusco aunque la nieve normal lo haya
+		# rodeado. Nunca se ponen a recoger polvo como si fueran peones corrientes.
+		if is_instance_valid(specialist_rock):
+			work_point = specialist_rock.position + Vector2(lane_x * 0.12, -14.0)
 		if state == "to_pile":
 			var obstruction := _nearest_fallen_wall_chunk(side, pawn.position)
 			if obstruction:
@@ -1070,10 +1183,26 @@ func _update_pawns(delta: float) -> void:
 			pawn.set_meta("timer", timer)
 			pawn.position.x = work_point.x + sin(Time.get_ticks_msec() * 0.018 + int(pawn.get_meta("index", 0))) * 1.8
 			if timer <= 0.0:
-				var rock := _top_untreated_rock(side)
-				if bool(pawn.get_meta("specialist", false)) and is_instance_valid(rock):
-					_chip_rock(rock, _breaker_damage())
-					pawn.set_meta("timer", 0.34 / (1.0 + float(levels.shift) * 0.12))
+				if specialist:
+					var rock := _specialist_rock_target(side, pawn.position)
+					if not is_instance_valid(rock):
+						# Sin apelmazados no hay trabajo para casco azul. Espera en lugar
+						# de vaciar la montaña de nieve corriente.
+						pawn.set_meta("timer", 0.42)
+					elif pawn.position.distance_to(rock.position) > 30.0:
+						pawn.set_meta("state", "to_pile")
+						pawn.set_meta("timer", 0.0)
+					elif int(rock.get_meta("hardness", 0)) > 0:
+						_chip_rock(rock, _breaker_damage())
+						pawn.set_meta("timer", 0.34 / (1.0 + float(levels.shift) * 0.12))
+					else:
+						var rocks := _claim_top_pieces(side, _pawn_claim_capacity(pawn), pawn)
+						if rocks.is_empty():
+							pawn.set_meta("timer", 0.28)
+						else:
+							pawn.set_meta("state", "lifting")
+							pawn.set_meta("timer", 0.24)
+							_set_pawn_carrying(pawn, true)
 				else:
 					var claimed := _claim_top_pieces(side, _pawn_claim_capacity(pawn), pawn)
 					pawn.set_meta("cargo", claimed)
@@ -1132,10 +1261,12 @@ func _choose_work_side(index: int) -> String:
 		return "left" if index % 2 == 0 else "right"
 	return "left" if left_score > right_score else "right"
 
-func _spawn_chunk(origin: Vector2, value: float, side: String = active_side, preferred_column: int = 999, source: String = "player") -> void:
+func _spawn_chunk(origin: Vector2, value: float, side: String = active_side, preferred_column: int = 999, source: String = "player", powder_effect: bool = false) -> void:
 	var column := _choose_landing_column(side, preferred_column)
 	var piece := _create_piece("grain", side, value, 0, column, randf_range(0.068, 0.078), "", source)
 	_drop_piece(piece, origin)
+	if powder_effect:
+		_spawn_powder_fall(origin, side, clampi(roundi(3.0 + log(maxf(1.0, value)) / log(10.0) * 2.0), 3, 10))
 
 func _spawn_special_piece(kind: String, side: String, material: String = "") -> void:
 	var scale := randf_range(0.078, 0.092) if kind == "impurity" else randf_range(0.07, 0.085)
@@ -1147,6 +1278,8 @@ func _drop_piece(piece: PilePiece, origin: Vector2) -> void:
 	_index_remove_piece(piece)
 	piece.position = origin + Vector2(randf_range(-10.0, 10.0), 0.0)
 	piece.rotation = randf_range(-0.18, 0.18)
+	if piece.get_meta("kind", "grain") == "grain":
+		piece.visible = false
 	piece.set_meta("landed", false)
 	pile_renderer.refresh_group(piece)
 	var landing := _landing_position(piece)
@@ -1361,11 +1494,47 @@ func _constrain_column(side: String, column: int) -> int:
 	return clampi(column, -limit, limit)
 
 func _pile_radius_limit(side: String) -> int:
+	var radius_cap := FOSSA_GALLERY_RADIUS if int(levels.get("fossa_depth", 0)) > 0 else FOSSA_BASE_RADIUS
 	if side == "right":
 		var free_width := maxf(18.0 * GRAIN_SPACING, _box_x() - PILE_BOX_MARGIN - _pile_center(side))
-		return clampi(floori(free_width / GRAIN_SPACING), 18, MAX_PILE_RADIUS)
+		return clampi(floori(free_width / GRAIN_SPACING), 18, radius_cap)
 	var left_edge := 180.0 if septum_open else maxf(180.0, camera_x - 100.0)
-	return clampi(floori((_pile_center(side) - left_edge) / GRAIN_SPACING), 18, MAX_PILE_RADIUS)
+	return clampi(floori((_pile_center(side) - left_edge) / GRAIN_SPACING), 18, radius_cap)
+
+func _fossa_capacity(side: String = active_side) -> float:
+	if int(levels.get("fossa_depth", 0)) <= 0:
+		return FOSSA_BASE_CAPACITY
+	var compression := clampi(int(levels.get("fossa_compression", 0)), 0, FOSSA_COMPRESSION_CAPACITIES.size() - 1)
+	return float(FOSSA_COMPRESSION_CAPACITIES[compression])
+
+func _fossa_visual_area_per_unit() -> float:
+	var compression := clampi(int(levels.get("fossa_compression", 0)), 0, FOSSA_COMPRESSION_VISUAL_DIVISORS.size() - 1)
+	return FOSSA_PIXEL_WORLD_AREA / float(FOSSA_COMPRESSION_VISUAL_DIVISORS[compression])
+
+func _fossa_free_space(side: String = active_side) -> float:
+	return maxf(0.0, _fossa_capacity(side) - _pile_load(side))
+
+func _fossa_accepts(side: String, amount: float) -> float:
+	return minf(maxf(0.0, amount), _fossa_free_space(side))
+
+func _fossa_is_saturated(side: String = active_side) -> bool:
+	return _fossa_free_space(side) <= 0.001
+
+func _show_fossa_saturated(side: String = active_side) -> void:
+	if Time.get_ticks_msec() * 0.001 < fossa_saturation_notice_clock:
+		return
+	fossa_saturation_notice_clock = Time.get_ticks_msec() * 0.001 + 1.4
+	_show_toast("FOSA SATURADA  ·  RECOGE NIEVE O EXCAVA MÁS PROFUNDO", 3.4)
+	_float_text("FOSA LLENA", Vector2(_pile_center(side), _ground_y() - 155.0))
+
+func _return_powder_to_wall(side: String, amount: float) -> void:
+	# Si Joe intenta echar más polvo en una fosa colmada, no se esfuma: vuelve a
+	# quedar adherido a la pared. Así el límite es una decisión logística real.
+	if side == "left":
+		left_hp = minf(left_max, left_hp + maxf(0.0, amount))
+	else:
+		right_hp = minf(right_max, right_hp + maxf(0.0, amount))
+	_update_world()
 
 func _column_bounds(side: String, radius: int) -> Vector2i:
 	return Vector2i(-radius, LEFT_WALL_COLUMN) if side == "left" else Vector2i(RIGHT_WALL_COLUMN, radius)
@@ -1442,12 +1611,21 @@ func _top_pieces(side: String) -> Array[PilePiece]:
 func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 	var cargo: Array = []
 	var remaining_storage := _storage_claim_space()
+	var specialist := bool(pawn.get_meta("specialist", false))
 	while cargo.size() < capacity:
 		var collectable: Array[PilePiece] = []
 		var handler := bool(pawn.get_meta("handler", false))
-		for candidate in _top_pieces(side):
+		# Para los cascos azules no existe el plan B de llevar nieve normal. Busca
+		# únicamente apelmazados ya abiertos, incluso si la superficie los ha
+		# cubierto parcialmente; los demás peones continúan usando la cima.
+		var candidates: Array = loose_chunks if specialist else _top_pieces(side)
+		for candidate_value in candidates:
+			var candidate := candidate_value as PilePiece
+			if not _piece_is_in_pile(candidate, side):
+				continue
 			var kind: String = candidate.get_meta("kind", "grain")
-			if kind == "rock" and (not bool(pawn.get_meta("specialist", false)) or int(candidate.get_meta("hardness", 0)) > 0): continue
+			if specialist and kind != "rock": continue
+			if kind == "rock" and (not specialist or int(candidate.get_meta("hardness", 0)) > 0): continue
 			if kind == "bacteria" and not handler: continue
 			if kind == "impurity" and int(levels.detector) > 0 and not bool(pawn.get_meta("detector", false)): continue
 			var stored_value := float(candidate.get_meta("value", 1.0)) * (_box_yield_multiplier() if kind == "grain" else 1.0)
@@ -1459,9 +1637,11 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 			preferred = collectable.filter(func(item: PilePiece) -> bool: return item.get_meta("kind", "grain") == "bacteria")
 		elif bool(pawn.get_meta("detector", false)):
 			preferred = collectable.filter(func(item: PilePiece) -> bool: return item.get_meta("kind", "grain") == "impurity")
-		elif bool(pawn.get_meta("specialist", false)):
+		elif specialist:
 			preferred = collectable.filter(func(item: PilePiece) -> bool: return item.get_meta("kind", "grain") == "rock")
 		var source := preferred if not preferred.is_empty() else collectable
+		if specialist and source.is_empty():
+			break
 		var piece := source[randi_range(0, mini(6, source.size() - 1))]
 		var piece_kind: String = piece.get_meta("kind", "grain")
 		_index_remove_piece(piece)
@@ -1483,6 +1663,13 @@ func _surface_piece_at(world_pos: Vector2) -> PilePiece:
 	var side := "left" if world_pos.x < SEPTUM_X else "right"
 	if side == "left" and not septum_open:
 		return null
+	# La silueta ya no se deriva de las posiciones de las piezas lógicas. Si el
+	# clic cae dentro del polvo renderizado, cualquier grano superior sirve como
+	# representación exacta de la masa que se está retirando.
+	if powder_surface and world_pos.y >= powder_surface.surface_y_at(side, world_pos.x) and world_pos.y <= _ground_y() + 5.0:
+		var top := _top_pieces(side)
+		if not top.is_empty():
+			return top.front()
 	var nearest: PilePiece = null
 	var nearest_x := INF
 	for piece in _top_pieces(side):
@@ -1580,7 +1767,7 @@ func _mine_fallen_wall_chunk(chunk: Sprite2D, amount: float) -> void:
 	collapse.tween_property(chunk, "rotation", chunk.rotation + randf_range(-0.55, 0.55), 0.24)
 	collapse.chain().tween_callback(chunk.queue_free)
 
-func _manual_collect_at(world_pos: Vector2, _show_feedback: bool = true) -> bool:
+func _manual_collect_at(world_pos: Vector2, _show_feedback: bool = true, continuous_stream: bool = false) -> bool:
 	# Un grano visible y señalado con precisión gana al área de selección grande
 	# del pedrusco. Así el apelmazado estorba, pero no secuestra los clics vecinos.
 	var piece := _direct_loose_piece_at(world_pos)
@@ -1604,6 +1791,8 @@ func _manual_collect_at(world_pos: Vector2, _show_feedback: bool = true) -> bool
 		return true
 	var side: String = piece.get_meta("side", "right")
 	_index_remove_piece(piece)
+	if kind == "grain":
+		piece.visible = false
 	_set_piece_carried(piece, true)
 	piece.set_meta("manual_flying", true)
 	_reserve_manual_piece(piece, stored_value)
@@ -1614,6 +1803,8 @@ func _manual_collect_at(world_pos: Vector2, _show_feedback: bool = true) -> bool
 	var target := Vector2(_box_x() + 8.0, _ground_y() - 24.0)
 	var control := (start + target) * 0.5 - Vector2(0.0, 85.0 + absf(target.x - start.x) * 0.08)
 	var duration := MANUAL_DELIVERY_BASE_TIME + minf(0.28, start.distance_to(target) / 1500.0)
+	if kind == "grain":
+		_spawn_powder_stream(start, target, 1.5 if continuous_stream else 0.72)
 	particle_motions.append({"kind":"manual", "piece":piece, "elapsed":0.0, "duration":duration, "start":start, "control":control, "target":target})
 	return true
 
@@ -1643,7 +1834,7 @@ func _update_continuous_sweep(delta: float) -> void:
 	if kind in ["rock", "bacteria"] or (kind != "impurity" and stored_value > _manual_claim_space() + 0.001):
 		continuous_sweep_clock = 0.08
 		return
-	_manual_collect_at(world_pos, false)
+	_manual_collect_at(world_pos, false, true)
 	continuous_sweep_clock = _continuous_sweep_interval()
 
 func _animate_manual_flight(progress: float, piece: Variant, start: Vector2, control: Vector2, target: Vector2) -> void:
@@ -1843,10 +2034,21 @@ func _update_contamination_warning(previous: float) -> void:
 	else:
 		_show_toast("LA CAJA EMPIEZA A ESTAR PEGAJOSA")
 
-func _top_untreated_rock(side: String) -> PilePiece:
-	for piece in _top_pieces(side):
-		if piece.get_meta("kind", "grain") == "rock" and int(piece.get_meta("hardness", 0)) > 0: return piece
-	return null
+func _specialist_rock_target(side: String, from: Vector2) -> PilePiece:
+	var target: PilePiece = null
+	var best_score := INF
+	for value in loose_chunks:
+		var candidate := value as PilePiece
+		if not _piece_is_in_pile(candidate, side) or candidate.get_meta("kind", "grain") != "rock":
+			continue
+		# Abrir un pedrusco tiene prioridad absoluta. Entre rocas equivalentes,
+		# el casco azul elige la más cercana para que el trayecto se lea fluido.
+		var unopened_penalty := 0.0 if int(candidate.get_meta("hardness", 0)) > 0 else 1000000.0
+		var score := unopened_penalty + from.distance_squared_to(candidate.position)
+		if score < best_score:
+			best_score = score
+			target = candidate
+	return target
 
 func _chip_rock(rock: PilePiece, power: int = 1) -> void:
 	if not is_instance_valid(rock): return
@@ -1998,9 +2200,12 @@ func _click_wall(side: String) -> void:
 		_place_puncher(puncher)
 	total_clicks += 1
 	_record_manual_mining_click()
-	var hit := minf(_click_power(), _wall_hp(side))
+	var hit := minf(_click_power(), minf(_wall_hp(side), _fossa_free_space(side)))
+	if hit <= 0.0:
+		_show_fossa_saturated(side)
+		return
 	_damage_wall(hit, side)
-	_spawn_chunk(Vector2(_mine_x(side), _ground_y() - randf_range(160.0, 310.0)), hit, side)
+	_spawn_chunk(Vector2(_mine_x(side), _ground_y() - randf_range(160.0, 310.0)), hit, side, 999, "player", true)
 	_float_text("-%s" % _number(hit), Vector2(_mine_x(side), _ground_y() - 280.0))
 	if int(levels.click_burst) > 0 and _wall_hp(side) > 0.0:
 		manual_clicks_since_burst += 1
@@ -2008,10 +2213,13 @@ func _click_wall(side: String) -> void:
 		if manual_clicks_since_burst >= threshold:
 			manual_clicks_since_burst = 0
 			var repeats := int(levels.click_burst)
-			var burst := minf(float(repeats) * _click_power(), _wall_hp(side))
-			_damage_wall(burst, side)
-			_spawn_extraction_payload(side, burst, _mine_x(side), repeats)
-			_float_text("¡RÁFAGA!  -%s" % _number(burst), Vector2(_mine_x(side), _ground_y() - 245.0))
+			var burst := minf(float(repeats) * _click_power(), minf(_wall_hp(side), _fossa_free_space(side)))
+			if burst > 0.0:
+				_damage_wall(burst, side)
+				_spawn_extraction_payload(side, burst, _mine_x(side), repeats)
+				_float_text("¡RÁFAGA!  -%s" % _number(burst), Vector2(_mine_x(side), _ground_y() - 245.0))
+			else:
+				_show_fossa_saturated(side)
 
 func _damage_wall(amount: float, side: String = active_side) -> void:
 	var extracted := minf(maxf(0.0, amount), _wall_hp(side))
@@ -2062,10 +2270,7 @@ func _spawn_wall_chips(side: String, milestones: int) -> void:
 	var direction := -1.0 if side == "left" else 1.0
 	for milestone in range(milestones):
 		for index in range(3):
-			var chip := Sprite2D.new()
-			chip.texture = GRAIN_TEXTURE
-			chip.scale = Vector2.ONE * randf_range(0.018, 0.032)
-			chip.modulate = Color("e8edf0")
+			var chip := _make_powder_flake(Color("e8edf0"), randf_range(1.6, 3.4))
 			chip.z_index = 40
 			chip.position = Vector2(free_x, randf_range(_ground_y() - 330.0, _ground_y() - 24.0))
 			effects.add_child(chip)
@@ -2183,6 +2388,7 @@ func _update_world() -> void:
 	_update_box()
 
 func _update_box() -> void:
+	box.position.x = _box_x() - box.size.x * 0.35 if int(levels.get("fossa_depth", 0)) > 0 else BASE_BOX_LEFT
 	box.pivot_offset = Vector2(box.size.x * 0.5, box.size.y)
 	box.scale = Vector2.ONE
 	box.modulate = Color("5e3428").lerp(Color("8c5130"), sin(Time.get_ticks_msec() * 0.012) * 0.5 + 0.5) if box_jammed else Color.WHITE.lerp(Color("ad7f43"), contamination / 100.0)
@@ -2514,7 +2720,10 @@ func _resolve_punch(puncher: Sprite2D) -> void:
 		return
 	var debut := bool(puncher.get_meta("debut", false))
 	var combo_round := bool(puncher.get_meta("combo_round", false))
-	var output := mini(_punch_output() * (2 if combo_round else 1), ceili(_wall_hp(side)))
+	var output := mini(_punch_output() * (2 if combo_round else 1), mini(ceili(_wall_hp(side)), ceili(_fossa_free_space(side))))
+	if output <= 0:
+		_show_fossa_saturated(side)
+		return
 	_damage_wall(float(output), side)
 	total_clicks += output
 	var direction := -1.0 if side == "left" else 1.0
@@ -2851,7 +3060,10 @@ func _special_extraction_hit(kind: String, origin: Vector2) -> void:
 	if debut:
 		unit_debut_pending.erase(kind)
 		unit_debuts_seen[kind] = true
-	var damage := minf(_special_extractor_damage(kind), _wall_hp(side))
+	var damage := minf(_special_extractor_damage(kind), minf(_wall_hp(side), _fossa_free_space(side)))
+	if damage <= 0.0:
+		_show_fossa_saturated(side)
+		return
 	_damage_wall(damage, side)
 	total_clicks += roundi(damage)
 	var impact_x := _wall_free_x(side)
@@ -2895,6 +3107,7 @@ func _spawn_extraction_payload(side: String, amount: float, impact_x: float, vis
 	if amount <= 0.0: return
 	var count := maxi(1, visuals)
 	var value := amount / float(count)
+	_spawn_powder_fall(Vector2(impact_x, _ground_y() - 32.0), side, clampi(4 + roundi(log(maxf(1.0, amount)) / log(10.0) * 2.0), 5, 16), 1.15)
 	for index in range(count):
 		_spawn_chunk(Vector2(impact_x + randf_range(-10.0, 10.0), _ground_y() - randf_range(185.0, 320.0)), value, side)
 
@@ -2966,6 +3179,13 @@ func _buy(id: String) -> void:
 		_rebuild_infrastructure()
 		_rebuild_transporters()
 		_rebuild_pawns()
+	elif upgrade.kind in ["fossa_depth", "fossa_compression"]:
+		_rebuild_infrastructure()
+		_rebuild_transporters()
+		_rebuild_pawns()
+		_rebuild_adaptations()
+		var fossa_message := "GALERÍA SUBMUCOSA ABIERTA  ·  LA FOSA ADMITE 600K DE NIEVE" if upgrade.kind == "fossa_depth" else "PRENSA DEL SUMIDERO  ·  AFORO %s" % _number(_fossa_capacity(active_side))
+		_show_toast(fossa_message, 5.0)
 	elif upgrade.kind in ["transport_cart", "transport_capacity", "transport_ox", "transport_ox_capacity", "transport_speed", "transport_train", "train_speed", "cart_renaissance"]:
 		_rebuild_transporters()
 	elif upgrade.kind == "platelet": _rebuild_platelets()
@@ -3153,13 +3373,17 @@ func _start_another_line(source: String) -> void:
 
 func _spawn_line_piece(origin: Vector2, side: String, column: int, index: int) -> void:
 	var value := 1.0
+	if _fossa_accepts(side, value) < value:
+		_return_powder_to_wall(side, value)
+		_show_fossa_saturated(side)
+		return
 	var impurity_stride := maxi(5, 5 + int(levels.sorting))
 	if current_phase >= 3 and index % impurity_stride == 0:
 		var adulterant := "serrín" if another_line_events % 2 == 1 else "yeso"
 		var piece := _create_piece("impurity", side, value, 0, _choose_landing_column(side, column), randf_range(0.078, 0.09), adulterant, "joe")
 		_drop_piece(piece, origin)
 	else:
-		_spawn_chunk(origin, value, side, column, "joe")
+		_spawn_chunk(origin, value, side, column, "joe", index % 18 == 0)
 
 func _finish_another_line() -> void:
 	if puncher_unlocked:
@@ -3726,11 +3950,11 @@ func _rebuild_infrastructure() -> void:
 	if int(levels.get("silo", 0)) > 0:
 		var silo_scale := 0.25 if int(levels.get("vault_reserve", 0)) > 0 else (0.23 if int(levels.get("vault_capacity", 0)) > 0 else (0.20 if int(levels.get("vault", 0)) > 0 else (0.17 if int(levels.get("silo_capacity", 0)) > 0 else 0.14)))
 		var silo_title := "RESERVA ESTRATOSFÉRICA DE NAPIA" if int(levels.get("vault_reserve", 0)) > 0 else ("BÓVEDA DE NIEVE HIPERBÁRICA" if int(levels.get("vault_capacity", 0)) > 0 else ("BÓVEDA DE NIEVE PRESURIZADA" if int(levels.get("vault", 0)) > 0 else ("SILO DE ALTO TONELAJE" if int(levels.get("silo_capacity", 0)) > 0 else "SILO DE NIEVE ESTRATÉGICA")))
-		_add_infrastructure_sprite(SILO_TEXTURE, Vector2(SILO_X, _ground_y() - 80.0), silo_scale, silo_title)
+		_add_infrastructure_sprite(SILO_TEXTURE, Vector2(_box_x(), _ground_y() - 80.0), silo_scale, silo_title)
 	elif int(levels.get("container", 0)) > 0:
 		var container_scale := 0.145 if int(levels.get("warehouse", 0)) > 0 else (0.13 if int(levels.get("container_capacity", 0)) > 0 else 0.115)
 		var container_title := "ALMACÉN ALVEOLAR MODULAR" if int(levels.get("warehouse", 0)) > 0 else ("CONTENEDOR CON DOBLE FONDO" if int(levels.get("container_capacity", 0)) > 0 else "CONTENEDOR DE EMERGENCIA")
-		_add_infrastructure_sprite(CONTAINER_TEXTURE, Vector2(CONTAINER_X, _ground_y() - 43.0), container_scale, container_title)
+		_add_infrastructure_sprite(CONTAINER_TEXTURE, Vector2(_box_x(), _ground_y() - 43.0), container_scale, container_title)
 	if int(levels.get("plant", 0)) > 0:
 		var plant_scale := 0.21 if int(levels.get("plant_capacity", 0)) > 0 else (0.19 if int(levels.get("plant_buffer", 0)) > 0 else 0.17)
 		var plant_title := "PLANTA DE FUSIÓN SUPERSAIYAN" if int(levels.get("plant_capacity", 0)) > 0 else ("PLANTA CON TOLVAS DE CATARRO" if int(levels.get("plant_buffer", 0)) > 0 else "PLANTA DE NIEVE INDUSTRIAL")
@@ -4165,6 +4389,7 @@ func _move_train_ground(root: Node2D, target_x: float, delta: float) -> bool:
 
 func _rebuild_adaptations() -> void:
 	for child in adaptations.get_children(): child.queue_free()
+	_rebuild_surveyor()
 	for index in range(int(levels.sponge)):
 		var root := _adaptation_root("sponge", index, Vector2(_box_x() - 80.0 - float(index) * 52.0, _ground_y() - 14.0))
 		var sponge := Sprite2D.new()
@@ -4190,6 +4415,59 @@ func _rebuild_adaptations() -> void:
 		machine.z_index = 4
 		root.add_child(machine)
 
+func _rebuild_surveyor() -> void:
+	# El Leucotopógrafo está montado por capas independientes: cuerpo, gorra,
+	# chaleco, planos y teodolito se pueden retocar sin rehacer un sprite entero.
+	var x := minf(_box_x() - 130.0, _pile_center("right") + 170.0)
+	var root := _adaptation_root("surveyor", 0, Vector2(x, _ground_y() - 14.0))
+	root.z_index = 11
+	var body := Sprite2D.new()
+	body.name = "WhiteCellBody"
+	body.texture = PAWN_EMPTY
+	body.scale = Vector2.ONE * 0.047
+	body.offset = Vector2(0.0, PAWN_FOOT_DEPTH / body.scale.y - PAWN_EMPTY.get_height() * 0.5)
+	root.add_child(body)
+	var vest := Polygon2D.new()
+	vest.name = "TweedVest"
+	vest.polygon = PackedVector2Array([Vector2(-45, 4), Vector2(0, -14), Vector2(45, 4), Vector2(34, 76), Vector2(-34, 76)])
+	vest.color = Color("936a50")
+	vest.z_index = 3
+	body.add_child(vest)
+	var cap := Polygon2D.new()
+	cap.name = "FlatCap"
+	cap.polygon = PackedVector2Array([Vector2(-58, -93), Vector2(-32, -122), Vector2(24, -126), Vector2(62, -96), Vector2(47, -76), Vector2(-55, -76)])
+	cap.color = Color("6e4e4f")
+	cap.z_index = 5
+	body.add_child(cap)
+	var blueprint := Polygon2D.new()
+	blueprint.name = "Blueprint"
+	blueprint.polygon = PackedVector2Array([Vector2(35, 34), Vector2(98, 18), Vector2(108, 92), Vector2(45, 106)])
+	blueprint.color = Color("7bc8dd")
+	blueprint.z_index = 4
+	body.add_child(blueprint)
+	var tripod := Line2D.new()
+	tripod.name = "BrassTheodoliteTripod"
+	tripod.points = PackedVector2Array([Vector2(38, -42), Vector2(57, 0), Vector2(33, 34), Vector2(78, 34), Vector2(57, 0), Vector2(57, 43)])
+	tripod.width = 3.0
+	tripod.default_color = Color("c99c4e")
+	tripod.joint_mode = Line2D.LINE_JOINT_ROUND
+	root.add_child(tripod)
+	var lens := Polygon2D.new()
+	lens.name = "TheodoliteLens"
+	lens.polygon = PackedVector2Array([Vector2(26, -54), Vector2(63, -61), Vector2(78, -47), Vector2(40, -40)])
+	lens.color = Color("e4bd5d")
+	lens.z_index = 2
+	root.add_child(lens)
+	var label := Label.new()
+	label.name = "SurveyCaption"
+	label.position = Vector2(-85, -88)
+	label.size = Vector2(170, 18)
+	label.text = "AFORANDO LA FOSA"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 9)
+	label.add_theme_color_override("font_color", Color("9be6ef"))
+	root.add_child(label)
+
 func _adaptation_root(kind: String, index: int, position: Vector2) -> Node2D:
 	var root := Node2D.new()
 	root.name = "%s_%d" % [kind.capitalize(), index]
@@ -4210,6 +4488,11 @@ func _update_adaptations(_delta: float) -> void:
 		var index := int(item.get_meta("index", 0))
 		item.position.y = float(item.get_meta("base_y", item.position.y))
 		item.rotation = 0.0
+		if kind == "surveyor":
+			item.position.y += sin(now * 1.8) * 0.8
+			var lens := item.get_node_or_null("TheodoliteLens") as Polygon2D
+			if lens: lens.rotation = sin(now * 1.15) * 0.035
+			continue
 		var accessory := item.get_node_or_null("Accessory") as Sprite2D
 		if not accessory: continue
 		if kind == "sponge":
@@ -5123,6 +5406,15 @@ func _manual_save() -> void:
 	_show_toast("PARTIDA GUARDADA  ·  JOE SIGUE VIVO DE MOMENTO")
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventKey:
+		var key := event as InputEventKey
+		if key.pressed and not key.echo and (key.keycode == KEY_SPACE or key.physical_keycode == KEY_SPACE):
+			# La barra espaciadora controla el ritmo de la partida, no la pared.
+			# Se ignora mientras el jugador está navegando un panel superpuesto.
+			if playing and not technology_lab.visible and not options_menu.visible:
+				_toggle_pause()
+				get_viewport().set_input_as_handled()
+			return
 	if not event is InputEventMouseButton:
 		return
 	var click := event as InputEventMouseButton
@@ -5143,6 +5435,10 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey:
+		var key := event as InputEventKey
+		if key.pressed and (key.keycode == KEY_SPACE or key.physical_keycode == KEY_SPACE):
+			return
 	if playing and event.is_action_pressed("ui_cancel"):
 		if technology_lab.visible: _close_technology_lab()
 		elif options_menu.visible: _close_options_menu()

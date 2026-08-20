@@ -110,7 +110,11 @@ func _should_render(piece: PilePiece) -> bool:
 	if bool(piece.get_meta("carried", false)):
 		return piece.visible
 	if not bool(piece.get_meta("landed", true)):
-		return true
+		# Los granos ya no se dibujan como canicas mientras caen: la montaña es
+		# una superficie continua y sus vuelos se representan con polvo ligero en
+		# la capa de efectos. Solo rocas y bacterias conservan una silueta propia;
+		# las impurezas se leen como manchas cuando llegan a la superficie.
+		return str(piece.get_meta("kind", "grain")) in ["rock", "bacteria"]
 	return str(piece.get_meta("kind", "grain")) in ["rock", "bacteria"]
 
 func _create_group(piece: PilePiece, key: String) -> Dictionary:

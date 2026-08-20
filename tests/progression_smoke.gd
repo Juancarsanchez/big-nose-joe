@@ -456,6 +456,9 @@ func _run() -> void:
 	game.levels.elephant = 1
 	game.levels.plasma_cannon = 1
 	game.levels.supersaiyan = 1
+	# Las unidades tardías exigen haber comprimido físicamente la fosa.
+	game.levels.fossa_depth = 1
+	game.levels.fossa_compression = 3
 	game._rebuild_punchers()
 	await process_frame
 	var special_extractors: Array = game.punchers.get_children().filter(func(node: Node) -> bool: return not str(node.get_meta("extraction_kind", "")).is_empty())

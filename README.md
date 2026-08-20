@@ -8,7 +8,7 @@ Al abrir el juego aparece una portada desde la que se puede continuar, empezar d
 
 - Clic izquierdo sobre la pared: desprender cocaína.
 - Clic izquierdo sobre el montón: lanzar una pieza expuesta a la caja.
-- Barra espaciadora: clic alternativo.
+- Barra espaciadora: pausa o reanuda la partida.
 - `A`, `D` o flechas: desplazar el escenario.
 - Cursor en los bordes del área jugable: desplazamiento automático.
 - `MENÚ · AUDIO Y PARTIDA` o `Esc`: abre el panel izquierdo de opciones.
@@ -31,7 +31,9 @@ Las fases ya no avanzan por tiempo ni por entregas. Joe empieza al 90% y cada tr
 
 ## Cocaína, apelmazado y transporte
 
-Cada clic crea una bolita individual que cae con suavidad y queda apoyada sobre el suelo o sobre otra pieza. El montón se recalcula por columnas después de cada caída o recogida, por lo que no quedan huecos flotantes. La masa visual de cada carga aumenta suavemente con su valor: 1, 10, 100, 1.000 y un millón de unidades aportan aproximadamente ×1, ×1,4, ×1,8, ×2,2 y ×3,4 de altura. El crecimiento queda limitado para que los impactos tardíos no formen torres absurdas. Las bolitas usan menos separación y menos oscilación horizontal; cada aterrizaje corrige picos demasiado finos para conservar montañas y valles con una silueta compacta. Los pedruscos pueden sostener pendientes como muros de contención. El tabique actúa como un límite duro: ningún grano ni pedrusco puede atravesarlo o dibujarse por encima de la pared compacta.
+El polvo se representa como una única superficie de nieve continua: cada unidad extraída ocupa exactamente un píxel de pantalla de área, aunque internamente se agrupe en cargas ligeras para conservar el rendimiento. Por eso una descarga de 50 hace crecer la montaña 50 píxeles de masa y una descarga de 500.000 ocupa 500.000: no hay multiplicadores visuales ocultos ni una bolita gigante de valor arbitrario. La silueta forma lomas y valles, nunca torres de canicas. Los pedruscos conservan su propia capa interactiva y pueden sostener pendientes como muros de contención. El tabique actúa como un límite duro: ningún grano ni pedrusco puede atravesarlo o dibujarse por encima de la pared compacta.
+
+La fosa tiene aforo físico. El `LEUCOTOPÓGRAFO DE 1927` muestra su llenado en tiempo real desde el principio: la primera excavación admite 75K de polvo. Si llega al límite, se detiene todo el minado —manual y automático— mientras los porteadores siguen retirando nieve. La tecnología `GALERÍA SUBMUCOSA` desplaza el almacén y abre volumen profundo hasta 600K. No es un requisito impuesto por una fase: solo se vuelve imprescindible cuando el jugador ha decidido llenar la fosa. En fase 3, la `PRENSA DEL SUMIDERO` inaugura la compresión visible y escala el aforo a 100M, 50B y 100T para acompañar a Leucofante, plasma y Supersaiyan.
 
 La primera `OTRA RAYITA` presenta el apelmazado antes del umbral del 70%, con un máximo introductorio de dos pedruscos. El primero revela y marca en azul la mejora de cascos. Al entrar en la segunda fase el límite sube a ocho. Un grano con al menos cinco vecinos cercanos forma un pedrusco de seis unidades. Con producción tranquila se comprueba el montón cada 24 aterrizajes; por encima de dos clics por segundo baja a 18 y por encima de cuatro baja a 12. La extracción automática puede llevar la cadencia hasta un mínimo de ocho aterrizajes. Los pedruscos conservan su valor, bloquean la recogida y solo los cascos azules pueden tratarlos y llevarlos.
 
