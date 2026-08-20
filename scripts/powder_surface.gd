@@ -37,11 +37,41 @@ func _draw() -> void:
 	_draw_side("right")
 
 func _draw_side(side: String) -> void:
-	var mass := float(source._pile_load(side))
-	if mass <= 0.001:
+	var profile := _calculate_profile(side)
+	if profile.is_empty():
 		surface_profiles[side] = {}
 		return
+	var mass := float(profile.mass)
 	var columns: Dictionary = source.pile_columns[side]
+	var ground := float(source._ground_y()) - 3.0
+	var desired_width := float(profile.width)
+	var spacing := float(profile.spacing)
+	var start_x := float(profile.start)
+	var heights: PackedFloat32Array = profile.heights
+	surface_profiles[side] = profile
+	var joe_ratio := clampf(float(source.joe_grain_load_cache.get(side, 0.0)) / mass, 0.0, 1.0)
+	var joe_heights := PackedFloat32Array()
+	for height in heights:
+		joe_heights.append(clampf(height * joe_ratio, 0.0, 22.0))
+	var surface := PackedVector2Array()
+	var fill := PackedVector2Array([Vector2(start_x - spacing * 0.6, ground)])
+	for index in range(heights.size()):
+		var point := Vector2(start_x + float(index) * spacing, ground - heights[index])
+		surface.append(point)
+		fill.append(point)
+	fill.append(Vector2(start_x + desired_width + spacing * 0.6, ground))
+	draw_colored_polygon(fill, POWDER)
+	_draw_lower_shade(fill, ground)
+	_draw_joe_layer(surface, joe_heights)
+	if surface.size() >= 2:
+		draw_polyline(surface, OUTLINE, 2.2, true)
+	_draw_powder_noise(side, 0, heights, start_x, spacing, ground)
+	_draw_impurity_stains(columns, start_x, heights, spacing, ground)
+
+func _calculate_profile(side: String) -> Dictionary:
+	var mass := float(source._pile_load(side))
+	if mass <= 0.001:
+		return {}
 	var ground := float(source._ground_y()) - 3.0
 	var center := float(source._pile_center(side))
 	# Una unidad de economía equivale a un píxel de pantalla de área. La masa se
@@ -71,33 +101,21 @@ func _draw_side(side: String) -> void:
 	for height in heights: smoothed_area += height * spacing
 	var correction := area / maxf(1.0, smoothed_area)
 	for index in range(heights.size()): heights[index] *= correction
-	var joe_ratio := clampf(float(source.joe_grain_load_cache.get(side, 0.0)) / mass, 0.0, 1.0)
-	var joe_heights := PackedFloat32Array()
-	for height in heights:
-		joe_heights.append(clampf(height * joe_ratio, 0.0, 22.0))
-	surface_profiles[side] = {"start":start_x, "spacing":spacing, "heights":heights}
-	var surface := PackedVector2Array()
-	var fill := PackedVector2Array([Vector2(start_x - spacing * 0.6, ground)])
-	for index in range(heights.size()):
-		var point := Vector2(start_x + float(index) * spacing, ground - heights[index])
-		surface.append(point)
-		fill.append(point)
-	fill.append(Vector2(start_x + desired_width + spacing * 0.6, ground))
-	draw_colored_polygon(fill, POWDER)
-	_draw_lower_shade(fill, ground)
-	_draw_joe_layer(surface, joe_heights)
-	if surface.size() >= 2:
-		draw_polyline(surface, OUTLINE, 2.2, true)
-	_draw_powder_noise(side, 0, heights, start_x, spacing, ground)
-	_draw_impurity_stains(columns, start_x, heights, spacing, ground)
+	return {"mass":mass, "start":start_x, "spacing":spacing, "width":desired_width, "heights":heights}
 
 func surface_y_at(side: String, x: float) -> float:
 	var profile: Dictionary = surface_profiles.get(side, {})
+	if profile.is_empty() or not is_equal_approx(float(profile.get("mass", -1.0)), float(source._pile_load(side))):
+		profile = _calculate_profile(side)
+		surface_profiles[side] = profile
 	var heights: PackedFloat32Array = profile.get("heights", PackedFloat32Array())
 	if heights.is_empty():
 		return float(source._ground_y())
 	var spacing := float(profile.get("spacing", 1.0))
 	var start := float(profile.get("start", 0.0))
+	var end := start + spacing * float(heights.size() - 1)
+	if x < start - 1.0 or x > end + 1.0:
+		return float(source._ground_y())
 	var progress := clampf((x - start) / maxf(0.001, spacing), 0.0, float(heights.size() - 1))
 	var low := floori(progress)
 	var high := mini(low + 1, heights.size() - 1)

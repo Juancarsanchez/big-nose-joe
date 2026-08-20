@@ -31,7 +31,15 @@ func _run() -> void:
 	_check(is_equal_approx(game._fossa_capacity("right"), game.FOSSA_BASE_CAPACITY), "The initial fossa capacity must be explicit.")
 	game.levels.fossa_depth = 1
 	_check(is_equal_approx(game._fossa_capacity("right"), game.FOSSA_GALLERY_CAPACITY), "The gallery upgrade must expand the fossa capacity.")
+	game._rebuild_adaptations()
+	game.playing = true
+	game._update_fossa_meter()
+	_check(game.fossa_meter.visible and game.adaptations.get_children().any(func(node: Node) -> bool: return str(node.get_meta("adaptation_kind", "")) == "surveyor"), "Building the submucosal fossa must reveal its real-time meter and Leucotopographer together.")
 	game.levels.fossa_depth = 0
+	game._rebuild_adaptations()
+	game._update_fossa_meter()
+	_check(not game.fossa_meter.visible, "The fossa instrumentation must disappear when the fossa does not exist.")
+	game.playing = false
 
 	# Build deterministic overloaded piles without waiting for drop animations.
 	seed(92741)
@@ -93,6 +101,15 @@ func _run() -> void:
 		game.compaction_steps.right = game.COMPACTION_INTERVAL_MAX
 		game._maybe_compact("right")
 	_check(game._rock_count("right") >= 4, "Dense powder must create compacted rocks frequently enough to matter.")
+	await create_timer(0.30).timeout
+	var grounded_rocks: Array = game.loose_chunks.filter(func(piece) -> bool: return piece.get_meta("kind", "grain") == "rock")
+	for rock_value in grounded_rocks:
+		var grounded_rock = rock_value
+		var half_height := maxf(8.0, grounded_rock.texture.get_height() * absf(grounded_rock.scale.y) * 0.42)
+		_check(absf(grounded_rock.position.y + half_height - game.powder_surface.surface_y_at("right", grounded_rock.position.x)) < 1.5, "A compacted rock must rest on the floor or the current snow surface instead of floating.")
+	grounded_rocks.sort_custom(func(a, b) -> bool: return a.position.x < b.position.x)
+	for index in range(1, grounded_rocks.size()):
+		_check(absf(grounded_rocks[index].position.x - grounded_rocks[index - 1].position.x) >= 20.0, "Compacted rocks must roll apart when the surface cannot support both in one place.")
 
 	var rock = null
 	for piece in game.loose_chunks:
@@ -111,6 +128,7 @@ func _run() -> void:
 	game._clear_pile()
 	# Una fosa llena debe bloquear solo la extracción; abrir la galería vuelve a
 	# dejar espacio sin falsificar recursos ni borrar la montaña.
+	game.playing = true
 	game._create_piece("grain", "right", game.FOSSA_BASE_CAPACITY, 0, game.RIGHT_WALL_COLUMN, 0.072)
 	var wall_before_full: float = game.right_hp
 	game._click_wall("right")
@@ -120,6 +138,12 @@ func _run() -> void:
 	_check(game.right_hp < wall_before_full, "The gallery must restore extraction capacity immediately.")
 	game._clear_pile()
 	game.levels.fossa_depth = 0
+	var wall_before_pause: float = game.right_hp
+	game.user_paused = true
+	game._click_wall("right")
+	_check(is_equal_approx(game.right_hp, wall_before_pause) and is_zero_approx(game._pile_load("right")), "A paused run must reject direct wall-button clicks as well as viewport input.")
+	game.user_paused = false
+	game.playing = false
 	await process_frame
 	for index in range(180):
 		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), 0.072)
@@ -130,6 +154,7 @@ func _run() -> void:
 
 	# The seventy-percent high threshold unlocks compaction permanently; Joe rebounding must not disable it.
 	game.current_phase = 1
+	game.playing = true
 	_check(not game._compaction_unlocked(), "Compaction must not burden the opening before Joe first reaches seventy percent high.")
 	game.joe_high = 70.0
 	game._check_phase_progress()
@@ -141,6 +166,8 @@ func _run() -> void:
 	await process_frame
 
 	# Treated rocks remain exclusive to blue-helmet specialists.
+	game.levels.pawn = 1
+	game._rebuild_pawns()
 	var pawn := game.pawns.get_child(0) as Sprite2D
 	game._clear_pile()
 	await process_frame
@@ -190,6 +217,7 @@ func _run() -> void:
 	game.current_phase = 1
 	game.contamination = 0.0
 	game.cells = 0.0
+	game.playing = true
 	game.joe_high = 70.0
 	game.joe_high_display = 70.0
 	game._damage_wall(10.0, "right")

@@ -36,7 +36,9 @@ func _run() -> void:
 	print("PARTICLE_RENDER_STRESS  grains=%d  fps=%.1f  batches=%d  particle_nodes=%d" % [GRAIN_COUNT, fps, game.pile_renderer.batch_count(), game.chunks.get_child_count()])
 	if FileAccess.file_exists(game.save_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(game.save_path))
-	if fps >= 60.0 and game.pile_renderer.batch_count() == 1 and game.chunks.get_child_count() == 0:
+	# El polvo continuo no necesita ya ningún lote de sprites: una sola superficie
+	# procedural representa toda la masa, incluso bajo la carga de referencia.
+	if fps >= 60.0 and game.pile_renderer.batch_count() == 0 and game.chunks.get_child_count() <= 1:
 		print("PARTICLE_RENDER_STRESS_OK")
 		quit(0)
 	else:

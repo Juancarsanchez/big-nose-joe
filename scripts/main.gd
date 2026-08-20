@@ -2,7 +2,7 @@ extends Control
 
 const SAVE := "user://big_nose_joe.save"
 const SETTINGS := "user://big_nose_joe_settings.cfg"
-const SAVE_VERSION := 18
+const SAVE_VERSION := 19
 const ProgressionData = preload("res://scripts/progression_data.gd")
 const PilePieceData = preload("res://scripts/pile_piece.gd")
 const PileBatchRenderer = preload("res://scripts/pile_renderer.gd")
@@ -56,7 +56,7 @@ const BASE_CAPACITY := 3
 const SMART_CLUMP_SIZES := [1, 3, 5, 8, 13, 21]
 const SMART_CLUMP_RENAISSANCE_SIZES := [21, 55, 144]
 const PAWN_FOOT_DEPTH := 14.0
-const STORAGE_CAPACITIES := [1000.0, 5000.0, 25000.0, 100000.0, 2000000.0, 10000000.0, 100000000.0, 1000000000.0, 3000000000.0, 10000000000.0, 50000000000.0, 150000000000.0, 500000000000.0, 5000000000000.0, 50000000000000.0]
+const STORAGE_CAPACITIES := [100.0, 1000.0, 5000.0, 100000.0, 2000000.0, 10000000.0, 100000000.0, 1000000000.0, 3000000000.0, 10000000000.0, 50000000000.0, 150000000000.0, 500000000000.0, 5000000000000.0, 50000000000000.0]
 const CONTAINER_X := 4860.0
 const SILO_X := 5350.0
 const PLANT_X := 1150.0
@@ -547,7 +547,8 @@ func _technology_unit_unlocked(unit: Dictionary) -> bool:
 func _technology_owned_count(unit_id: String) -> int:
 	match unit_id:
 		"manual": return 1
-		"pawn": return 2 + int(levels.pawn)
+		"pawn": return int(levels.pawn)
+		"surveyor": return 1 if int(levels.get("fossa_depth", 0)) > 0 else 0
 		"pugilist": return _puncher_count()
 		"ram": return int(levels.ram)
 		"leukophant": return int(levels.elephant)
@@ -573,7 +574,11 @@ func _technology_stats(unit_id: String) -> String:
 		"manual":
 			var sweep := "BLOQUEADO" if int(levels.continuous_sweep) == 0 else "1 GRANO / %.2f S" % _continuous_sweep_interval()
 			return "POTENCIA DE CLIC: %s\nBARRIDO: %s\nNUDILLOS: NV. %d" % [_number(_click_power()), sweep, int(levels.click_burst)]
-		"pawn": return "UNIDADES: %d\nFUNCIÓN: RECOGIDA Y TRANSPORTE\nCARGA: %d BOLAS × %d GRANOS  ·  VELOCIDAD: %s" % [2 + int(levels.pawn), _transport_capacity(), _smart_clump_size(), _number(_pawn_speed())]
+		"pawn": return "UNIDADES: %d\nFUNCIÓN: RECOGIDA Y TRANSPORTE\nCARGA: %d BOLAS × %d GRANOS  ·  VELOCIDAD: %s" % [int(levels.pawn), _transport_capacity(), _smart_clump_size(), _number(_pawn_speed())]
+		"surveyor":
+			if int(levels.get("fossa_depth", 0)) <= 0:
+				return "SIN FOSA CONSTRUIDA\nFUNCIÓN: MEDIR EL ESPACIO DE VERTIDO\nEL MEDIDOR APARECE AL CONSTRUIRLA"
+			return "UNIDADES: 1\nESPACIO OCUPADO: %s\nCAPACIDAD MEDIDA: %s" % [_number(_pile_load(active_side)), _number(_fossa_capacity(active_side))]
 		"pugilist":
 			var combo := "CADA 3ª RONDA: DAÑO ×2" if int(levels.get("punch_combo", 0)) > 0 else "COMBO: SIN INVESTIGAR"
 			return "UNIDADES: %d / 8\nDAÑO POR GOLPE: %s\nGOLPE CADA %.2f S\n%s" % [_puncher_count(), _number(_punch_output()), _punch_interval(), combo]
@@ -682,39 +687,67 @@ func _spawn_powder_fall(origin: Vector2, side: String, amount: int = 6, intensit
 	# lectura visual de que una porción de nieve ha salido de la pared o del techo.
 	var direction := -1.0 if side == "left" else 1.0
 	for index in range(clampi(amount, 1, 18)):
-		var flake := _make_powder_flake(Color("f4f0dc"), randf_range(1.8, 4.8) * intensity)
+		var flake := _make_powder_flake(Color("fffdf2"), randf_range(2.4, 5.8) * intensity)
 		flake.position = origin + Vector2(randf_range(-12.0, 12.0), randf_range(-8.0, 12.0))
 		flake.rotation = randf_range(-0.8, 0.8)
 		flake.z_index = 30
 		effects.add_child(flake)
-		var landing := flake.position + Vector2(direction * randf_range(18.0, 86.0) * intensity, randf_range(42.0, 138.0) * intensity)
+		var landing_x := flake.position.x + direction * randf_range(22.0, 105.0) * intensity
+		var surface_y := powder_surface.surface_y_at(side, landing_x) if powder_surface else _ground_y()
+		var landing := Vector2(landing_x, minf(_ground_y() - 2.0, surface_y - randf_range(1.0, 4.0)))
+		var duration := randf_range(0.58, 0.86)
 		var tween := create_tween().set_parallel()
-		tween.tween_property(flake, "position", landing, randf_range(0.28, 0.52)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-		tween.tween_property(flake, "rotation", flake.rotation + randf_range(-2.0, 2.0), 0.46)
-		tween.tween_property(flake, "modulate:a", 0.0, 0.22).set_delay(0.25)
+		tween.tween_property(flake, "position", landing, duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tween.tween_property(flake, "rotation", flake.rotation + randf_range(-2.0, 2.0), duration)
+		tween.tween_property(flake, "modulate:a", 0.0, 0.13).set_delay(duration - 0.04)
 		tween.chain().tween_callback(flake.queue_free)
 
 func _spawn_powder_stream(start: Vector2, target: Vector2, intensity: float = 1.0) -> void:
-	# El barrido no lanza canicas: dibuja una breve lengua de nieve que se aspira
-	# desde la superficie hasta la caja.
+	# Una cinta ancha, curva y translúcida se lee como nieve arrastrada por agua;
+	# el borde fino anterior parecía un rayo láser.
+	var points := PackedVector2Array()
+	var control := (start + target) * 0.5 - Vector2(0.0, 35.0 + absf(target.x - start.x) * 0.045)
+	for index in range(8):
+		var t := float(index) / 7.0
+		var inverse := 1.0 - t
+		points.append(start * inverse * inverse + control * 2.0 * inverse * t + target * t * t + Vector2(0.0, sin(t * PI * 3.0) * 3.0))
 	var stream := Line2D.new()
-	stream.width = 4.0 + intensity * 3.0
-	stream.default_color = Color("f4f0dc")
-	stream.points = PackedVector2Array([start, start.lerp(target, 0.48) - Vector2(0.0, 20.0 + absf(target.x - start.x) * 0.055), target])
+	stream.width = 7.0 + intensity * 4.0
+	stream.default_color = Color(0.76, 0.91, 0.91, 0.72)
+	stream.points = points
+	stream.joint_mode = Line2D.LINE_JOINT_ROUND
+	stream.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	stream.end_cap_mode = Line2D.LINE_CAP_ROUND
+	var width_curve := Curve.new()
+	width_curve.add_point(Vector2(0.0, 0.08))
+	width_curve.add_point(Vector2(0.16, 1.0))
+	width_curve.add_point(Vector2(0.78, 0.72))
+	width_curve.add_point(Vector2(1.0, 0.06))
+	stream.width_curve = width_curve
 	stream.z_index = 31
 	effects.add_child(stream)
+	var highlight := Line2D.new()
+	highlight.width = 2.0 + intensity
+	highlight.default_color = Color(1.0, 1.0, 1.0, 0.72)
+	highlight.points = points
+	highlight.joint_mode = Line2D.LINE_JOINT_ROUND
+	highlight.z_index = 32
+	effects.add_child(highlight)
 	var tween := create_tween().set_parallel()
-	tween.tween_property(stream, "modulate:a", 0.0, 0.24 + intensity * 0.03)
-	tween.tween_property(stream, "width", 1.0, 0.24 + intensity * 0.03)
+	tween.tween_property(stream, "modulate:a", 0.0, 0.34 + intensity * 0.04)
+	tween.tween_property(highlight, "modulate:a", 0.0, 0.28 + intensity * 0.03)
+	tween.tween_property(stream, "width", 2.0, 0.34 + intensity * 0.04)
 	tween.chain().tween_callback(stream.queue_free)
-	for index in range(1 + int(intensity)):
-		var flake := _make_powder_flake(Color("fffdf0"), randf_range(1.8, 3.8) * intensity)
-		flake.position = start.lerp(target, randf_range(0.08, 0.36)) + Vector2(randf_range(-7.0, 7.0), randf_range(-9.0, 9.0))
+	tween.chain().tween_callback(highlight.queue_free)
+	for index in range(4 + int(intensity * 2.0)):
+		var flake := _make_powder_flake(Color("f8fffc"), randf_range(1.5, 3.2) * intensity)
+		var start_t := randf_range(0.02, 0.30)
+		flake.position = points[clampi(roundi(start_t * 7.0), 0, 7)] + Vector2(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0))
 		flake.z_index = 32
 		effects.add_child(flake)
 		var flake_tween := create_tween().set_parallel()
-		flake_tween.tween_property(flake, "position", flake.position.lerp(target, randf_range(0.45, 0.72)), 0.2)
-		flake_tween.tween_property(flake, "modulate:a", 0.0, 0.2)
+		flake_tween.tween_property(flake, "position", target + Vector2(randf_range(-5.0, 5.0), randf_range(-3.0, 3.0)), randf_range(0.24, 0.38)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		flake_tween.tween_property(flake, "modulate:a", 0.0, 0.12).set_delay(0.20)
 		flake_tween.chain().tween_callback(flake.queue_free)
 
 func _grain_stack_height(value: float) -> float:
@@ -846,13 +879,16 @@ func _build_fossa_meter() -> void:
 func _update_fossa_meter() -> void:
 	if not is_instance_valid(fossa_meter):
 		return
+	fossa_meter.visible = playing and int(levels.get("fossa_depth", 0)) > 0
+	if not fossa_meter.visible:
+		return
 	var side := active_side
 	var load := _pile_load(side)
 	var capacity := _fossa_capacity(side)
 	var ratio := clampf(load / maxf(1.0, capacity), 0.0, 1.0)
 	fossa_meter_title.text = "LEUCOTOPÓGRAFO DE 1927  ·  FOSA %s" % ("IZQUIERDA" if side == "left" else "DERECHA")
 	fossa_meter_progress.value = ratio * 100.0
-	fossa_meter_readout.text = "AFORO  %s / %s" % [_number(load), _number(capacity)]
+	fossa_meter_readout.text = "ESPACIO OCUPADO  %s / %s" % [_number(load), _number(capacity)]
 	var danger := Color("e95b61") if ratio >= 0.9 else Color("9be6ef")
 	fossa_meter_title.add_theme_color_override("font_color", danger)
 
@@ -1100,7 +1136,14 @@ func _refresh_pawn_cargo_visual(pawn: Sprite2D) -> void:
 	if powder_mound:
 		var clump_size := _pawn_smart_clump_size(pawn)
 		var bundles := ceili(float(cargo.size()) / float(clump_size))
-		mound.set_meta("load_scale", 0.82 + minf(0.46, float(bundles - 1) * 0.18) + minf(0.18, sqrt(float(clump_size - 1)) * 0.06))
+		var cargo_mass := 0.0
+		for value in cargo:
+			var carried_piece := value as PilePiece
+			if is_instance_valid(carried_piece): cargo_mass += float(carried_piece.get_meta("value", 1.0))
+		# Una unidad es apenas un pellizco. La mini-montaña solo alcanza el tamaño
+		# anterior cuando la carga real justifica visualmente ese volumen.
+		var mass_scale := 0.26 + minf(0.72, log(maxf(1.0, cargo_mass) + 1.0) / log(2.0) * 0.16)
+		mound.set_meta("load_scale", mass_scale + minf(0.24, float(bundles - 1) * 0.08))
 		for value in cargo:
 			var powder_piece := value as PilePiece
 			if is_instance_valid(powder_piece):
@@ -1725,6 +1768,8 @@ func _fallen_wall_chunk_at(world_pos: Vector2) -> Sprite2D:
 	return null
 
 func _manual_mine_fallen_wall_chunk(world_pos: Vector2) -> bool:
+	if user_paused or not playing:
+		return false
 	var chunk := _fallen_wall_chunk_at(world_pos)
 	if not chunk:
 		return false
@@ -1768,6 +1813,8 @@ func _mine_fallen_wall_chunk(chunk: Sprite2D, amount: float) -> void:
 	collapse.chain().tween_callback(chunk.queue_free)
 
 func _manual_collect_at(world_pos: Vector2, _show_feedback: bool = true, continuous_stream: bool = false) -> bool:
+	if user_paused or not playing:
+		return false
 	# Un grano visible y señalado con precisión gana al área de selección grande
 	# del pedrusco. Así el apelmazado estorba, pero no secuestra los clics vecinos.
 	var piece := _direct_loose_piece_at(world_pos)
@@ -2096,7 +2143,9 @@ func _maybe_compact(side: String) -> void:
 	var rock := _create_piece("rock", side, value, hardness, _choose_landing_column(side), randf_range(0.17, 0.205), "", source)
 	rock.rotation = randf_range(-0.18, 0.18)
 	rock.scale = Vector2.ZERO
-	create_tween().tween_property(rock, "scale", Vector2.ONE * float(rock.get_meta("base_scale", 0.18)), 0.24).set_trans(Tween.TRANS_BACK)
+	var compact_tween := create_tween()
+	compact_tween.tween_property(rock, "scale", Vector2.ONE * float(rock.get_meta("base_scale", 0.18)), 0.24).set_trans(Tween.TRANS_BACK)
+	compact_tween.tween_callback(_align_compacted_rocks.bind(side))
 	if not compaction_announced:
 		compaction_announced = true
 		_show_toast("EL POLVO SE APELMAZA  ·  NECESITAS UN CASCO AZUL", 4.2)
@@ -2174,6 +2223,8 @@ func _rock_count(side: String) -> int:
 	return int(rock_count_cache.get(side, 0))
 
 func _click_wall(side: String) -> void:
+	if user_paused or not playing:
+		return
 	if (side == "left" and not septum_open) or _wall_hp(side) <= 0.0: return
 	active_side = side
 	if mucus_hp > 0.0:
@@ -2390,7 +2441,8 @@ func _update_world() -> void:
 func _update_box() -> void:
 	box.position.x = _box_x() - box.size.x * 0.35 if int(levels.get("fossa_depth", 0)) > 0 else BASE_BOX_LEFT
 	box.pivot_offset = Vector2(box.size.x * 0.5, box.size.y)
-	box.scale = Vector2.ONE
+	# Antes de comprar almacenamiento solo hay un cajón diminuto de 100 unidades.
+	box.scale = Vector2.ONE * (0.72 if _storage_tier() == 0 else 1.0)
 	box.modulate = Color("5e3428").lerp(Color("8c5130"), sin(Time.get_ticks_msec() * 0.012) * 0.5 + 0.5) if box_jammed else Color.WHITE.lerp(Color("ad7f43"), contamination / 100.0)
 	box.rotation = sin(Time.get_ticks_msec() * 0.025) * 0.012 if box_jammed else 0.0
 	_update_storage_visual()
@@ -2405,9 +2457,9 @@ func _rebuild_pawns() -> void:
 			piece.scale = Vector2.ONE * float(piece.get_meta("base_scale", 0.07))
 	_rebuild_pile_index()
 	_restack_pile()
-	# Los cascos azules son refuerzos propios: comprarlos nunca sacrifica uno de
-	# los recolectores normales que el jugador ya había pagado.
-	var count: int = mini(2 + int(levels.pawn) + int(levels.breaker), 26)
+	# La partida comienza sin ayudantes. Cada rama compra sus propias unidades;
+	# ninguna adaptación sustituye silenciosamente un peón ya pagado.
+	var count: int = mini(int(levels.pawn) + int(levels.breaker) + int(levels.detector) + int(levels.handlers), 26)
 	var handler_count := mini(int(levels.handlers), count)
 	var detector_count := mini(int(levels.detector), count - handler_count)
 	var specialist_count := mini(int(levels.breaker), count - handler_count - detector_count)
@@ -3122,7 +3174,7 @@ func _rate() -> float:
 		return 0.0
 	var distance := absf(_box_x() - _pile_center(active_side))
 	var cycle := distance * 2.0 / maxf(1.0, _pawn_speed()) + 0.8 + _deposit_duration()
-	var result := float(2 + int(levels.pawn)) * float(_transport_capacity() * _smart_clump_size()) / cycle * _box_yield_multiplier()
+	var result := float(int(levels.pawn)) * float(_transport_capacity() * _smart_clump_size()) / cycle * _box_yield_multiplier()
 	if int(levels.get("cart", 0)) > 0:
 		result += _cart_capacity() / (distance * 2.0 / _ground_transport_speed(CART_SPEED) + 1.1)
 	if int(levels.get("ox_convoy", 0)) > 0:
@@ -3184,7 +3236,7 @@ func _buy(id: String) -> void:
 		_rebuild_transporters()
 		_rebuild_pawns()
 		_rebuild_adaptations()
-		var fossa_message := "GALERÍA SUBMUCOSA ABIERTA  ·  LA FOSA ADMITE 600K DE NIEVE" if upgrade.kind == "fossa_depth" else "PRENSA DEL SUMIDERO  ·  AFORO %s" % _number(_fossa_capacity(active_side))
+		var fossa_message := "FOSA SUBMUCOSA ABIERTA  ·  CABEN 600K DE NIEVE" if upgrade.kind == "fossa_depth" else "PRENSA DEL SUMIDERO  ·  ESPACIO TOTAL %s" % _number(_fossa_capacity(active_side))
 		_show_toast(fossa_message, 5.0)
 	elif upgrade.kind in ["transport_cart", "transport_capacity", "transport_ox", "transport_ox_capacity", "transport_speed", "transport_train", "train_speed", "cart_renaissance"]:
 		_rebuild_transporters()
@@ -3305,6 +3357,31 @@ func _restack_pile(side_filter: String = "") -> void:
 				var height := float(piece.get_meta("height", GRAIN_HEIGHT))
 				piece.position = Vector2(_pile_center(side) + float(column) * GRAIN_SPACING + float(piece.get_meta("x_jitter", 0.0)), _ground_y() - 5.0 - accumulated - height * 0.5)
 				accumulated += height
+		_align_compacted_rocks(side)
+
+func _align_compacted_rocks(side: String) -> void:
+	if not powder_surface:
+		return
+	var rocks: Array[PilePiece] = []
+	for value in loose_chunks:
+		var rock := value as PilePiece
+		if _piece_is_in_pile(rock, side) and str(rock.get_meta("kind", "grain")) == "rock" and bool(rock.get_meta("landed", true)):
+			rocks.append(rock)
+	rocks.sort_custom(func(a: PilePiece, b: PilePiece) -> bool: return a.position.x < b.position.x if side == "right" else a.position.x > b.position.x)
+	var previous_x := -INF if side == "right" else INF
+	var bounds := _column_bounds(side, _pile_radius_limit(side))
+	var min_x := _pile_center(side) + float(bounds.x) * GRAIN_SPACING
+	var max_x := _pile_center(side) + float(bounds.y) * GRAIN_SPACING
+	for rock in rocks:
+		var diameter := maxf(22.0, rock.texture.get_width() * absf(rock.scale.x) * 0.82)
+		var x := clampf(rock.position.x, min_x + diameter * 0.5, max_x - diameter * 0.5)
+		if side == "right" and previous_x > -INF and x < previous_x + diameter:
+			x = minf(max_x - diameter * 0.5, previous_x + diameter)
+		elif side == "left" and previous_x < INF and x > previous_x - diameter:
+			x = maxf(min_x + diameter * 0.5, previous_x - diameter)
+		var half_height := maxf(8.0, rock.texture.get_height() * absf(rock.scale.y) * 0.42)
+		rock.position = Vector2(x, powder_surface.surface_y_at(side, x) - half_height)
+		previous_x = x
 
 func _update_another_line(delta: float) -> void:
 	if another_line_wave > 0:
@@ -3370,6 +3447,9 @@ func _start_another_line(source: String) -> void:
 	var source_text := "RAYITA CON SERRÍN" if source == "adulterated" else "OTRA RAYITA"
 	_show_toast("%s  ·  +%s DE POLVO" % [source_text, _number(grain_count)])
 	_float_text("+%s DE POLVO" % _number(grain_count), Vector2(_pile_center(active_side), _ground_y() - 250.0))
+	# La primera cortina deja claro desde dónde cae la dosis; los lotes siguientes
+	# mantienen copos visibles hasta que termina la lluvia.
+	_spawn_powder_fall(Vector2(_pile_center(active_side), _ground_y() - 410.0), active_side, 18, 1.25)
 
 func _spawn_line_piece(origin: Vector2, side: String, column: int, index: int) -> void:
 	var value := 1.0
@@ -3383,7 +3463,7 @@ func _spawn_line_piece(origin: Vector2, side: String, column: int, index: int) -
 		var piece := _create_piece("impurity", side, value, 0, _choose_landing_column(side, column), randf_range(0.078, 0.09), adulterant, "joe")
 		_drop_piece(piece, origin)
 	else:
-		_spawn_chunk(origin, value, side, column, "joe", index % 18 == 0)
+		_spawn_chunk(origin, value, side, column, "joe", index % 10 == 0)
 
 func _finish_another_line() -> void:
 	if puncher_unlocked:
@@ -4416,6 +4496,8 @@ func _rebuild_adaptations() -> void:
 		root.add_child(machine)
 
 func _rebuild_surveyor() -> void:
+	if int(levels.get("fossa_depth", 0)) <= 0:
+		return
 	# El Leucotopógrafo está montado por capas independientes: cuerpo, gorra,
 	# chaleco, planos y teodolito se pueden retocar sin rehacer un sprite entero.
 	var x := minf(_box_x() - 130.0, _pile_center("right") + 170.0)
@@ -4462,7 +4544,7 @@ func _rebuild_surveyor() -> void:
 	label.name = "SurveyCaption"
 	label.position = Vector2(-85, -88)
 	label.size = Vector2(170, 18)
-	label.text = "AFORANDO LA FOSA"
+	label.text = "MIDIENDO ESPACIO DISPONIBLE"
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 9)
 	label.add_theme_color_override("font_color", Color("9be6ef"))

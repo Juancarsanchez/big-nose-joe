@@ -24,6 +24,8 @@ func _run() -> void:
 	game.phase_event_pending = false
 	game.joe_dialog.hide()
 	game.playing = true
+	_check(game.pawns.get_child_count() == 0, "A fresh run must begin without free white cells; the first collector is a real purchase.")
+	_check(not game.fossa_meter.visible and game.adaptations.get_children().all(func(node: Node) -> bool: return str(node.get_meta("adaptation_kind", "")) != "surveyor"), "The fossa meter and Leucotopographer must not exist before the submucosal fossa is built.")
 	_check(game.get_node_or_null("PhaseLab") == null and is_equal_approx((game.get_node("World") as Control).anchor_right, 1.0), "The obsolete phase-selector bar must be removed and the playable viewport must use the freed right edge.")
 	game._open_technology_lab()
 	_check(game.technology_lab.visible and game.technology_lab.cards.size() == game.UNIT_CATALOG.size(), "The technology laboratory must expose one persistent card for every unit, vehicle and infrastructure family.")
@@ -65,26 +67,26 @@ func _run() -> void:
 	_check(not game.options_menu.visible and game.shop.visible, "The close button must return to the laboratory sidebar.")
 	game._manual_save()
 	_check(is_instance_valid(save_button) and FileAccess.file_exists(game.save_path) and game.toast.text.contains("PARTIDA GUARDADA"), "The sidebar must expose a separate manual-save button with visible confirmation.")
-	_check(is_equal_approx(game._storage_capacity(), 1000.0), "A new run must begin with a real 1,000-unit box limit.")
-	_check(is_equal_approx(game._store_cocaine(1200.0), 1000.0) and is_equal_approx(game.cells, 1000.0), "The initial box must reject cocaine beyond its visible capacity.")
+	_check(is_equal_approx(game._storage_capacity(), 100.0), "A new run must begin with a small one-hundred-unit tray.")
+	_check(is_equal_approx(game._store_cocaine(1200.0), 100.0) and is_equal_approx(game.cells, 100.0), "The initial tray must reject cocaine beyond its visible capacity.")
 	_check(is_zero_approx(game._store_cocaine(1.0)), "A full store must stop every additional clean delivery.")
 	game.cells = 0.0
 	game._clear_pile()
 	game.levels.container = 1
-	game.cells = 1000.0
-	var reserved_by_workers = game._create_piece("grain", "right", 4000.0, 0, 0, 0.072)
+	game.cells = 0.0
+	var reserved_by_workers = game._create_piece("grain", "right", 1000.0, 0, 0, 0.072)
 	reserved_by_workers.set_meta("carried", true)
-	var manual_priority_piece = game._create_piece("grain", "right", 1000.0, 0, 1, 0.072)
+	var manual_priority_piece = game._create_piece("grain", "right", 300.0, 0, 1, 0.072)
 	_check(is_zero_approx(game._storage_claim_space()), "Worker cargo may reserve all newly unlocked storage while it is in transit.")
 	_check(game._manual_collect_at(manual_priority_piece.position) and bool(manual_priority_piece.get_meta("manual_flying", false)), "A manual click must ignore worker reservations when the upgraded store has real free space.")
-	_check(is_zero_approx(game._store_automatic_cocaine(4000.0)), "Automatic deliveries must preserve the space reserved by a manual flight.")
-	_check(is_equal_approx(game._store_cocaine(1000.0), 1000.0), "The reserved manual cargo must still fit when it reaches the upgraded store.")
+	_check(is_zero_approx(game._store_automatic_cocaine(1000.0)), "Automatic deliveries must preserve the space reserved by a manual flight.")
+	_check(is_equal_approx(game._store_cocaine(300.0), 300.0), "The reserved manual cargo must still fit when it reaches the upgraded store.")
 	manual_priority_piece.set_meta("manual_flying", false)
 	manual_priority_piece.set_meta("carried", false)
 	game._release_manual_reservation(manual_priority_piece)
 	game.loose_chunks.erase(manual_priority_piece)
 	manual_priority_piece.queue_free()
-	_check(is_equal_approx(game.cells, 2000.0) and is_equal_approx(game._store_automatic_cocaine(3000.0), 3000.0), "Manual cargo must arrive first without losing later automatic deliveries that still fit.")
+	_check(is_equal_approx(game.cells, 300.0) and is_equal_approx(game._store_automatic_cocaine(700.0), 700.0), "Manual cargo must arrive first without losing later automatic deliveries that still fit.")
 	game._clear_pile()
 	game.cells = 0.0
 	var buried_grain = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
@@ -134,7 +136,7 @@ func _run() -> void:
 	game.levels.container = 1
 	_check(game._pile_radius_limit("right") > initial_pile_limit, "The pile boundary must expand naturally toward a farther storage building instead of ending at a fixed invisible wall.")
 	game.levels.container_capacity = 1
-	_check(is_equal_approx(game._storage_capacity(), 25000.0), "The numerical container expansion must provide a useful twenty-five-thousand-unit step before the next logistics jump.")
+	_check(is_equal_approx(game._storage_capacity(), 5000.0), "The numerical container expansion must provide a useful five-thousand-unit step before the next logistics jump.")
 	game.levels.container_capacity = 0
 	game.levels.container = 0
 	game.levels.pawn_capacity = 2
@@ -226,13 +228,17 @@ func _run() -> void:
 	_check(is_instance_valid(fallen) and is_equal_approx(float(fallen.get_meta("hp", 0.0)), detached_hp - 1.0) and game.loose_chunks.size() == loose_before_block + 1, "A wall block must survive one hit and visibly release part of its stored powder.")
 	game.levels.nails = 100
 	var hp_before_power_click := float(fallen.get_meta("hp", 0.0))
+	game.playing = true
 	game._manual_mine_fallen_wall_chunk(fallen.position)
 	_check(is_instance_valid(fallen) and is_equal_approx(float(fallen.get_meta("hp", 0.0)), hp_before_power_click - game.WALL_CHUNK_MAX_CLICK_DAMAGE), "Even extreme click upgrades must require several hits to break a fallen wall block.")
 	game.levels.nails = 0
 	game._clear_fallen_wall_chunks()
 	game._clear_pile()
+	game.playing = true
 	game._spawn_fallen_wall_chunk("right", 2, 2.0, false)
 	var blocking_chunk := game.fallen_wall_chunks[0] as Sprite2D
+	game.levels.pawn = 1
+	game._rebuild_pawns()
 	var basic_block_pawn := game.pawns.get_child(0) as Sprite2D
 	basic_block_pawn.set_meta("side", "right")
 	basic_block_pawn.set_meta("state", "to_pile")
@@ -542,11 +548,11 @@ func _run() -> void:
 	game.levels.cart = 1
 	game._rebuild_infrastructure()
 	game._rebuild_transporters()
-	_check(is_equal_approx(game._storage_capacity(), 5000.0), "The emergency container must raise storage from 1,000 to 5,000 real units.")
+	_check(is_equal_approx(game._storage_capacity(), 1000.0), "The emergency container must raise storage from one hundred to one thousand real units.")
 	_check(game.transporters.get_children().any(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart"), "Buying the container and cart must create a separate visible transporter.")
 	var storage_readouts: Array = game.infrastructure.get_children().filter(func(node: Node) -> bool: return bool(node.get_meta("storage_readout", false)) and not node.is_queued_for_deletion())
 	var storage_readout: Node = storage_readouts.back() if not storage_readouts.is_empty() else null
-	_check(storage_readout != null and (storage_readout.get_node("Value") as Label).text.contains("/ 5.0K"), "Every storage evolution must retain a local exact fill readout.")
+	_check(storage_readout != null and (storage_readout.get_node("Value") as Label).text.contains("/ 1.0K"), "Every storage evolution must retain a local exact fill readout.")
 	_check(storage_readout.get_node_or_null("Fill") == null and storage_readout.get_node_or_null("Background") == null, "The redundant local storage bar must be removed while preserving the exact number.")
 	var cart: Node = game.transporters.get_children().filter(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart")[0]
 	_check(cart.get_node_or_null("LoadReadout") != null and (cart.get_node("LoadReadout") as Label).text.contains("0 / 12"), "The cart must visibly identify its own load and capacity.")
@@ -874,15 +880,15 @@ func _run() -> void:
 	game.levels.ox_plasma_capacity = 0
 	game._clear_fallen_wall_chunks()
 	game._load()
-	_check(game.current_phase == 5 and is_equal_approx(game.phase_work, 321.0), "Save version 18 must preserve Joe's crisis progression.")
-	_check(int(game.phase_events.line) == 3 and int(game.phase_events.scratch) == 2, "Save version 18 must preserve the crises survived in the current phase.")
-	_check(is_equal_approx(game.contamination, 17.0) and is_equal_approx(game.another_line_clock, 77.0), "Save version 18 must preserve hidden contamination and Joe's line clock.")
-	_check(game.another_line_events == 4 and is_equal_approx(game.joe_high, 63.0) and is_equal_approx(game.spray_clock, 111.0), "Save version 18 must preserve the high and every remaining independent Joe timer.")
-	_check(is_equal_approx(game.mined_since_line, 123456.0) and game.pending_line_grains == 800 and game.last_line_grains == 400, "Save version 18 must preserve the adaptive line tier and its recent-mining sample.")
-	_check(is_equal_approx(game.spray_film_hp, 500.0) and is_equal_approx(game.spray_film_max, 2400.0), "Save version 18 must preserve the persistent spray film.")
-	_check(game.fallen_wall_chunks.size() == 1 and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), game.WALL_CHUNK_HEALTH) and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("mass", 0.0)), 11.0), "Save version 18 must preserve wall-block health and mass independently.")
+	_check(game.current_phase == 5 and is_equal_approx(game.phase_work, 321.0), "Save version 19 must preserve Joe's crisis progression.")
+	_check(int(game.phase_events.line) == 3 and int(game.phase_events.scratch) == 2, "Save version 19 must preserve the crises survived in the current phase.")
+	_check(is_equal_approx(game.contamination, 17.0) and is_equal_approx(game.another_line_clock, 77.0), "Save version 19 must preserve hidden contamination and Joe's line clock.")
+	_check(game.another_line_events == 4 and is_equal_approx(game.joe_high, 63.0) and is_equal_approx(game.spray_clock, 111.0), "Save version 19 must preserve the high and every remaining independent Joe timer.")
+	_check(is_equal_approx(game.mined_since_line, 123456.0) and game.pending_line_grains == 800 and game.last_line_grains == 400, "Save version 19 must preserve the adaptive line tier and its recent-mining sample.")
+	_check(is_equal_approx(game.spray_film_hp, 500.0) and is_equal_approx(game.spray_film_max, 2400.0), "Save version 19 must preserve the persistent spray film.")
+	_check(game.fallen_wall_chunks.size() == 1 and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("hp", 0.0)), game.WALL_CHUNK_HEALTH) and is_equal_approx(float(game.fallen_wall_chunks[0].get_meta("mass", 0.0)), 11.0), "Save version 19 must preserve wall-block health and mass independently.")
 	_check(game.rocks_opened == 9 and game.impurities_cleaned == 13 and is_equal_approx(game.tissue_repaired, 21.0), "Save version 6 must preserve mechanical phase objectives.")
-	_check(int(game.levels.vault_capacity) == 1 and int(game.levels.ox_vault_capacity) == 1 and int(game.levels.ox_plasma_capacity) == 1 and is_equal_approx(game._ox_capacity(), 5000000000.0), "Save version 18 must preserve the intermediate vault and the exact levels of both late Mugidophile ladders.")
+	_check(int(game.levels.vault_capacity) == 1 and int(game.levels.ox_vault_capacity) == 1 and int(game.levels.ox_plasma_capacity) == 1 and is_equal_approx(game._ox_capacity(), 5000000000.0), "Save version 19 must preserve the intermediate vault and the exact levels of both late Mugidophile ladders.")
 	game.current_phase = 5
 	game.joe_high = 0.1
 	game.joe_high_display = 0.1

@@ -25,7 +25,7 @@ func _run() -> void:
 	game.playing = false
 
 	_check(game.CLICK_POWER_TIERS == [1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 1000.0, 3000.0, 10000.0], "Manual mining must use unmistakable scale jumps instead of a nearly linear curve.")
-	_check(game.STORAGE_CAPACITIES.slice(0, 6) == [1000.0, 5000.0, 25000.0, 100000.0, 2000000.0, 10000000.0], "Phase-one and phase-two storage must expose six deliberate economic tiers.")
+	_check(game.STORAGE_CAPACITIES.slice(0, 6) == [100.0, 1000.0, 5000.0, 100000.0, 2000000.0, 10000000.0], "Phase-one and phase-two storage must expose six deliberate economic tiers.")
 	var affordability := [
 		["container", 1000.0], ["cart", 5000.0], ["container_capacity", 5000.0],
 		["cart_reinforced", 25000.0], ["warehouse", 25000.0], ["cart_upgrade", 100000.0], ["cart_speed", 2000000.0],
@@ -68,6 +68,8 @@ func _run() -> void:
 	game.levels.ox_convoy = 1
 	game.levels.ox_capacity = 2
 	game.levels.ox_heavy_capacity = 2
+	game.levels.fossa_depth = 1
+	game.levels.fossa_compression = 1
 	_check(is_equal_approx(game._storage_capacity(), 100000000.0), "The phase-three pressurized vault must hold one hundred million units.")
 	_check(game._upgrade_available(game._upgrade("ox_vault_capacity")), "The completed phase-two Mugidophile and vault must reveal its granular phase-three load ladder.")
 	_check(game._upgrade_available(game._upgrade("vault_capacity")), "The hundred-million vault must reveal its one-billion intermediate expansion.")
@@ -96,6 +98,7 @@ func _run() -> void:
 	_check(not game._upgrade_available(game._upgrade("plasma_cannon")), "A maxed Leukophant must still wait for logistics capable of moving its successor's payload.")
 	game.levels.ox_plasma_capacity = 3
 	game.levels.plant_buffer = 2
+	game.levels.fossa_compression = 2
 	_check(is_equal_approx(game._ox_capacity(), 80000000000.0) and is_equal_approx(game._storage_capacity(), 150000000000.0), "Phase four must finish its logistics at eighty billion per trip backed by a 150-billion plant.")
 	_check(game._upgrade_available(game._upgrade("plasma_cannon")), "Maxed Leukophant, buffered plant and completed plasma logistics must reveal the Plasma Cannon.")
 	game.current_phase = 5
@@ -107,6 +110,7 @@ func _run() -> void:
 	_check(not game._upgrade_available(game._upgrade("supersaiyan")), "The final Supersaiyan must remain locked behind the final plasma coil and second fusion expansion.")
 	game.levels.plasma_power = 3
 	game.levels.plant_capacity = 2
+	game.levels.fossa_compression = 3
 	_check(game._upgrade_available(game._upgrade("supersaiyan")), "Maxed plasma and the five-trillion plant must reveal the final Supersaiyan.")
 	game.levels.plant_capacity = 3
 	_check(is_equal_approx(game._storage_capacity(), 50000000000000.0), "The completed fusion plant must hold fifty trillion units.")
@@ -138,7 +142,7 @@ func _run() -> void:
 	_check(game.RAM_DAMAGE.back() < game.ELEPHANT_DAMAGE[0] and game.ELEPHANT_DAMAGE.back() < game.PLASMA_DAMAGE[0] and game.METEOR_DAMAGE.back() < game.PLASMA_DAMAGE.back() and game.PLASMA_DAMAGE.back() < game.SUPERSAIYAN_DAMAGE[0], "The large-impact ladder must keep Leucoram, Leukophant, late plasma, Meteor and final Supersaiyan in a readable order.")
 	_check(game.ELEPHANT_DAMAGE.back() / game.ELEPHANT_INTERVAL < game.HAMMER_DAMAGE[0] / game.HAMMER_INTERVAL and game.HAMMER_DAMAGE.back() / game.HAMMER_INTERVAL < game.PLASMA_DAMAGE[0] / game.CANNON_INTERVAL, "Leucomartillo must fill the phase-four DPS gap between a completed Leukophant and the first Plasma Cannon.")
 
-	_set_levels(game, {"hammer":1, "hammer_power":1, "meteor":1, "meteor_power":1})
+	_set_levels(game, {"hammer":1, "hammer_power":1, "meteor":1, "meteor_power":1, "fossa_depth":1, "fossa_compression":3})
 	game.current_phase = 5
 	game.right_hp = game.FIRST_WALL_HP
 	game.active_side = "right"
