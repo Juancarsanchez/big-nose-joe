@@ -23,6 +23,12 @@ func _run() -> void:
 	game.phase_event_pending = false
 	game.current_phase = 2
 	game.joe_dialog.hide()
+	game._spawn_powder_stream(Vector2(700.0, game._ground_y() - 12.0), Vector2(1050.0, game._ground_y() - 24.0), 1.0)
+	_check(game.effects.get_children().filter(func(node: Node) -> bool: return node is Line2D).is_empty(), "Manual collection must use atomized powder instead of a solid beam.")
+	_check(game.powder_effects.active_count() >= 12, "The atomized collection arc must contain enough fine powder to remain readable.")
+	_check(game.effects.get_child_count() < 8, "Transient powder must remain batched instead of creating one scene node per mote.")
+	await create_timer(0.62).timeout
+	_check(game.powder_effects.active_count() == 0, "An atomized arc must complete in one continuous flight and leave no delayed phantom powder.")
 
 	# Las piezas lógicas no cambian de tamaño: el valor se representa como área
 	# continua en la superficie (una unidad = un píxel de pantalla de masa).
@@ -105,8 +111,8 @@ func _run() -> void:
 	var grounded_rocks: Array = game.loose_chunks.filter(func(piece) -> bool: return piece.get_meta("kind", "grain") == "rock")
 	for rock_value in grounded_rocks:
 		var grounded_rock = rock_value
-		var half_height := maxf(8.0, grounded_rock.texture.get_height() * absf(grounded_rock.scale.y) * 0.42)
-		_check(absf(grounded_rock.position.y + half_height - game.powder_surface.surface_y_at("right", grounded_rock.position.x)) < 1.5, "A compacted rock must rest on the floor or the current snow surface instead of floating.")
+		var visible_bottom := maxf(4.0, float(game._texture_opaque_bottom(grounded_rock.texture)) * absf(grounded_rock.scale.y))
+		_check(absf(grounded_rock.position.y + visible_bottom - game.powder_surface.surface_y_at("right", grounded_rock.position.x) - game.ROCK_SURFACE_INSET) < 1.5, "A compacted rock must rest slightly inside the current snow surface instead of floating.")
 	grounded_rocks.sort_custom(func(a, b) -> bool: return a.position.x < b.position.x)
 	for index in range(1, grounded_rocks.size()):
 		_check(absf(grounded_rocks[index].position.x - grounded_rocks[index - 1].position.x) >= 20.0, "Compacted rocks must roll apart when the surface cannot support both in one place.")
@@ -125,6 +131,18 @@ func _run() -> void:
 			game._chip_rock(rock)
 		_check(int(rock.get_meta("hardness", 0)) == 0, "A treated rock must become transportable.")
 
+	game._clear_pile()
+	var near_column: int = int(game.RIGHT_WALL_COLUMN)
+	var far_column: int = mini(int(game._pile_radius_limit("right")), int(game.RIGHT_WALL_COLUMN) + 55)
+	game._create_piece("grain", "right", 900.0, 0, near_column, 0.072)
+	game._create_piece("grain", "right", 900.0, 0, far_column, 0.072)
+	var near_x: float = float(game._pile_center("right")) + float(near_column) * float(game.GRAIN_SPACING)
+	var far_x: float = float(game._pile_center("right")) + float(far_column) * float(game.GRAIN_SPACING)
+	var near_surface: float = float(game.powder_surface.surface_y_at("right", near_x))
+	var far_surface: float = float(game.powder_surface.surface_y_at("right", far_x))
+	var valley_surface: float = float(game.powder_surface.surface_y_at("right", (near_x + far_x) * 0.5))
+	_check(near_surface < game._ground_y() - 5.0 and far_surface < game._ground_y() - 5.0, "Powder must build visible volume beneath every actual landing zone.")
+	_check(valley_surface > minf(near_surface, far_surface) + 5.0, "Separated landings must form distinct hills and a readable valley instead of one wall-bound mound.")
 	game._clear_pile()
 	# Una fosa llena debe bloquear solo la extracción; abrir la galería vuelve a
 	# dejar espacio sin falsificar recursos ni borrar la montaña.
@@ -174,6 +192,10 @@ func _run() -> void:
 	var treated_rock = game._create_piece("rock", "right", 6.0, 0, 0, 0.18)
 	_check(game._claim_top_pieces("right", 1, pawn).is_empty(), "A normal pawn must never carry a compacted rock.")
 	pawn.set_meta("specialist", true)
+	game._set_pawn_carrying(pawn, false)
+	pawn.position.y = game._ground_y() - game.PAWN_FOOT_DEPTH
+	var specialist_foot: float = pawn.position.y + (pawn.offset.y + float(game._texture_opaque_bottom(pawn.texture))) * pawn.scale.y
+	_check(absf(specialist_foot - game._ground_y()) < 0.1, "The blue helmet's visible feet must touch the nasal floor despite transparent sprite padding.")
 	var rock_cargo: Array = game._claim_top_pieces("right", 1, pawn)
 	_check(rock_cargo.size() == 1 and rock_cargo[0] == treated_rock, "Only a blue-helmet specialist may carry a treated rock.")
 	game._finish_delivery(pawn)
@@ -269,6 +291,11 @@ func _run() -> void:
 	_check(bool(input_grain.get_meta("manual_flying", false)), "A real viewport click on the pile silhouette must trigger manual collection.")
 	game._clear_pile()
 	await process_frame
+	game.levels.continuous_sweep = 1
+	game.continuous_sweep_held = true
+	game._update_continuous_sweep(0.25)
+	_check(not game.continuous_sweep_held, "Continuous collection must stop if the mouse-release event was lost outside the game window.")
+	game.levels.continuous_sweep = 0
 
 	# Save/load preserves the extended pile and adaptation state.
 	game.levels = game._empty_levels()

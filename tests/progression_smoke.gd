@@ -67,8 +67,8 @@ func _run() -> void:
 	_check(not game.options_menu.visible and game.shop.visible, "The close button must return to the laboratory sidebar.")
 	game._manual_save()
 	_check(is_instance_valid(save_button) and FileAccess.file_exists(game.save_path) and game.toast.text.contains("PARTIDA GUARDADA"), "The sidebar must expose a separate manual-save button with visible confirmation.")
-	_check(is_equal_approx(game._storage_capacity(), 100.0), "A new run must begin with a small one-hundred-unit tray.")
-	_check(is_equal_approx(game._store_cocaine(1200.0), 100.0) and is_equal_approx(game.cells, 100.0), "The initial tray must reject cocaine beyond its visible capacity.")
+	_check(is_equal_approx(game._storage_capacity(), 500.0), "A new run must begin with a five-hundred-unit box.")
+	_check(is_equal_approx(game._store_cocaine(1200.0), 500.0) and is_equal_approx(game.cells, 500.0), "The initial box must reject cocaine beyond its visible capacity.")
 	_check(is_zero_approx(game._store_cocaine(1.0)), "A full store must stop every additional clean delivery.")
 	game.cells = 0.0
 	game._clear_pile()
@@ -548,7 +548,7 @@ func _run() -> void:
 	game.levels.cart = 1
 	game._rebuild_infrastructure()
 	game._rebuild_transporters()
-	_check(is_equal_approx(game._storage_capacity(), 1000.0), "The emergency container must raise storage from one hundred to one thousand real units.")
+	_check(is_equal_approx(game._storage_capacity(), 1000.0), "The emergency container must raise storage from five hundred to one thousand real units.")
 	_check(game.transporters.get_children().any(func(node: Node) -> bool: return node.get_meta("transport_kind", "") == "cart"), "Buying the container and cart must create a separate visible transporter.")
 	var storage_readouts: Array = game.infrastructure.get_children().filter(func(node: Node) -> bool: return bool(node.get_meta("storage_readout", false)) and not node.is_queued_for_deletion())
 	var storage_readout: Node = storage_readouts.back() if not storage_readouts.is_empty() else null

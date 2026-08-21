@@ -25,10 +25,10 @@ func _run() -> void:
 	game.playing = false
 
 	_check(game.CLICK_POWER_TIERS == [1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 1000.0, 3000.0, 10000.0], "Manual mining must use unmistakable scale jumps instead of a nearly linear curve.")
-	_check(game.STORAGE_CAPACITIES.slice(0, 6) == [100.0, 1000.0, 5000.0, 100000.0, 2000000.0, 10000000.0], "Phase-one and phase-two storage must expose six deliberate economic tiers.")
+	_check(game.STORAGE_CAPACITIES.slice(0, 6) == [500.0, 1000.0, 5000.0, 100000.0, 2000000.0, 10000000.0], "Phase-one and phase-two storage must expose six deliberate economic tiers.")
 	var affordability := [
-		["container", 1000.0], ["cart", 5000.0], ["container_capacity", 5000.0],
-		["cart_reinforced", 25000.0], ["warehouse", 25000.0], ["cart_upgrade", 100000.0], ["cart_speed", 2000000.0],
+		["container", 500.0], ["cart", 1000.0], ["container_capacity", 1000.0],
+		["cart_reinforced", 5000.0], ["warehouse", 5000.0], ["cart_upgrade", 100000.0], ["cart_speed", 2000000.0],
 		["silo", 100000.0], ["cart_freight", 2000000.0], ["cart_bulk", 2000000.0], ["ox_convoy", 2000000.0],
 		["bronchial_rage", 100000.0], ["punch_reserves", 100000.0], ["punch_combo", 2000000.0],
 		["uranium_wraps", 2000000.0], ["punch_collective", 2000000.0], ["ram", 2000000.0],
@@ -48,6 +48,33 @@ func _run() -> void:
 	_check(ceil(45000000.0 * pow(2.6, 3)) <= 1000000000.0, "Every Leukophant memory must fit inside the one-billion vault that precedes the final reserve.")
 	_check(ceil(15000000000.0 * pow(4.0, 1)) <= 150000000000.0 and ceil(15000000000.0 * pow(4.0, 2)) > 150000000000.0 and ceil(15000000000.0 * pow(4.0, 2)) <= 500000000000.0, "The third plasma coil must be naturally delayed until the first phase-five fusion expansion.")
 	_check(ceil(4000000000000.0 * 7.5) <= 50000000000000.0, "The final Kamehameha upgrade must fit inside the completed fifty-trillion plant.")
+
+	# Auditoría topológica: empezando con la caja de 500, cada nivel debe poder
+	# comprarse con alguna capacidad ya alcanzable. Se simula poder rellenar el
+	# almacén entre compras, pero nunca se concede capacidad futura por adelantado.
+	_set_levels(game, {})
+	game.current_phase = 5
+	game.phase_work = 1.0e30
+	game.phase_events = {"line":10, "chalk":10, "spray":10, "scratch":10, "mucus":10}
+	game.septum_open = true
+	game.puncher_unlocked = true
+	game.compaction_announced = true
+	var changed := true
+	while changed:
+		changed = false
+		for candidate in game.UPGRADES:
+			var level := int(game.levels.get(str(candidate.id), 0))
+			if level >= int(candidate.get("max", 999)) or not game._upgrade_available(candidate):
+				continue
+			if game._upgrade_cost(candidate, level) <= game._storage_capacity():
+				game.levels[candidate.id] = level + 1
+				changed = true
+	var unreachable: Array[String] = []
+	for candidate in game.UPGRADES:
+		var level := int(game.levels.get(str(candidate.id), 0))
+		if level < int(candidate.get("max", 999)):
+			unreachable.append("%s NV.%d (%s; caja %s)" % [str(candidate.id), level + 1, game._number(game._upgrade_cost(candidate, level)), game._number(game._storage_capacity())])
+	_check(unreachable.is_empty(), "No technology level may be trapped behind an unreachable storage capacity: %s" % ", ".join(unreachable))
 
 	_set_levels(game, {"silo":1, "puncher":1, "punch_union":1, "punch_training":1, "bronchial_rage":1})
 	game.current_phase = 2

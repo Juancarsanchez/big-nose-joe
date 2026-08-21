@@ -74,38 +74,72 @@ func _calculate_profile(side: String) -> Dictionary:
 		return {}
 	var ground := float(source._ground_y()) - 3.0
 	var center := float(source._pile_center(side))
-	# Una unidad de economía equivale a un píxel de pantalla de área. La masa se
-	# dibuja como una sola superficie suave, no como una entidad por grano.
-	var area := mass * float(source._fossa_visual_area_per_unit())
-	var max_height := maxf(260.0, ground - 265.0)
-	var desired_width := maxf(sqrt(area * 0.78), area / maxf(1.0, max_height * 0.92))
-	var physical_width := float(source._pile_radius_limit(side)) * float(source.GRAIN_SPACING)
-	desired_width = clampf(desired_width, 2.0, physical_width)
-	var samples := clampi(ceili(desired_width / 12.0) + 1, 3, 180)
+	var area_per_unit := float(source._fossa_visual_area_per_unit())
+	var area := mass * area_per_unit
+	var bounds: Vector2i = source._column_bounds(side, source._pile_radius_limit(side))
+	var physical_min := center + float(bounds.x) * float(source.GRAIN_SPACING)
+	var physical_max := center + float(bounds.y) * float(source.GRAIN_SPACING)
+	var physical_width := maxf(16.0, physical_max - physical_min)
+	var deposits: Array[Dictionary] = []
+	var start_x := physical_max
+	var end_x := physical_min
+	var mass_columns: Dictionary = source.pile_mass_columns.get(side, {})
+	for column_value in mass_columns:
+		var column := int(column_value)
+		var column_mass := float(mass_columns[column_value])
+		if column_mass <= 0.001:
+			continue
+		var deposit_x := center + float(column) * float(source.GRAIN_SPACING)
+		var deposit_area := column_mass * area_per_unit
+		var spread := clampf(12.0 + sqrt(deposit_area) * 0.92, 14.0, physical_width * 0.72)
+		deposits.append({"x":deposit_x, "area":deposit_area, "spread":spread})
+		start_x = minf(start_x, deposit_x - spread)
+		end_x = maxf(end_x, deposit_x + spread)
+	if deposits.is_empty():
+		# Protección para estados incompletos creados por herramientas de prueba.
+		var fallback_x := center + float(source.RIGHT_WALL_COLUMN if side == "right" else source.LEFT_WALL_COLUMN) * float(source.GRAIN_SPACING)
+		var fallback_spread := clampf(12.0 + sqrt(area) * 0.92, 14.0, physical_width * 0.72)
+		deposits.append({"x":fallback_x, "area":area, "spread":fallback_spread})
+		start_x = fallback_x - fallback_spread
+		end_x = fallback_x + fallback_spread
+	start_x = clampf(start_x, physical_min, physical_max - 8.0)
+	end_x = clampf(end_x, start_x + 8.0, physical_max)
+	var desired_width := end_x - start_x
+	var samples := clampi(ceili(desired_width / 8.0) + 1, 3, 220)
 	var spacing := desired_width / float(samples - 1)
-	var start_x := center + float(source.RIGHT_WALL_COLUMN) * float(source.GRAIN_SPACING) if side == "right" else center - float(source.LEFT_WALL_COLUMN) * float(source.GRAIN_SPACING) - desired_width
 	var raw_heights := PackedFloat32Array()
-	var weight_sum := 0.0
-	for index in range(samples):
-		var t := float(index) / float(samples - 1)
-		# Valles y lomas deterministas: parece polvo acumulado, no una pirámide.
-		var weight := 0.72 + sin(t * PI) * 0.48 + sin(t * PI * 4.0 + (0.45 if side == "right" else 1.2)) * 0.13
-		weight = maxf(0.18, weight)
-		raw_heights.append(weight)
-		weight_sum += weight
-	for index in range(raw_heights.size()):
-		raw_heights[index] = area * raw_heights[index] / maxf(1.0, weight_sum * spacing)
+	raw_heights.resize(samples)
+	for deposit in deposits:
+		var weights := PackedFloat32Array()
+		weights.resize(samples)
+		var weight_sum := 0.0
+		var spread := float(deposit.spread)
+		for index in range(samples):
+			var distance := absf(start_x + float(index) * spacing - float(deposit.x))
+			if distance > spread:
+				continue
+			# Una campana ancha produce lomas de polvo; varias caídas cercanas se
+			# funden y las lejanas conservan sus propios valles.
+			var normalized := distance / maxf(1.0, spread)
+			var weight := pow(maxf(0.0, 1.0 - normalized * normalized), 1.35)
+			weights[index] = weight
+			weight_sum += weight
+		for index in range(samples):
+			raw_heights[index] += float(deposit.area) * weights[index] / maxf(0.001, weight_sum * spacing)
 	var heights := _smooth(raw_heights)
-	# Tras suavizar, se conserva exactamente el área total corrigiendo una vez.
-	var smoothed_area := 0.0
-	for height in heights: smoothed_area += height * spacing
-	var correction := area / maxf(1.0, smoothed_area)
-	for index in range(heights.size()): heights[index] *= correction
-	return {"mass":mass, "start":start_x, "spacing":spacing, "width":desired_width, "heights":heights}
+	# Un pequeño grano determinista evita un borde matemáticamente perfecto sin
+	# desplazar el volumen fuera de la zona en la que cayó.
+	for index in range(heights.size()):
+		var ripple := 1.0 + sin(float(index) * 1.71 + (0.4 if side == "right" else 1.3)) * 0.035
+		heights[index] *= ripple
+	_normalize_area(heights, area, spacing)
+	_limit_height(heights, maxf(260.0, ground - 265.0), spacing)
+	_normalize_area(heights, area, spacing)
+	return {"mass":mass, "revision":int(source.pile_revision.get(side, 0)), "start":start_x, "spacing":spacing, "width":desired_width, "heights":heights}
 
 func surface_y_at(side: String, x: float) -> float:
 	var profile: Dictionary = surface_profiles.get(side, {})
-	if profile.is_empty() or not is_equal_approx(float(profile.get("mass", -1.0)), float(source._pile_load(side))):
+	if profile.is_empty() or not is_equal_approx(float(profile.get("mass", -1.0)), float(source._pile_load(side))) or int(profile.get("revision", -1)) != int(source.pile_revision.get(side, 0)):
 		profile = _calculate_profile(side)
 		surface_profiles[side] = profile
 	var heights: PackedFloat32Array = profile.get("heights", PackedFloat32Array())
@@ -129,6 +163,33 @@ func _smooth(values: PackedFloat32Array) -> PackedFloat32Array:
 		for index in range(1, result.size() - 1):
 			result[index] = previous[index] * 0.58 + (previous[index - 1] + previous[index + 1]) * 0.21
 	return result
+
+func _normalize_area(heights: PackedFloat32Array, target_area: float, spacing: float) -> void:
+	var current_area := 0.0
+	for height in heights:
+		current_area += height * spacing
+	var correction := target_area / maxf(0.001, current_area)
+	for index in range(heights.size()):
+		heights[index] *= correction
+
+func _limit_height(heights: PackedFloat32Array, maximum: float, spacing: float) -> void:
+	# Al saturarse una zona, el exceso se desparrama por los valles disponibles.
+	# Se conserva el área total y se evita que una descarga enorme forme una torre.
+	for pass_index in range(6):
+		var excess_area := 0.0
+		var receivers := 0
+		for index in range(heights.size()):
+			if heights[index] > maximum:
+				excess_area += (heights[index] - maximum) * spacing
+				heights[index] = maximum
+			elif heights[index] < maximum - 0.01:
+				receivers += 1
+		if excess_area <= 0.01 or receivers == 0:
+			return
+		var addition := excess_area / (float(receivers) * spacing)
+		for index in range(heights.size()):
+			if heights[index] < maximum - 0.01:
+				heights[index] += addition
 
 func _draw_lower_shade(fill: PackedVector2Array, ground: float) -> void:
 	if fill.size() < 4:

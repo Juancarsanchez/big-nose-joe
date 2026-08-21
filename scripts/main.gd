@@ -7,6 +7,7 @@ const ProgressionData = preload("res://scripts/progression_data.gd")
 const PilePieceData = preload("res://scripts/pile_piece.gd")
 const PileBatchRenderer = preload("res://scripts/pile_renderer.gd")
 const PowderSurfaceData = preload("res://scripts/powder_surface.gd")
+const PowderEffectsData = preload("res://scripts/powder_effects.gd")
 const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
 const UNIT_CATALOG := ProgressionData.UNIT_CATALOG
@@ -56,7 +57,8 @@ const BASE_CAPACITY := 3
 const SMART_CLUMP_SIZES := [1, 3, 5, 8, 13, 21]
 const SMART_CLUMP_RENAISSANCE_SIZES := [21, 55, 144]
 const PAWN_FOOT_DEPTH := 14.0
-const STORAGE_CAPACITIES := [100.0, 1000.0, 5000.0, 100000.0, 2000000.0, 10000000.0, 100000000.0, 1000000000.0, 3000000000.0, 10000000000.0, 50000000000.0, 150000000000.0, 500000000000.0, 5000000000000.0, 50000000000000.0]
+const ROCK_SURFACE_INSET := 2.0
+const STORAGE_CAPACITIES := [500.0, 1000.0, 5000.0, 100000.0, 2000000.0, 10000000.0, 100000000.0, 1000000000.0, 3000000000.0, 10000000000.0, 50000000000.0, 150000000000.0, 500000000000.0, 5000000000000.0, 50000000000000.0]
 const CONTAINER_X := 4860.0
 const SILO_X := 5350.0
 const PLANT_X := 1150.0
@@ -258,6 +260,7 @@ var loose_chunks: Array[PilePiece] = []
 var fallen_wall_chunks: Array[Sprite2D] = []
 var pile_renderer: PileRenderer
 var powder_surface: PowderSurface
+var powder_effects: Node2D
 var fossa_meter: PanelContainer
 var fossa_meter_title: Label
 var fossa_meter_progress: ProgressBar
@@ -268,6 +271,8 @@ var pile_columns := {"left":{}, "right":{}}
 var pile_heights := {"left":{}, "right":{}}
 var reserved_heights := {"left":{}, "right":{}}
 var pile_load_cache := {"left":0.0, "right":0.0}
+var pile_mass_columns := {"left":{}, "right":{}}
+var pile_revision := {"left":0, "right":0}
 var joe_grain_load_cache := {"left":0.0, "right":0.0}
 var rock_count_cache := {"left":0, "right":0}
 var untreated_rock_count_cache := {"left":0, "right":0}
@@ -349,6 +354,7 @@ var music_volume := 0.75
 var sfx_volume := 0.85
 var selected_technology_unit := "manual"
 var user_paused := false
+var texture_foot_cache := {}
 
 func _ready() -> void:
 	powder_surface = PowderSurfaceData.new() as PowderSurface
@@ -356,6 +362,10 @@ func _ready() -> void:
 	powder_surface.z_index = 0
 	chunks.add_child(powder_surface)
 	powder_surface.setup(self)
+	powder_effects = PowderEffectsData.new()
+	powder_effects.name = "PowderEffects"
+	powder_effects.z_index = 32
+	effects.add_child(powder_effects)
 	_build_fossa_meter()
 	pile_renderer = PileBatchRenderer.new()
 	pile_renderer.name = "PileRenderer"
@@ -682,73 +692,24 @@ func _spawn_debut_powder_burst(side: String, origin: Vector2, intensity: float =
 		tween.parallel().tween_property(flake, "rotation", flake.rotation + randf_range(-2.8, 2.8), 0.56)
 		tween.tween_callback(flake.queue_free)
 
-func _spawn_powder_fall(origin: Vector2, side: String, amount: int = 6, intensity: float = 1.0) -> void:
+func _spawn_powder_fall(origin: Vector2, side: String, amount: int = 6, intensity: float = 1.0, landing_column: int = 999) -> void:
 	# El valor económico sigue viajando como datos; este polvo es únicamente la
 	# lectura visual de que una porción de nieve ha salido de la pared o del techo.
 	var direction := -1.0 if side == "left" else 1.0
+	var targets: Array[Vector2] = []
 	for index in range(clampi(amount, 1, 18)):
-		var flake := _make_powder_flake(Color("fffdf2"), randf_range(2.4, 5.8) * intensity)
-		flake.position = origin + Vector2(randf_range(-12.0, 12.0), randf_range(-8.0, 12.0))
-		flake.rotation = randf_range(-0.8, 0.8)
-		flake.z_index = 30
-		effects.add_child(flake)
-		var landing_x := flake.position.x + direction * randf_range(22.0, 105.0) * intensity
+		var landing_x := origin.x + direction * randf_range(22.0, 105.0) * intensity
+		if landing_column != 999:
+			landing_x = _pile_center(side) + float(landing_column) * GRAIN_SPACING + randf_range(-9.0, 9.0) * intensity
 		var surface_y := powder_surface.surface_y_at(side, landing_x) if powder_surface else _ground_y()
-		var landing := Vector2(landing_x, minf(_ground_y() - 2.0, surface_y - randf_range(1.0, 4.0)))
-		var duration := randf_range(0.58, 0.86)
-		var tween := create_tween().set_parallel()
-		tween.tween_property(flake, "position", landing, duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-		tween.tween_property(flake, "rotation", flake.rotation + randf_range(-2.0, 2.0), duration)
-		tween.tween_property(flake, "modulate:a", 0.0, 0.13).set_delay(duration - 0.04)
-		tween.chain().tween_callback(flake.queue_free)
+		targets.append(Vector2(landing_x, minf(_ground_y() - 2.0, surface_y - randf_range(1.0, 4.0))))
+	powder_effects.spawn_fall(origin, targets, intensity)
 
 func _spawn_powder_stream(start: Vector2, target: Vector2, intensity: float = 1.0) -> void:
-	# Una cinta ancha, curva y translúcida se lee como nieve arrastrada por agua;
-	# el borde fino anterior parecía un rayo láser.
-	var points := PackedVector2Array()
-	var control := (start + target) * 0.5 - Vector2(0.0, 35.0 + absf(target.x - start.x) * 0.045)
-	for index in range(8):
-		var t := float(index) / 7.0
-		var inverse := 1.0 - t
-		points.append(start * inverse * inverse + control * 2.0 * inverse * t + target * t * t + Vector2(0.0, sin(t * PI * 3.0) * 3.0))
-	var stream := Line2D.new()
-	stream.width = 7.0 + intensity * 4.0
-	stream.default_color = Color(0.76, 0.91, 0.91, 0.72)
-	stream.points = points
-	stream.joint_mode = Line2D.LINE_JOINT_ROUND
-	stream.begin_cap_mode = Line2D.LINE_CAP_ROUND
-	stream.end_cap_mode = Line2D.LINE_CAP_ROUND
-	var width_curve := Curve.new()
-	width_curve.add_point(Vector2(0.0, 0.08))
-	width_curve.add_point(Vector2(0.16, 1.0))
-	width_curve.add_point(Vector2(0.78, 0.72))
-	width_curve.add_point(Vector2(1.0, 0.06))
-	stream.width_curve = width_curve
-	stream.z_index = 31
-	effects.add_child(stream)
-	var highlight := Line2D.new()
-	highlight.width = 2.0 + intensity
-	highlight.default_color = Color(1.0, 1.0, 1.0, 0.72)
-	highlight.points = points
-	highlight.joint_mode = Line2D.LINE_JOINT_ROUND
-	highlight.z_index = 32
-	effects.add_child(highlight)
-	var tween := create_tween().set_parallel()
-	tween.tween_property(stream, "modulate:a", 0.0, 0.34 + intensity * 0.04)
-	tween.tween_property(highlight, "modulate:a", 0.0, 0.28 + intensity * 0.03)
-	tween.tween_property(stream, "width", 2.0, 0.34 + intensity * 0.04)
-	tween.chain().tween_callback(stream.queue_free)
-	tween.chain().tween_callback(highlight.queue_free)
-	for index in range(4 + int(intensity * 2.0)):
-		var flake := _make_powder_flake(Color("f8fffc"), randf_range(1.5, 3.2) * intensity)
-		var start_t := randf_range(0.02, 0.30)
-		flake.position = points[clampi(roundi(start_t * 7.0), 0, 7)] + Vector2(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0))
-		flake.z_index = 32
-		effects.add_child(flake)
-		var flake_tween := create_tween().set_parallel()
-		flake_tween.tween_property(flake, "position", target + Vector2(randf_range(-5.0, 5.0), randf_range(-3.0, 3.0)), randf_range(0.24, 0.38)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-		flake_tween.tween_property(flake, "modulate:a", 0.0, 0.12).set_delay(0.20)
-		flake_tween.chain().tween_callback(flake.queue_free)
+	# Polvo atomizado: no existe una línea que delate la trayectoria completa.
+	# Cada mota recorre el arco de forma independiente y el barrido continuo crea
+	# una sucesión de pequeñas nubes en lugar de un rayo o una manguera.
+	powder_effects.spawn_arc(start, target, intensity)
 
 func _grain_stack_height(value: float) -> float:
 	# Las piezas lógicas conservan una altura estable. Su valor solo cambia el
@@ -1082,7 +1043,28 @@ func _set_pawn_carrying(pawn: Sprite2D, carrying: bool) -> void:
 	if pawn.texture == target:
 		return
 	pawn.texture = target
-	pawn.offset = Vector2(0.0, PAWN_FOOT_DEPTH / pawn.scale.y - target.get_height() * 0.5)
+	pawn.offset = Vector2(0.0, PAWN_FOOT_DEPTH / pawn.scale.y - _texture_opaque_bottom(target))
+
+func _texture_opaque_bottom(texture: Texture2D) -> float:
+	# Algunos uniformes tienen píxeles transparentes bajo los pies. Usar el alto
+	# completo del PNG hacía flotar especialmente al casco azul.
+	var key := texture.resource_path
+	if texture_foot_cache.has(key):
+		return float(texture_foot_cache[key])
+	var image := texture.get_image()
+	var opaque_bottom := float(texture.get_height()) * 0.5
+	if image and not image.is_empty():
+		for y in range(image.get_height() - 1, -1, -1):
+			var found := false
+			for x in range(image.get_width()):
+				if image.get_pixel(x, y).a > 0.08:
+					found = true
+					break
+			if found:
+				opaque_bottom = float(y + 1) - float(image.get_height()) * 0.5
+				break
+	texture_foot_cache[key] = opaque_bottom
+	return opaque_bottom
 
 func _pawn_carries_powder_mound(pawn: Sprite2D) -> bool:
 	if bool(pawn.get_meta("specialist", false)) or bool(pawn.get_meta("detector", false)) or bool(pawn.get_meta("handler", false)):
@@ -1205,7 +1187,9 @@ func _update_pawns(delta: float) -> void:
 		# Los cascos azules trepan hasta el pedrusco aunque la nieve normal lo haya
 		# rodeado. Nunca se ponen a recoger polvo como si fueran peones corrientes.
 		if is_instance_valid(specialist_rock):
-			work_point = specialist_rock.position + Vector2(lane_x * 0.12, -14.0)
+			var specialist_x := specialist_rock.position.x + lane_x * 0.12
+			var specialist_floor := powder_surface.surface_y_at(side, specialist_x) if powder_surface else _ground_y()
+			work_point = Vector2(specialist_x, specialist_floor - PAWN_FOOT_DEPTH)
 		if state == "to_pile":
 			var obstruction := _nearest_fallen_wall_chunk(side, pawn.position)
 			if obstruction:
@@ -1309,7 +1293,7 @@ func _spawn_chunk(origin: Vector2, value: float, side: String = active_side, pre
 	var piece := _create_piece("grain", side, value, 0, column, randf_range(0.068, 0.078), "", source)
 	_drop_piece(piece, origin)
 	if powder_effect:
-		_spawn_powder_fall(origin, side, clampi(roundi(3.0 + log(maxf(1.0, value)) / log(10.0) * 2.0), 3, 10))
+		_spawn_powder_fall(origin, side, clampi(roundi(3.0 + log(maxf(1.0, value)) / log(10.0) * 2.0), 3, 10), 1.0, column)
 
 func _spawn_special_piece(kind: String, side: String, material: String = "") -> void:
 	var scale := randf_range(0.078, 0.092) if kind == "impurity" else randf_range(0.07, 0.085)
@@ -1391,6 +1375,8 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 	piece.position = _landing_position(piece)
 	_index_add_piece(piece)
 	pile_renderer.add_piece(piece)
+	if kind == "rock":
+		_align_compacted_rocks(side)
 	return piece
 
 func _mark_landed(piece: Variant) -> void:
@@ -1421,6 +1407,8 @@ func _reset_pile_index() -> void:
 	pile_heights = {"left":{}, "right":{}}
 	reserved_heights = {"left":{}, "right":{}}
 	pile_load_cache = {"left":0.0, "right":0.0}
+	pile_mass_columns = {"left":{}, "right":{}}
+	pile_revision = {"left":int(pile_revision.get("left", 0)) + 1, "right":int(pile_revision.get("right", 0)) + 1}
 	joe_grain_load_cache = {"left":0.0, "right":0.0}
 	rock_count_cache = {"left":0, "right":0}
 	untreated_rock_count_cache = {"left":0, "right":0}
@@ -1434,6 +1422,9 @@ func _index_add_piece(piece: PilePiece) -> void:
 	var height := float(piece.get_meta("height", GRAIN_HEIGHT))
 	var value := float(piece.get_meta("value", 1.0))
 	pile_load_cache[side] = float(pile_load_cache[side]) + value
+	var mass_columns: Dictionary = pile_mass_columns[side]
+	mass_columns[column] = float(mass_columns.get(column, 0.0)) + value
+	pile_revision[side] = int(pile_revision.get(side, 0)) + 1
 	var kind := str(piece.get_meta("kind", "grain"))
 	if kind == "grain" and piece.get_meta("source", "player") != "player":
 		joe_grain_load_cache[side] = float(joe_grain_load_cache[side]) + value
@@ -1461,6 +1452,13 @@ func _index_remove_piece(piece: PilePiece) -> void:
 	var height := float(piece.get_meta("height", GRAIN_HEIGHT))
 	var value := float(piece.get_meta("value", 1.0))
 	pile_load_cache[side] = maxf(0.0, float(pile_load_cache[side]) - value)
+	var mass_columns: Dictionary = pile_mass_columns[side]
+	var remaining_mass := maxf(0.0, float(mass_columns.get(column, 0.0)) - value)
+	if remaining_mass <= 0.001:
+		mass_columns.erase(column)
+	else:
+		mass_columns[column] = remaining_mass
+	pile_revision[side] = int(pile_revision.get(side, 0)) + 1
 	var kind := str(piece.get_meta("kind", "grain"))
 	if kind == "grain" and piece.get_meta("source", "player") != "player":
 		joe_grain_load_cache[side] = maxf(0.0, float(joe_grain_load_cache[side]) - value)
@@ -1494,6 +1492,8 @@ func _rebuild_pile_index(side_filter: String = "") -> void:
 		pile_heights[side_filter] = {}
 		reserved_heights[side_filter] = {}
 		pile_load_cache[side_filter] = 0.0
+		pile_mass_columns[side_filter] = {}
+		pile_revision[side_filter] = int(pile_revision.get(side_filter, 0)) + 1
 		joe_grain_load_cache[side_filter] = 0.0
 		rock_count_cache[side_filter] = 0
 		untreated_rock_count_cache[side_filter] = 0
@@ -1863,6 +1863,11 @@ func _continuous_sweep_interval_for(level: int) -> float:
 
 func _update_continuous_sweep(delta: float) -> void:
 	if not continuous_sweep_held or int(levels.get("continuous_sweep", 0)) == 0:
+		return
+	# Si se perdió el evento de soltar el ratón al salir de la ventana, no debe
+	# seguir enviando nubes fantasma hacia la caja.
+	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		continuous_sweep_held = false
 		return
 	continuous_sweep_clock -= delta
 	if continuous_sweep_clock > 0.0:
@@ -2441,7 +2446,7 @@ func _update_world() -> void:
 func _update_box() -> void:
 	box.position.x = _box_x() - box.size.x * 0.35 if int(levels.get("fossa_depth", 0)) > 0 else BASE_BOX_LEFT
 	box.pivot_offset = Vector2(box.size.x * 0.5, box.size.y)
-	# Antes de comprar almacenamiento solo hay un cajón diminuto de 100 unidades.
+	# Antes de comprar almacenamiento solo hay un cajón diminuto de 500 unidades.
 	box.scale = Vector2.ONE * (0.72 if _storage_tier() == 0 else 1.0)
 	box.modulate = Color("5e3428").lerp(Color("8c5130"), sin(Time.get_ticks_msec() * 0.012) * 0.5 + 0.5) if box_jammed else Color.WHITE.lerp(Color("ad7f43"), contamination / 100.0)
 	box.rotation = sin(Time.get_ticks_msec() * 0.025) * 0.012 if box_jammed else 0.0
@@ -3159,9 +3164,8 @@ func _spawn_extraction_payload(side: String, amount: float, impact_x: float, vis
 	if amount <= 0.0: return
 	var count := maxi(1, visuals)
 	var value := amount / float(count)
-	_spawn_powder_fall(Vector2(impact_x, _ground_y() - 32.0), side, clampi(4 + roundi(log(maxf(1.0, amount)) / log(10.0) * 2.0), 5, 16), 1.15)
 	for index in range(count):
-		_spawn_chunk(Vector2(impact_x + randf_range(-10.0, 10.0), _ground_y() - randf_range(185.0, 320.0)), value, side)
+		_spawn_chunk(Vector2(impact_x + randf_range(-10.0, 10.0), _ground_y() - randf_range(185.0, 320.0)), value, side, 999, "player", true)
 
 func _click_power() -> float:
 	return _click_power_for(int(levels.nails))
@@ -3379,8 +3383,11 @@ func _align_compacted_rocks(side: String) -> void:
 			x = minf(max_x - diameter * 0.5, previous_x + diameter)
 		elif side == "left" and previous_x < INF and x > previous_x - diameter:
 			x = maxf(min_x + diameter * 0.5, previous_x - diameter)
-		var half_height := maxf(8.0, rock.texture.get_height() * absf(rock.scale.y) * 0.42)
-		rock.position = Vector2(x, powder_surface.surface_y_at(side, x) - half_height)
+		# El sprite del apelmazado comparte un PNG con mucho margen transparente;
+		# se apoya usando su último píxel visible, no la altura del archivo.
+		var visible_bottom := maxf(4.0, _texture_opaque_bottom(rock.texture) * absf(rock.scale.y))
+		rock.position = Vector2(x, powder_surface.surface_y_at(side, x) - visible_bottom + ROCK_SURFACE_INSET)
+		pile_renderer.refresh_group(rock)
 		previous_x = x
 
 func _update_another_line(delta: float) -> void:
@@ -3447,9 +3454,13 @@ func _start_another_line(source: String) -> void:
 	var source_text := "RAYITA CON SERRÍN" if source == "adulterated" else "OTRA RAYITA"
 	_show_toast("%s  ·  +%s DE POLVO" % [source_text, _number(grain_count)])
 	_float_text("+%s DE POLVO" % _number(grain_count), Vector2(_pile_center(active_side), _ground_y() - 250.0))
-	# La primera cortina deja claro desde dónde cae la dosis; los lotes siguientes
-	# mantienen copos visibles hasta que termina la lluvia.
-	_spawn_powder_fall(Vector2(_pile_center(active_side), _ground_y() - 410.0), active_side, 18, 1.25)
+	# La cortina anticipa las mismas zonas que recibirá la dosis. Así el terreno
+	# crece bajo los copos que el jugador ha visto, no en un montículo arbitrario.
+	var preview_bounds := _column_bounds(active_side, mini(_pile_radius_limit(active_side), 18 + current_phase * 2))
+	for anchor_value in ANOTHER_LINE_ANCHORS:
+		var preview_column := roundi(lerpf(float(preview_bounds.x), float(preview_bounds.y), float(anchor_value)))
+		var preview_x := _pile_center(active_side) + float(preview_column) * GRAIN_SPACING
+		_spawn_powder_fall(Vector2(preview_x, _ground_y() - randf_range(380.0, 440.0)), active_side, 4, 1.25, preview_column)
 
 func _spawn_line_piece(origin: Vector2, side: String, column: int, index: int) -> void:
 	var value := 1.0

@@ -19,11 +19,15 @@ func _capture() -> void:
 	game._rebuild_infrastructure()
 	game._rebuild_transporters()
 	game.cells = 240.0
+	game.camera_x = 3220.0
+	game.camera_goal = 3220.0
+	game.stage.position.x = -round(game.camera_x * game.WORLD_SCALE)
 	seed(41872)
 	for index in range(96):
 		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), randf_range(0.068, 0.078))
 	game._restack_pile("right")
 	game._update_ui()
+	game.playing = true
 	for launch in range(5):
 		var surface: Array = game._top_pieces("right")
 		var piece = surface[(launch * 3) % surface.size()]
