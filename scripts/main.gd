@@ -1321,8 +1321,6 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 	piece.renderer = pile_renderer
 	piece.texture = BACTERIA_TEXTURE if kind == "bacteria" else GRAIN_TEXTURE
 	column = _constrain_column(side, column)
-	if kind == "rock":
-		piece_scale = sqrt(maxf(0.0, value) * FOSSA_PIXEL_WORLD_AREA / maxf(1.0, _texture_opaque_area(piece.texture)))
 	piece.scale = Vector2(piece_scale, piece_scale)
 	piece.set_meta("base_scale", piece_scale)
 	piece.set_meta("kind", kind)
@@ -1330,7 +1328,7 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 	piece.set_meta("side", side)
 	piece.set_meta("column", column)
 	piece.set_meta("x_jitter", randf_range(-1.8, 1.8))
-	piece.set_meta("height", maxf(2.0, sqrt(value * FOSSA_PIXEL_WORLD_AREA)) if kind == "rock" else (10.0 if kind == "bacteria" else GRAIN_HEIGHT))
+	piece.set_meta("height", ROCK_HEIGHT if kind == "rock" else (10.0 if kind == "bacteria" else GRAIN_HEIGHT))
 	piece.set_meta("material", material)
 	piece.set_meta("source", source)
 	piece.set_meta("landed", true)

@@ -64,8 +64,8 @@ func _run() -> void:
 		var rock = rocks[0]
 		var base_scale := float(rock.get_meta("base_scale", 0.0))
 		var opaque_screen_area: float = game._texture_opaque_area(rock.texture) * base_scale * base_scale * game.WORLD_SCALE * game.WORLD_SCALE
-		_check(is_equal_approx(opaque_screen_area, 6.0), "A six-unit compacted rock must occupy six opaque screen pixels.")
-		var expected_y: float = game.powder_surface.surface_y_at("right", rock.position.x) - maxf(4.0, game._texture_opaque_bottom(rock.texture) * absf(rock.scale.y)) + game.ROCK_SURFACE_INSET
+		_check(float(rock.get_meta("value", 0.0)) == 6.0 and base_scale >= 0.16 and opaque_screen_area > 6.0, "A compacted rock must keep six logical units but recover its readable obstacle-sized sprite.")
+		var expected_y: float = game.powder_surface.surface_y_at("right", rock.position.x) - maxf(4.0, game._texture_opaque_bottom(rock.texture) * base_scale) + game.ROCK_SURFACE_INSET
 		_check(is_equal_approx(rock.position.y, expected_y), "Compacted cocaine must rest on the current powder surface.")
 
 	var helmet := Sprite2D.new()

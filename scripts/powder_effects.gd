@@ -18,7 +18,16 @@ func set_mass_volume(id: Variant, position: Vector2, amount: float, area_per_uni
 	if amount <= 0.0001:
 		remove_mass_volume(id)
 		return
-	mass_volumes[id] = {"position": position, "amount": amount, "area_per_unit": area_per_unit, "shape": shape, "direction": direction, "seed":absi(hash(id))}
+	var previous: Dictionary = mass_volumes.get(id, {})
+	var trail := PackedVector2Array()
+	if shape == "stream":
+		if str(previous.get("shape", "")) == "stream":
+			trail = (previous.get("trail", PackedVector2Array()) as PackedVector2Array).duplicate()
+		if trail.is_empty() or trail[trail.size() - 1].distance_to(position) >= 2.0:
+			trail.append(position)
+		while trail.size() > 64:
+			trail.remove_at(0)
+	mass_volumes[id] = {"position": position, "amount": amount, "area_per_unit": area_per_unit, "shape": shape, "direction": direction, "seed":absi(hash(id)), "trail":trail}
 	queue_redraw()
 
 func remove_mass_volume(id: Variant) -> void:
@@ -40,6 +49,13 @@ func _draw_mass_volume(volume: Dictionary) -> void:
 	var visual_units := _visual_units(float(volume.amount))
 	var target_area := maxf(0.0, visual_units * float(volume.area_per_unit))
 	if target_area <= 0.0001:
+		return
+	var shape := str(volume.shape)
+	if shape == "stream":
+		_draw_stream_powder(volume, visual_units, target_area)
+		return
+	if shape == "fall":
+		_draw_falling_powder(volume, visual_units, target_area)
 		return
 	if visual_units <= 64.0:
 		_draw_dust_pixels(volume, visual_units)
@@ -69,15 +85,70 @@ func _draw_dust_pixels(volume: Dictionary, visual_units: float) -> void:
 		var color := Color("fffdf2") if index % 3 == 0 else Color("e8e4d5")
 		draw_rect(Rect2(center + local - size * 0.5, size), color, true)
 
+func _draw_stream_powder(volume: Dictionary, visual_units: float, target_area: float) -> void:
+	var trail: PackedVector2Array = volume.get("trail", PackedVector2Array())
+	if trail.is_empty():
+		trail.append(Vector2(volume.position))
+	var count := mini(256, ceili(visual_units))
+	var area_per_fleck := target_area / (visual_units if visual_units <= 256.0 else float(maxi(1, count)))
+	var side := sqrt(area_per_fleck)
+	var seed_value := int(volume.seed)
+	for index in range(count):
+		var represented := minf(1.0, visual_units - float(index)) if visual_units <= 256.0 else 1.0
+		if represented <= 0.0:
+			break
+		var progress := clampf((float(index) + _noise(seed_value, index) * 0.85) / float(maxi(1, count)), 0.0, 1.0)
+		var point := _sample_trail(trail, progress)
+		var tangent := _trail_tangent(trail, progress)
+		var normal := Vector2(-tangent.y, tangent.x)
+		var scatter := (_noise(seed_value + 19, index) - 0.5) * maxf(5.0, side * 3.2)
+		var along := (_noise(seed_value + 37, index) - 0.5) * maxf(2.0, side)
+		point += normal * scatter + tangent * along
+		var fleck_size := Vector2(side, side * represented)
+		var color := Color("fffdf2") if index % 4 == 0 else Color("e9e5d8")
+		draw_rect(Rect2(point - fleck_size * 0.5, fleck_size), color, true)
+
+func _draw_falling_powder(volume: Dictionary, visual_units: float, target_area: float) -> void:
+	var count := mini(256, ceili(visual_units))
+	var area_per_fleck := target_area / (visual_units if visual_units <= 256.0 else float(maxi(1, count)))
+	var side := sqrt(area_per_fleck)
+	var center := Vector2(volume.position)
+	var seed_value := int(volume.seed)
+	# Distribución de copos en una nube ancha. El radio crece con sqrt(N), de modo
+	# que el minado y Otra Rayita nunca vuelven a dibujar una columna vertical.
+	var cloud_radius := maxf(5.0, sqrt(target_area) * 1.25)
+	for index in range(count):
+		var represented := minf(1.0, visual_units - float(index)) if visual_units <= 256.0 else 1.0
+		if represented <= 0.0:
+			break
+		var angle := float(index) * 2.399963 + _noise(seed_value, index) * 0.55
+		var radius := sqrt((float(index) + 0.5) / float(maxi(1, count))) * cloud_radius
+		var offset := Vector2(cos(angle) * radius, sin(angle) * radius * 0.62)
+		offset += Vector2((_noise(seed_value + 11, index) - 0.5) * side * 1.8, (_noise(seed_value + 23, index) - 0.5) * side * 1.8)
+		var fleck_size := Vector2(side, side * represented)
+		var color := Color("fffdf2") if index % 4 == 0 else Color("e7e3d5")
+		draw_rect(Rect2(center + offset - fleck_size * 0.5, fleck_size), color, true)
+
+func _sample_trail(trail: PackedVector2Array, progress: float) -> Vector2:
+	if trail.size() <= 1:
+		return trail[0]
+	var scaled := progress * float(trail.size() - 1)
+	var low := floori(scaled)
+	var high := mini(low + 1, trail.size() - 1)
+	return trail[low].lerp(trail[high], scaled - float(low))
+
+func _trail_tangent(trail: PackedVector2Array, progress: float) -> Vector2:
+	if trail.size() <= 1:
+		return Vector2.RIGHT
+	var index := clampi(roundi(progress * float(trail.size() - 1)), 0, trail.size() - 1)
+	var low := maxi(0, index - 1)
+	var high := mini(trail.size() - 1, index + 1)
+	var tangent := trail[high] - trail[low]
+	return tangent.normalized() if tangent.length_squared() > 0.0001 else Vector2.RIGHT
+
 func _dust_pixel_offset(index: int, count: int, shape: String, unit_side: float, seed_value: int) -> Vector2:
 	var jitter_x := (_noise(seed_value, index * 2) - 0.5) * unit_side * 0.9
 	var jitter_y := (_noise(seed_value, index * 2 + 1) - 0.5) * unit_side * 0.9
-	if shape == "stream":
-		var progress := (float(index) - float(count - 1) * 0.5) * unit_side * 1.35
-		return Vector2(progress + jitter_x, jitter_y)
-	if shape == "fall":
-		var progress := (float(index) - float(count - 1) * 0.5) * unit_side * 1.3
-		return Vector2(jitter_x, progress + jitter_y)
 	var columns := maxi(2, ceili(sqrt(float(count) * 1.5)))
 	var row := index / columns
 	var column := index % columns
@@ -88,9 +159,7 @@ func _dust_pixel_offset(index: int, count: int, shape: String, unit_side: float,
 func _draw_dust_cloud(volume: Dictionary, target_area: float) -> void:
 	var shape := str(volume.shape)
 	var aspect := 1.8
-	if shape == "stream": aspect = 5.8
-	elif shape == "fall": aspect = 0.62
-	elif shape == "vehicle": aspect = 2.6
+	if shape == "vehicle": aspect = 2.6
 	# El radio solo establece la caja inicial. El contorno se vuelve irregular y
 	# después se normaliza para conservar exactamente el área solicitada.
 	var radius_y := sqrt(target_area / (PI * aspect))

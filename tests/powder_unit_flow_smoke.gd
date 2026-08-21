@@ -44,6 +44,9 @@ func _run() -> void:
 		_check(is_equal_approx(_screen_area(game, game.powder_effects.mass_volume_world_area("small_test")), expected_pixels), "The same small-volume rule must apply while powder is moving.")
 	game.powder_effects.remove_mass_volume("small_test")
 	game._clear_pile()
+	game.powder_effects.set_mass_volume("fractional_test", Vector2.ZERO, 5.5, game._fossa_visual_area_per_unit(), "stream")
+	_check(is_equal_approx(_screen_area(game, game.powder_effects.mass_volume_world_area("fractional_test")), 5.5), "Fractional powder above the readability threshold must also preserve exact area.")
+	game.powder_effects.remove_mass_volume("fractional_test")
 
 	# Pila: diez unidades lógicas deben ocupar diez píxeles de pantalla.
 	game.powder_field.add("right", 0, 7.0, "player")
