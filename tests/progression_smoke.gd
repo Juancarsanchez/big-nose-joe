@@ -90,8 +90,9 @@ func _run() -> void:
 	game._clear_pile()
 	game.cells = 0.0
 	var buried_grain = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
-	game._create_piece("rock", "right", 6.0, 4, 0, 0.18)
-	_check(game._manual_collect_at(buried_grain.position) and bool(buried_grain.get_meta("manual_flying", false)), "A precise click on a visible grain below a clump must select the grain instead of the clump's broad hit area.")
+	var covering_rock = game._create_piece("rock", "right", 6.0, 4, 0, 0.18)
+	var visible_snow_below := Vector2(covering_rock.position.x, game.powder_surface.surface_y_at("right", covering_rock.position.x) + 4.0)
+	_check(game._manual_collect_at(visible_snow_below) and bool(buried_grain.get_meta("manual_flying", false)), "A precise click on visible snow below a clump must select powder instead of the clump's broad hit area.")
 	game._clear_pile()
 	game.levels.container = 0
 	game.cells = 457.0

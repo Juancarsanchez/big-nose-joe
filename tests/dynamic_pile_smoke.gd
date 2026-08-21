@@ -30,8 +30,19 @@ func _run() -> void:
 	await create_timer(0.62).timeout
 	_check(game.powder_effects.active_count() == 0, "An atomized arc must complete in one continuous flight and leave no delayed phantom powder.")
 
+	# Un golpe minúsculo conserva su valor económico, pero recibe cuatro píxeles
+	# mínimos de lectura. Desde cinco, valor y superficie vuelven a ser idénticos.
+	var visual_one = game._create_piece("grain", "right", 1.0, 0, game.RIGHT_WALL_COLUMN, 0.072, "", "player")
+	var visual_three = game._create_piece("grain", "right", 3.0, 0, game.RIGHT_WALL_COLUMN + 1, 0.072, "", "player")
+	var visual_five = game._create_piece("grain", "right", 5.0, 0, game.RIGHT_WALL_COLUMN + 2, 0.072, "", "player")
+	var joe_one = game._create_piece("grain", "right", 1.0, 0, game.RIGHT_WALL_COLUMN + 3, 0.072, "", "joe")
+	_check(is_equal_approx(game._pile_load("right"), 10.0), "The visual minimum must never invent economic cocaine.")
+	_check(is_equal_approx(game._pile_visual_load("right"), 14.0), "Player mining values 1-4 must occupy four pixels, values from five must remain linear, and Joe's unit dust must stay unitary.")
+	_check(is_equal_approx(game._pile_visual_load("right") * game._fossa_visual_area_per_unit() * game.WORLD_SCALE * game.WORLD_SCALE, 14.0), "Base-fossa powder must map its visual mass to exactly one screen pixel per unit after the small-hit minimum.")
+	game._clear_pile()
+
 	# Las piezas lógicas no cambian de tamaño: el valor se representa como área
-	# continua en la superficie (una unidad = un píxel de pantalla de masa).
+	# continua en la superficie (lineal desde cinco; mínimo visible de cuatro).
 	_check(is_equal_approx(game._grain_stack_height(1.0), game.GRAIN_HEIGHT), "A one-unit grain must retain the base logical height.")
 	_check(is_equal_approx(game._grain_stack_height(1000000.0), game.GRAIN_HEIGHT), "Payload value must not create a taller logical sprite stack.")
 	_check(is_equal_approx(game._fossa_capacity("right"), game.FOSSA_BASE_CAPACITY), "The initial fossa capacity must be explicit.")
@@ -204,6 +215,22 @@ func _run() -> void:
 	_check(not bool(ordinary_snow.get_meta("carried", false)), "A waiting blue helmet must leave normal snow untouched.")
 	pawn.set_meta("specialist", false)
 
+	# El casco azul recorre una superficie cambiante, no una diagonal suspendida.
+	game._clear_pile()
+	game._create_piece("grain", "right", 1200.0, 0, game.RIGHT_WALL_COLUMN + 12, 0.072)
+	pawn.set_meta("specialist", true)
+	game._set_pawn_carrying(pawn, false)
+	pawn.position = Vector2(game._pile_center("right") + float(game.RIGHT_WALL_COLUMN + 34) * game.GRAIN_SPACING, game._ground_y() - game.PAWN_FOOT_DEPTH)
+	var surface_target_x: float = game._pile_center("right") + float(game.RIGHT_WALL_COLUMN + 12) * game.GRAIN_SPACING
+	for step in range(24):
+		game._move_pawn_along_surface(pawn, surface_target_x, "right", 90.0, 0.05)
+		var expected_support: float = game.powder_surface.surface_y_at("right", pawn.position.x) - game.PAWN_FOOT_DEPTH
+		_check(absf(pawn.position.y - expected_support) < 0.05, "A blue helmet must recompute the changing powder surface beneath every walking step.")
+	game._clear_pile()
+	game._snap_pawn_to_surface(pawn, "right")
+	_check(absf(pawn.position.y - (game._ground_y() - game.PAWN_FOOT_DEPTH)) < 0.05, "When a hill disappears, the blue helmet must return to the floor immediately instead of floating at its old height.")
+	pawn.set_meta("specialist", false)
+
 	# Without the voluntary technology, normal pawns still keep every carried grain separate.
 	game._clear_pile()
 	await process_frame
@@ -272,6 +299,15 @@ func _run() -> void:
 	var cells_before_blocked_click: float = game.cells
 	_check(game._manual_collect_at(Vector2(blocked_rock.position.x, game._ground_y() - 2.0)), "A compacted rock must visibly acknowledge a manual click.")
 	_check(not bool(blocked_rock.get_meta("carried", false)) and is_equal_approx(game.cells, cells_before_blocked_click), "Manual collection must never bypass blue-helmet specialists.")
+	game._clear_pile()
+	for index in range(8):
+		game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
+	var covering_rock = game._create_piece("rock", "right", 6.0, 2, 0, 0.18)
+	_check(game._manual_collect_at(covering_rock.position), "Clicking the visible body of a compacted ball must acknowledge the obstruction itself.")
+	_check(not game.loose_chunks.any(func(piece) -> bool: return piece.get_meta("kind", "") == "grain" and bool(piece.get_meta("manual_flying", false))), "The compacted ball's own visible body must not leak a click through to hidden powder.")
+	var snow_below := Vector2(covering_rock.position.x, game.powder_surface.surface_y_at("right", covering_rock.position.x) + 4.0)
+	_check(game._manual_collect_at(snow_below), "Exposed powder below a compacted ball must remain manually collectable.")
+	_check(game.loose_chunks.any(func(piece) -> bool: return piece.get_meta("kind", "") == "grain" and bool(piece.get_meta("manual_flying", false))) and not bool(covering_rock.get_meta("carried", false)), "Clicking visible snow below a rock must remove snow, not let the rock capture the whole pile hit area.")
 	game._clear_pile()
 	await process_frame
 	var blocked_bacterium = game._create_piece("bacteria", "right", 2.0, 0, 0, 0.08)

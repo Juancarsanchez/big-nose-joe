@@ -69,13 +69,14 @@ func _draw_side(side: String) -> void:
 	_draw_impurity_stains(columns, start_x, heights, spacing, ground)
 
 func _calculate_profile(side: String) -> Dictionary:
-	var mass := float(source._pile_load(side))
-	if mass <= 0.001:
+	var economic_mass := float(source._pile_load(side))
+	var visual_mass := float(source._pile_visual_load(side))
+	if economic_mass <= 0.001 or visual_mass <= 0.001:
 		return {}
 	var ground := float(source._ground_y()) - 3.0
 	var center := float(source._pile_center(side))
 	var area_per_unit := float(source._fossa_visual_area_per_unit())
-	var area := mass * area_per_unit
+	var area := visual_mass * area_per_unit
 	var bounds: Vector2i = source._column_bounds(side, source._pile_radius_limit(side))
 	var physical_min := center + float(bounds.x) * float(source.GRAIN_SPACING)
 	var physical_max := center + float(bounds.y) * float(source.GRAIN_SPACING)
@@ -135,7 +136,7 @@ func _calculate_profile(side: String) -> Dictionary:
 	_normalize_area(heights, area, spacing)
 	_limit_height(heights, maxf(260.0, ground - 265.0), spacing)
 	_normalize_area(heights, area, spacing)
-	return {"mass":mass, "revision":int(source.pile_revision.get(side, 0)), "start":start_x, "spacing":spacing, "width":desired_width, "heights":heights}
+	return {"mass":economic_mass, "visual_mass":visual_mass, "revision":int(source.pile_revision.get(side, 0)), "start":start_x, "spacing":spacing, "width":desired_width, "heights":heights}
 
 func surface_y_at(side: String, x: float) -> float:
 	var profile: Dictionary = surface_profiles.get(side, {})

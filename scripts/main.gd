@@ -25,8 +25,9 @@ const EDGE_SIZE := 34.0
 const PAN_SPEED := 1050.0
 const GRAIN_SPACING := 9.2
 const GRAIN_HEIGHT := 7.4
-# La montaña es una superficie continua: una unidad de polvo ocupa exactamente
-# un píxel de pantalla de área. No hay un Sprite por grano.
+# La montaña es una superficie continua: desde cinco unidades, una unidad de
+# polvo ocupa exactamente un píxel de pantalla. Los impactos de 1-4 reservan
+# cuatro píxeles para seguir siendo visibles. No hay un Sprite por grano.
 const FOSSA_PIXEL_WORLD_AREA := 1.0 / (WORLD_SCALE * WORLD_SCALE)
 const FOSSA_BASE_CAPACITY := 75000.0
 const FOSSA_GALLERY_CAPACITY := 600000.0
@@ -271,6 +272,7 @@ var pile_columns := {"left":{}, "right":{}}
 var pile_heights := {"left":{}, "right":{}}
 var reserved_heights := {"left":{}, "right":{}}
 var pile_load_cache := {"left":0.0, "right":0.0}
+var pile_visual_load_cache := {"left":0.0, "right":0.0}
 var pile_mass_columns := {"left":{}, "right":{}}
 var pile_revision := {"left":0, "right":0}
 var joe_grain_load_cache := {"left":0.0, "right":0.0}
@@ -355,6 +357,7 @@ var sfx_volume := 0.85
 var selected_technology_unit := "manual"
 var user_paused := false
 var texture_foot_cache := {}
+var texture_image_cache := {}
 
 func _ready() -> void:
 	powder_surface = PowderSurfaceData.new() as PowderSurface
@@ -713,7 +716,7 @@ func _spawn_powder_stream(start: Vector2, target: Vector2, intensity: float = 1.
 
 func _grain_stack_height(value: float) -> float:
 	# Las piezas lógicas conservan una altura estable. Su valor solo cambia el
-	# área de PowderSurface, donde 1 unidad ocupa 1 píxel de pantalla.
+	# área de PowderSurface, donde el valor visual se traduce a píxeles de pantalla.
 	return GRAIN_HEIGHT
 
 func _spawn_energy_ring(origin: Vector2, color: Color, radius: float = 20.0) -> void:
@@ -1161,6 +1164,8 @@ func _update_pawns(delta: float) -> void:
 		var pawn := node as Sprite2D
 		if not pawn: continue
 		if box_jammed:
+			if bool(pawn.get_meta("specialist", false)):
+				_snap_pawn_to_surface(pawn, str(pawn.get_meta("side", active_side)))
 			pawn.rotation = 0.0
 			continue
 		var state: String = pawn.get_meta("state", "to_pile")
@@ -1198,7 +1203,10 @@ func _update_pawns(delta: float) -> void:
 				_move_pawn_toward(pawn, stop, speed, delta)
 				_set_pawn_carrying(pawn, false)
 				continue
-			_move_pawn_toward(pawn, work_point, speed, delta)
+			if specialist:
+				_move_pawn_along_surface(pawn, work_point.x, side, speed, delta)
+			else:
+				_move_pawn_toward(pawn, work_point, speed, delta)
 			_set_pawn_carrying(pawn, false)
 			if pawn.position.distance_to(work_point) < 1.0:
 				pawn.position = work_point
@@ -1209,6 +1217,8 @@ func _update_pawns(delta: float) -> void:
 			var timer: float = float(pawn.get_meta("timer", 0.0)) - delta
 			pawn.set_meta("timer", timer)
 			pawn.position.x = work_point.x + sin(Time.get_ticks_msec() * 0.018 + int(pawn.get_meta("index", 0))) * 1.8
+			if specialist:
+				_snap_pawn_to_surface(pawn, side)
 			if timer <= 0.0:
 				if specialist:
 					var rock := _specialist_rock_target(side, pawn.position)
@@ -1243,9 +1253,14 @@ func _update_pawns(delta: float) -> void:
 			var timer: float = float(pawn.get_meta("timer", 0.0)) - delta
 			pawn.set_meta("timer", timer)
 			_set_pawn_carrying(pawn, true)
+			if specialist:
+				_snap_pawn_to_surface(pawn, side)
 			if timer <= 0.0: pawn.set_meta("state", "to_box")
 		elif state == "to_box":
-			_move_pawn_toward(pawn, depot, speed, delta)
+			if specialist:
+				_move_pawn_along_surface(pawn, depot.x, side, speed, delta)
+			else:
+				_move_pawn_toward(pawn, depot, speed, delta)
 			_set_pawn_carrying(pawn, true)
 			_update_carried_pieces(pawn)
 			if pawn.position.distance_to(depot) < 1.0:
@@ -1263,6 +1278,20 @@ func _move_pawn_toward(pawn: Sprite2D, target: Vector2, speed: float, delta: flo
 	var direction := signf(target.x - pawn.position.x)
 	if not is_zero_approx(direction): _set_pawn_facing(pawn, direction > 0.0)
 	pawn.position = pawn.position.move_toward(target, speed * delta)
+
+func _surface_pawn_y(side: String, x: float) -> float:
+	var support := powder_surface.surface_y_at(side, x) if powder_surface else _ground_y()
+	return minf(_ground_y(), support) - PAWN_FOOT_DEPTH
+
+func _snap_pawn_to_surface(pawn: Sprite2D, side: String) -> void:
+	pawn.position.y = _surface_pawn_y(side, pawn.position.x)
+
+func _move_pawn_along_surface(pawn: Sprite2D, target_x: float, side: String, speed: float, delta: float) -> void:
+	var direction := signf(target_x - pawn.position.x)
+	if not is_zero_approx(direction):
+		_set_pawn_facing(pawn, direction > 0.0)
+	pawn.position.x = move_toward(pawn.position.x, target_x, speed * delta)
+	_snap_pawn_to_surface(pawn, side)
 
 func _set_pawn_facing(pawn: Sprite2D, faces_right: bool) -> void:
 	# Todos los sprites de glóbulo blanco se dibujaron mirando a la izquierda.
@@ -1348,6 +1377,10 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 	piece.set_meta("base_scale", piece_scale)
 	piece.set_meta("kind", kind)
 	piece.set_meta("value", value)
+	# Los primeros golpes necesitan un mínimo legible. Desde cinco unidades la
+	# superficie vuelve a ser estrictamente lineal: N extraído = N píxeles.
+	var visual_value := 4.0 if kind == "grain" and source == "player" and value <= 4.0 else value
+	piece.set_meta("visual_value", visual_value)
 	piece.set_meta("side", side)
 	piece.set_meta("column", column)
 	piece.set_meta("x_jitter", randf_range(-1.8, 1.8))
@@ -1407,6 +1440,7 @@ func _reset_pile_index() -> void:
 	pile_heights = {"left":{}, "right":{}}
 	reserved_heights = {"left":{}, "right":{}}
 	pile_load_cache = {"left":0.0, "right":0.0}
+	pile_visual_load_cache = {"left":0.0, "right":0.0}
 	pile_mass_columns = {"left":{}, "right":{}}
 	pile_revision = {"left":int(pile_revision.get("left", 0)) + 1, "right":int(pile_revision.get("right", 0)) + 1}
 	joe_grain_load_cache = {"left":0.0, "right":0.0}
@@ -1421,9 +1455,11 @@ func _index_add_piece(piece: PilePiece) -> void:
 	var column := int(piece.get_meta("column", 0))
 	var height := float(piece.get_meta("height", GRAIN_HEIGHT))
 	var value := float(piece.get_meta("value", 1.0))
+	var visual_value := float(piece.get_meta("visual_value", value))
 	pile_load_cache[side] = float(pile_load_cache[side]) + value
+	pile_visual_load_cache[side] = float(pile_visual_load_cache[side]) + visual_value
 	var mass_columns: Dictionary = pile_mass_columns[side]
-	mass_columns[column] = float(mass_columns.get(column, 0.0)) + value
+	mass_columns[column] = float(mass_columns.get(column, 0.0)) + visual_value
 	pile_revision[side] = int(pile_revision.get(side, 0)) + 1
 	var kind := str(piece.get_meta("kind", "grain"))
 	if kind == "grain" and piece.get_meta("source", "player") != "player":
@@ -1451,9 +1487,11 @@ func _index_remove_piece(piece: PilePiece) -> void:
 	var column := int(piece.get_meta("column", 0))
 	var height := float(piece.get_meta("height", GRAIN_HEIGHT))
 	var value := float(piece.get_meta("value", 1.0))
+	var visual_value := float(piece.get_meta("visual_value", value))
 	pile_load_cache[side] = maxf(0.0, float(pile_load_cache[side]) - value)
+	pile_visual_load_cache[side] = maxf(0.0, float(pile_visual_load_cache[side]) - visual_value)
 	var mass_columns: Dictionary = pile_mass_columns[side]
-	var remaining_mass := maxf(0.0, float(mass_columns.get(column, 0.0)) - value)
+	var remaining_mass := maxf(0.0, float(mass_columns.get(column, 0.0)) - visual_value)
 	if remaining_mass <= 0.001:
 		mass_columns.erase(column)
 	else:
@@ -1492,6 +1530,7 @@ func _rebuild_pile_index(side_filter: String = "") -> void:
 		pile_heights[side_filter] = {}
 		reserved_heights[side_filter] = {}
 		pile_load_cache[side_filter] = 0.0
+		pile_visual_load_cache[side_filter] = 0.0
 		pile_mass_columns[side_filter] = {}
 		pile_revision[side_filter] = int(pile_revision.get(side_filter, 0)) + 1
 		joe_grain_load_cache[side_filter] = 0.0
@@ -1710,12 +1749,14 @@ func _surface_piece_at(world_pos: Vector2) -> PilePiece:
 	# clic cae dentro del polvo renderizado, cualquier grano superior sirve como
 	# representación exacta de la masa que se está retirando.
 	if powder_surface and world_pos.y >= powder_surface.surface_y_at(side, world_pos.x) and world_pos.y <= _ground_y() + 5.0:
-		var top := _top_pieces(side)
-		if not top.is_empty():
-			return top.front()
+		var powder := _collectable_powder_near_x(side, world_pos.x)
+		if powder:
+			return powder
 	var nearest: PilePiece = null
 	var nearest_x := INF
 	for piece in _top_pieces(side):
+		if str(piece.get_meta("kind", "grain")) == "rock":
+			continue
 		var visual_height := maxf(6.0, float(piece.get_meta("height", GRAIN_HEIGHT)))
 		var hit_width := maxf(GRAIN_SPACING * 1.35, piece.texture.get_width() * absf(piece.scale.x) * 0.55)
 		var distance_x := absf(world_pos.x - piece.position.x)
@@ -1723,6 +1764,53 @@ func _surface_piece_at(world_pos: Vector2) -> PilePiece:
 			nearest = piece
 			nearest_x = distance_x
 	return nearest
+
+func _collectable_powder_near_x(side: String, x: float) -> PilePiece:
+	# La superficie es continua, pero los recursos siguen siendo datos discretos.
+	# Buscamos nieve bajo el punto pulsado ignorando los apelmazados que pueda
+	# haber más arriba en esa misma columna.
+	var center_column := roundi((x - _pile_center(side)) / GRAIN_SPACING)
+	var columns: Dictionary = pile_columns[side]
+	var limit := _pile_radius_limit(side)
+	for radius in range(limit * 2 + 1):
+		var candidates := [center_column] if radius == 0 else [center_column - radius, center_column + radius]
+		for column_value in candidates:
+			var column := int(column_value)
+			if not columns.has(column):
+				continue
+			var stack: Array = columns[column]
+			for index in range(stack.size() - 1, -1, -1):
+				var piece := stack[index] as PilePiece
+				if not _piece_is_in_pile(piece, side):
+					continue
+				if str(piece.get_meta("kind", "grain")) not in ["rock", "bacteria"]:
+					return piece
+	return null
+
+func _blocking_pile_piece_at(world_pos: Vector2) -> PilePiece:
+	var side := "left" if world_pos.x < SEPTUM_X else "right"
+	for value in loose_chunks:
+		var piece := value as PilePiece
+		if not _piece_is_in_pile(piece, side) or str(piece.get_meta("kind", "grain")) not in ["rock", "bacteria"]:
+			continue
+		var radius := maxf(7.0, minf(16.0, piece.texture.get_width() * absf(piece.scale.x) * 0.44))
+		if world_pos.distance_squared_to(piece.position) <= radius * radius and _piece_opaque_at(piece, world_pos):
+			return piece
+	return null
+
+func _piece_opaque_at(piece: PilePiece, world_pos: Vector2) -> bool:
+	if not piece or not piece.texture or is_zero_approx(piece.scale.x) or is_zero_approx(piece.scale.y):
+		return false
+	var key := piece.texture.resource_path
+	var image: Image = texture_image_cache.get(key)
+	if not image:
+		image = piece.texture.get_image()
+		if not image or image.is_empty():
+			return true
+		texture_image_cache[key] = image
+	var local := (world_pos - piece.position).rotated(-piece.rotation)
+	var pixel := Vector2i(floori(local.x / piece.scale.x + float(image.get_width()) * 0.5), floori(local.y / piece.scale.y + float(image.get_height()) * 0.5))
+	return pixel.x >= 0 and pixel.y >= 0 and pixel.x < image.get_width() and pixel.y < image.get_height() and image.get_pixelv(pixel).a > 0.08
 
 func _direct_loose_piece_at(world_pos: Vector2) -> PilePiece:
 	var side := "left" if world_pos.x < SEPTUM_X else "right"
@@ -1817,7 +1905,11 @@ func _manual_collect_at(world_pos: Vector2, _show_feedback: bool = true, continu
 		return false
 	# Un grano visible y señalado con precisión gana al área de selección grande
 	# del pedrusco. Así el apelmazado estorba, pero no secuestra los clics vecinos.
-	var piece := _direct_loose_piece_at(world_pos)
+	# El apelmazado solo intercepta los píxeles opacos de su silueta; sus márgenes
+	# transparentes ya no bloquean la nieve que se ve por debajo o entre bolas.
+	var piece := _blocking_pile_piece_at(world_pos)
+	if not piece:
+		piece = _direct_loose_piece_at(world_pos)
 	if not piece:
 		piece = _surface_piece_at(world_pos)
 	if not piece:
@@ -2220,6 +2312,9 @@ func _dense_grain_cluster(side: String) -> Array[PilePiece]:
 
 func _pile_load(side: String) -> float:
 	return float(pile_load_cache.get(side, 0.0))
+
+func _pile_visual_load(side: String) -> float:
+	return float(pile_visual_load_cache.get(side, 0.0))
 
 func _untreated_rock_count(side: String) -> int:
 	return int(untreated_rock_count_cache.get(side, 0))
