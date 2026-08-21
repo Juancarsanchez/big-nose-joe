@@ -23,11 +23,12 @@ func _capture() -> void:
 	seed(72426)
 	for index in range(118):
 		var column: int = game._choose_landing_column("right")
-		game._create_piece("grain", "right", 1.0 + float(index % 4 == 0), 0, column, randf_range(0.068, 0.078))
+		game.powder_field.add("right", column, 1.0 + float(index % 4 == 0), "player")
 	for index in range(6):
 		var column: int = game._choose_landing_column("right")
 		game._create_piece("rock", "right", 7.0, 2 + index % 2, column, randf_range(0.175, 0.205))
 	game.compaction_announced = true
+	game.powder_surface.refresh()
 	game._update_pressure_visuals()
 	game._update_ui()
 	await create_timer(6.2).timeout

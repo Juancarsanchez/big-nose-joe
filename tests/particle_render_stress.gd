@@ -24,8 +24,8 @@ func _run() -> void:
 	game._clear_pile()
 	seed(260808)
 	for index in range(GRAIN_COUNT):
-		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), 0.072, "", "joe")
-	game._restack_pile("right")
+		game.powder_field.add("right", game._choose_landing_column("right"), 1.0, "joe")
+	game.powder_surface.refresh()
 	for warmup in range(30):
 		await process_frame
 	var fall_targets: Array[Vector2] = []
@@ -36,8 +36,8 @@ func _run() -> void:
 		# Simula golpes y recogida simultáneos. Antes esto añadía decenas de nodos y
 		# Tweens por fotograma; ahora debe quedarse en un solo lienzo acotado.
 		if frame % 4 == 0:
-			game.powder_effects.spawn_arc(Vector2(700.0, game._ground_y() - 8.0), Vector2(1080.0, game._ground_y() - 24.0), 1.5)
-			game.powder_effects.spawn_fall(Vector2(710.0, game._ground_y() - 260.0), fall_targets, 1.0)
+			game.powder_effects.set_mass_volume("stress_stream", Vector2(890.0, game._ground_y() - 24.0), 120.0, game._fossa_visual_area_per_unit(), "stream")
+			game.powder_effects.set_mass_volume("stress_fall", fall_targets[frame % fall_targets.size()], 80.0, game._fossa_visual_area_per_unit(), "fall")
 		await process_frame
 	var elapsed := float(Time.get_ticks_usec() - started) / 1000000.0
 	var fps := float(MEASURED_FRAMES) / maxf(0.001, elapsed)
@@ -46,7 +46,7 @@ func _run() -> void:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(game.save_path))
 	# El polvo continuo no necesita ya ningún lote de sprites: una sola superficie
 	# procedural representa toda la masa, incluso bajo la carga de referencia.
-	if fps >= 60.0 and game.pile_renderer.batch_count() == 0 and game.chunks.get_child_count() <= 1 and game.effects.get_child_count() < 8 and game.powder_effects.active_count() <= game.powder_effects.MAX_PARTICLES:
+	if fps >= 60.0 and game.pile_renderer.batch_count() == 0 and game.chunks.get_child_count() <= 1 and game.effects.get_child_count() < 8 and game.powder_effects.active_count() <= 2:
 		print("PARTICLE_RENDER_STRESS_OK")
 		quit(0)
 	else:

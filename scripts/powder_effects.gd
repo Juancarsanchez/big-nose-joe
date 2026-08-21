@@ -1,90 +1,138 @@
 extends Node2D
 
-# Un solo lienzo dibuja todas las motas pasajeras. Así el polvo no crea cientos
-# de nodos y animaciones independientes cuando varias unidades golpean a la vez.
-const MAX_PARTICLES := 560
-
-var particles: Array[Dictionary] = []
+# Un solo lienzo dibuja todas las masas pasajeras. Las cargas pequeñas son motas
+# cuadradas de polvo y las grandes, nubes dentadas: nunca canicas o elipses lisas.
+var mass_volumes := {}
 
 func _ready() -> void:
 	set_process(false)
 
 func active_count() -> int:
-	return particles.size()
+	return mass_volumes.size()
 
 func clear() -> void:
-	particles.clear()
-	set_process(false)
+	mass_volumes.clear()
 	queue_redraw()
 
-func spawn_arc(start: Vector2, target: Vector2, intensity: float = 1.0) -> void:
-	var count := clampi(10 + roundi(intensity * 8.0), 12, 26)
-	var base_control := (start + target) * 0.5 - Vector2(0.0, 35.0 + absf(target.x - start.x) * 0.045)
-	for index in range(count):
-		var soft := index % 4 == 0
-		var color := Color(0.88, 0.96, 0.95, 0.38) if soft else Color(0.98, 0.99, 0.96, 0.9)
-		particles.append({
-			"kind":"arc", "elapsed":-float(index) / float(count) * 0.09,
-			"duration":randf_range(0.28, 0.42),
-			"start":start + Vector2(randf_range(-7.0, 7.0), randf_range(-5.0, 5.0)),
-			"control":base_control + Vector2(randf_range(-16.0, 16.0), randf_range(-10.0, 10.0)),
-			"target":target + Vector2(randf_range(-8.0, 8.0), randf_range(-5.0, 4.0)),
-			"size":randf_range(0.75, 1.9) * (1.7 if soft else 1.0) * intensity,
-			"color":color, "rotation":randf_range(-1.2, 1.2), "spin":randf_range(-2.2, 2.2),
-		})
-	_trim()
-	set_process(true)
+func set_mass_volume(id: Variant, position: Vector2, amount: float, area_per_unit: float, shape: String = "heap", direction: float = 1.0) -> void:
+	if amount <= 0.0001:
+		remove_mass_volume(id)
+		return
+	mass_volumes[id] = {"position": position, "amount": amount, "area_per_unit": area_per_unit, "shape": shape, "direction": direction, "seed":absi(hash(id))}
 	queue_redraw()
 
-func spawn_fall(origin: Vector2, targets: Array[Vector2], intensity: float = 1.0) -> void:
-	for index in range(targets.size()):
-		particles.append({
-			"kind":"fall", "elapsed":-float(index % 5) * 0.018,
-			"duration":randf_range(0.58, 0.86),
-			"start":origin + Vector2(randf_range(-12.0, 12.0), randf_range(-8.0, 12.0)),
-			"target":targets[index], "size":randf_range(2.4, 5.8) * intensity,
-			"color":Color("fffdf2"), "rotation":randf_range(-0.8, 0.8), "spin":randf_range(-2.0, 2.0),
-		})
-	_trim()
-	set_process(true)
-	queue_redraw()
+func remove_mass_volume(id: Variant) -> void:
+	if mass_volumes.erase(id):
+		queue_redraw()
 
-func _trim() -> void:
-	if particles.size() > MAX_PARTICLES:
-		particles = particles.slice(particles.size() - MAX_PARTICLES)
+func mass_volume_amount(id: Variant) -> float:
+	return float((mass_volumes.get(id, {}) as Dictionary).get("amount", 0.0))
 
-func _process(delta: float) -> void:
-	for index in range(particles.size() - 1, -1, -1):
-		particles[index].elapsed = float(particles[index].elapsed) + delta
-		if float(particles[index].elapsed) >= float(particles[index].duration):
-			particles.remove_at(index)
-	if particles.is_empty():
-		set_process(false)
-	queue_redraw()
+func mass_volume_world_area(id: Variant) -> float:
+	var volume: Dictionary = mass_volumes.get(id, {})
+	return _visual_units(float(volume.get("amount", 0.0))) * float(volume.get("area_per_unit", 0.0))
 
 func _draw() -> void:
-	for particle in particles:
-		var elapsed := float(particle.elapsed)
-		if elapsed < 0.0:
-			continue
-		var progress := clampf(elapsed / float(particle.duration), 0.0, 1.0)
-		var position: Vector2
-		if str(particle.kind) == "arc":
-			# Bézier continuo: nunca existe una etapa que espere suspendida en el ápice.
-			var inverse := 1.0 - progress
-			position = Vector2(particle.start) * inverse * inverse + Vector2(particle.control) * 2.0 * inverse * progress + Vector2(particle.target) * progress * progress
-		else:
-			position = Vector2(particle.start).lerp(Vector2(particle.target), progress * progress)
-		var color := Color(particle.color)
-		color.a *= 1.0 - clampf((progress - 0.76) / 0.24, 0.0, 1.0)
-		var size := float(particle.size)
-		var rotation := float(particle.rotation) + float(particle.spin) * progress
-		var axis := Vector2(cos(rotation), sin(rotation))
-		var normal := Vector2(-axis.y, axis.x)
-		var polygon := PackedVector2Array([
-			position - axis * size + normal * size * 0.18,
-			position - axis * size * 0.28 - normal * size * 0.72,
-			position + axis * size * 0.82 - normal * size * 0.24,
-			position + axis * size * 0.44 + normal * size * 0.66,
-		])
-		draw_colored_polygon(polygon, color)
+	for volume in mass_volumes.values():
+		_draw_mass_volume(volume)
+
+func _draw_mass_volume(volume: Dictionary) -> void:
+	var visual_units := _visual_units(float(volume.amount))
+	var target_area := maxf(0.0, visual_units * float(volume.area_per_unit))
+	if target_area <= 0.0001:
+		return
+	if visual_units <= 64.0:
+		_draw_dust_pixels(volume, visual_units)
+		return
+	_draw_dust_cloud(volume, target_area)
+
+func _visual_units(amount: float) -> float:
+	if amount > 0.0001 and amount < 5.0:
+		return 4.0
+	return maxf(0.0, amount)
+
+func _draw_dust_pixels(volume: Dictionary, visual_units: float) -> void:
+	var unit_area := float(volume.area_per_unit)
+	var unit_side := sqrt(unit_area)
+	var count := ceili(visual_units)
+	var shape := str(volume.shape)
+	var center := Vector2(volume.position)
+	var direction := float(volume.direction)
+	var seed_value := int(volume.seed)
+	for index in range(count):
+		var represented := minf(1.0, visual_units - float(index))
+		if represented <= 0.0:
+			break
+		var size := Vector2(unit_side, unit_side * represented)
+		var local := _dust_pixel_offset(index, count, shape, unit_side, seed_value)
+		local.x *= direction
+		var color := Color("fffdf2") if index % 3 == 0 else Color("e8e4d5")
+		draw_rect(Rect2(center + local - size * 0.5, size), color, true)
+
+func _dust_pixel_offset(index: int, count: int, shape: String, unit_side: float, seed_value: int) -> Vector2:
+	var jitter_x := (_noise(seed_value, index * 2) - 0.5) * unit_side * 0.9
+	var jitter_y := (_noise(seed_value, index * 2 + 1) - 0.5) * unit_side * 0.9
+	if shape == "stream":
+		var progress := (float(index) - float(count - 1) * 0.5) * unit_side * 1.35
+		return Vector2(progress + jitter_x, jitter_y)
+	if shape == "fall":
+		var progress := (float(index) - float(count - 1) * 0.5) * unit_side * 1.3
+		return Vector2(jitter_x, progress + jitter_y)
+	var columns := maxi(2, ceili(sqrt(float(count) * 1.5)))
+	var row := index / columns
+	var column := index % columns
+	var centered_x := (float(column) - float(columns - 1) * 0.5) * unit_side * 1.08
+	var centered_y := -float(row) * unit_side * 1.02
+	return Vector2(centered_x + jitter_x * 0.35, centered_y + jitter_y * 0.25)
+
+func _draw_dust_cloud(volume: Dictionary, target_area: float) -> void:
+	var shape := str(volume.shape)
+	var aspect := 1.8
+	if shape == "stream": aspect = 5.8
+	elif shape == "fall": aspect = 0.62
+	elif shape == "vehicle": aspect = 2.6
+	# El radio solo establece la caja inicial. El contorno se vuelve irregular y
+	# después se normaliza para conservar exactamente el área solicitada.
+	var radius_y := sqrt(target_area / (PI * aspect))
+	var radius_x := radius_y * aspect
+	var points := PackedVector2Array()
+	var center := Vector2(volume.position)
+	var direction := float(volume.direction)
+	var seed_value := int(volume.seed)
+	for index in range(26):
+		var angle := TAU * float(index) / 26.0
+		var roughness := 0.72 + _noise(seed_value, index) * 0.48
+		var local := Vector2(cos(angle) * radius_x * roughness * direction, sin(angle) * radius_y * roughness)
+		if shape in ["heap", "vehicle"] and local.y > 0.0:
+			local.y *= 0.36
+		points.append(center + local)
+	var polygon_area := absf(_polygon_area(points))
+	if polygon_area > 0.0001:
+		var correction := sqrt(target_area / polygon_area)
+		for index in range(points.size()):
+			points[index] = center + (points[index] - center) * correction
+	var color := Color("f4f0dc")
+	if shape == "stream": color = Color("f8f5e8")
+	draw_colored_polygon(points, color)
+	# Manchas interiores pequeñas rompen la lectura de bloque sólido. Se dibujan
+	# sobre la propia nube, por lo que no suman ni restan superficie de cocaína.
+	for index in range(18):
+		var local := Vector2(
+			(_noise(seed_value + 31, index * 2) - 0.5) * radius_x * 1.25,
+			(_noise(seed_value + 47, index * 2 + 1) - 0.5) * radius_y * 1.15
+		)
+		local.x *= direction
+		var point := center + local
+		if Geometry2D.is_point_in_polygon(point, points):
+			var speck := 0.75 + _noise(seed_value + 73, index) * 0.75
+			draw_rect(Rect2(point - Vector2.ONE * speck * 0.5, Vector2.ONE * speck), Color("c9c4b7") if index % 3 else Color("ffffff"), true)
+
+func _noise(seed_value: int, index: int) -> float:
+	return absf(fmod(sin(float(seed_value % 100003) * 0.0137 + float(index) * 12.9898) * 43758.5453, 1.0))
+
+func _polygon_area(points: PackedVector2Array) -> float:
+	var result := 0.0
+	for index in range(points.size()):
+		var next := (index + 1) % points.size()
+		result += points[index].x * points[next].y - points[next].x * points[index].y
+	return result * 0.5

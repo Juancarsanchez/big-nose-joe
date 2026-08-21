@@ -2,12 +2,13 @@ extends Control
 
 const SAVE := "user://big_nose_joe.save"
 const SETTINGS := "user://big_nose_joe_settings.cfg"
-const SAVE_VERSION := 19
+const SAVE_VERSION := 20
 const ProgressionData = preload("res://scripts/progression_data.gd")
 const PilePieceData = preload("res://scripts/pile_piece.gd")
 const PileBatchRenderer = preload("res://scripts/pile_renderer.gd")
 const PowderSurfaceData = preload("res://scripts/powder_surface.gd")
 const PowderEffectsData = preload("res://scripts/powder_effects.gd")
+const PowderFieldData = preload("res://scripts/powder_field.gd")
 const PHASES := ProgressionData.PHASES
 const UPGRADES := ProgressionData.UPGRADES
 const UNIT_CATALOG := ProgressionData.UNIT_CATALOG
@@ -25,14 +26,12 @@ const EDGE_SIZE := 34.0
 const PAN_SPEED := 1050.0
 const GRAIN_SPACING := 9.2
 const GRAIN_HEIGHT := 7.4
-# La montaña es una superficie continua: desde cinco unidades, una unidad de
-# polvo ocupa exactamente un píxel de pantalla. Los impactos de 1-4 reservan
-# cuatro píxeles para seguir siendo visibles. No hay un Sprite por grano.
+# Escala universal: una unidad de cocaína ocupa un píxel de pantalla de área en
+# la pila, durante un traslado y encima de cualquier transportista.
 const FOSSA_PIXEL_WORLD_AREA := 1.0 / (WORLD_SCALE * WORLD_SCALE)
 const FOSSA_BASE_CAPACITY := 75000.0
 const FOSSA_GALLERY_CAPACITY := 600000.0
 const FOSSA_COMPRESSION_CAPACITIES := [600000.0, 100000000.0, 50000000000.0, 100000000000000.0]
-const FOSSA_COMPRESSION_VISUAL_DIVISORS := [1.0, 200.0, 100000.0, 200000000.0]
 const FOSSA_BASE_RADIUS := 92
 const FOSSA_GALLERY_RADIUS := 300
 const FOSSA_GALLERY_BOX_X := 7050.0
@@ -79,7 +78,6 @@ const LEFT_TUNNEL_X := 120.0
 const RIGHT_TUNNEL_X := 7680.0
 const CLICK_POWER_TIERS := [1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 1000.0, 3000.0, 10000.0]
 const PUGILIST_DAMAGE := [50, 500, 5000, 50000]
-const PUGILIST_GRAINS_PER_HIT := 10
 const PUGILIST_INTERVALS := [4.0, 3.2, 2.6, 2.2]
 const PUNCHER_WALK_SPEED := 235.0
 const PUNCHER_STRIKE_TIME := 0.18
@@ -146,7 +144,6 @@ const HANDLER_CARRY := preload("res://assets/art/gameplay/sprites/pawn_handler_c
 const PLATELET_TEXTURE := preload("res://assets/art/gameplay/sprites/platelet.png")
 const BACTERIA_TEXTURE := preload("res://assets/art/gameplay/sprites/bacteria.png")
 const GRAIN_TEXTURE := preload("res://assets/art/gameplay/sprites/cocaine_grain.png")
-const PLAYER_GRAIN_MATERIAL := preload("res://assets/art/gameplay/materials/player_grain_outline.tres")
 const WALL_CHUNK_SHEET := preload("res://assets/art/gameplay/sprites/cocaine_wall_chunks.png")
 const SPONGE_TEXTURE := preload("res://assets/art/gameplay/sprites/sponge_yellow.png")
 const CATAPULT_TEXTURE := preload("res://assets/art/gameplay/sprites/mucus_catapult.png")
@@ -262,6 +259,7 @@ var fallen_wall_chunks: Array[Sprite2D] = []
 var pile_renderer: PileRenderer
 var powder_surface: PowderSurface
 var powder_effects: Node2D
+var powder_field := PowderFieldData.new()
 var fossa_meter: PanelContainer
 var fossa_meter_title: Label
 var fossa_meter_progress: ProgressBar
@@ -271,15 +269,12 @@ var particle_motions: Array[Dictionary] = []
 var pile_columns := {"left":{}, "right":{}}
 var pile_heights := {"left":{}, "right":{}}
 var reserved_heights := {"left":{}, "right":{}}
-var pile_load_cache := {"left":0.0, "right":0.0}
-var pile_visual_load_cache := {"left":0.0, "right":0.0}
-var pile_mass_columns := {"left":{}, "right":{}}
-var pile_revision := {"left":0, "right":0}
-var joe_grain_load_cache := {"left":0.0, "right":0.0}
 var rock_count_cache := {"left":0, "right":0}
 var untreated_rock_count_cache := {"left":0, "right":0}
-var kind_count_cache := {"grain":0, "rock":0, "impurity":0, "bacteria":0}
+var kind_count_cache := {"rock":0, "impurity":0, "bacteria":0}
 var manual_reserved_units := 0.0
+var automatic_reserved_units := 0.0
+var powder_transfer_serial := 0
 var compaction_steps := {"left":0, "right":0}
 var compaction_announced := false
 var manual_mining_click_times: Array[float] = []
@@ -358,6 +353,7 @@ var selected_technology_unit := "manual"
 var user_paused := false
 var texture_foot_cache := {}
 var texture_image_cache := {}
+var texture_opaque_area_cache := {}
 
 func _ready() -> void:
 	powder_surface = PowderSurfaceData.new() as PowderSurface
@@ -585,9 +581,9 @@ func _technology_owned_count(unit_id: String) -> int:
 func _technology_stats(unit_id: String) -> String:
 	match unit_id:
 		"manual":
-			var sweep := "BLOQUEADO" if int(levels.continuous_sweep) == 0 else "1 GRANO / %.2f S" % _continuous_sweep_interval()
+			var sweep := "BLOQUEADO" if int(levels.continuous_sweep) == 0 else "%s UNIDADES / %.2f S" % [_number(_click_power()), _continuous_sweep_interval()]
 			return "POTENCIA DE CLIC: %s\nBARRIDO: %s\nNUDILLOS: NV. %d" % [_number(_click_power()), sweep, int(levels.click_burst)]
-		"pawn": return "UNIDADES: %d\nFUNCIÓN: RECOGIDA Y TRANSPORTE\nCARGA: %d BOLAS × %d GRANOS  ·  VELOCIDAD: %s" % [int(levels.pawn), _transport_capacity(), _smart_clump_size(), _number(_pawn_speed())]
+		"pawn": return "UNIDADES: %d\nFUNCIÓN: RECOGIDA Y TRANSPORTE\nCARGA: %d UNIDADES  ·  VELOCIDAD: %s" % [int(levels.pawn), _pawn_claim_capacity_for_normal(), _number(_pawn_speed())]
 		"surveyor":
 			if int(levels.get("fossa_depth", 0)) <= 0:
 				return "SIN FOSA CONSTRUIDA\nFUNCIÓN: MEDIR EL ESPACIO DE VERTIDO\nEL MEDIDOR APARECE AL CONSTRUIRLA"
@@ -674,50 +670,6 @@ func _spawn_impact_dust(origin: Vector2, color: Color = Color("9b5960"), amount:
 		tween.tween_property(dust, "position", destination, 0.38).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		tween.tween_property(dust, "modulate:a", 0.0, 0.38)
 		tween.chain().tween_callback(dust.queue_free)
-
-func _spawn_debut_powder_burst(side: String, origin: Vector2, intensity: float = 1.0) -> void:
-	# Es puramente celebración: no añade cocaína ni altera la economía. El polvo
-	# económico ya cae mediante _spawn_extraction_payload con su masa real.
-	var direction := -1.0 if side == "left" else 1.0
-	var count := clampi(roundi(18.0 * intensity), 18, 46)
-	for index in range(count):
-		var flake := _make_powder_flake(Color("fff9e8"), randf_range(2.5, 6.8) * (0.85 + intensity * 0.18))
-		flake.position = origin + Vector2(direction * randf_range(-8.0, 16.0), -randf_range(8.0, 42.0))
-		flake.rotation = randf_range(-0.8, 0.8)
-		flake.z_index = 31
-		effects.add_child(flake)
-		var apex := flake.position + Vector2(direction * randf_range(34.0, 100.0) * intensity, -randf_range(54.0, 145.0) * intensity)
-		var landing := origin + Vector2(direction * randf_range(130.0, 340.0) * intensity, -randf_range(3.0, 26.0))
-		var tween := create_tween()
-		tween.tween_property(flake, "position", apex, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		tween.tween_property(flake, "position", landing, 0.38).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-		tween.parallel().tween_property(flake, "modulate:a", 0.0, 0.22).set_delay(0.34)
-		tween.parallel().tween_property(flake, "rotation", flake.rotation + randf_range(-2.8, 2.8), 0.56)
-		tween.tween_callback(flake.queue_free)
-
-func _spawn_powder_fall(origin: Vector2, side: String, amount: int = 6, intensity: float = 1.0, landing_column: int = 999) -> void:
-	# El valor económico sigue viajando como datos; este polvo es únicamente la
-	# lectura visual de que una porción de nieve ha salido de la pared o del techo.
-	var direction := -1.0 if side == "left" else 1.0
-	var targets: Array[Vector2] = []
-	for index in range(clampi(amount, 1, 18)):
-		var landing_x := origin.x + direction * randf_range(22.0, 105.0) * intensity
-		if landing_column != 999:
-			landing_x = _pile_center(side) + float(landing_column) * GRAIN_SPACING + randf_range(-9.0, 9.0) * intensity
-		var surface_y := powder_surface.surface_y_at(side, landing_x) if powder_surface else _ground_y()
-		targets.append(Vector2(landing_x, minf(_ground_y() - 2.0, surface_y - randf_range(1.0, 4.0))))
-	powder_effects.spawn_fall(origin, targets, intensity)
-
-func _spawn_powder_stream(start: Vector2, target: Vector2, intensity: float = 1.0) -> void:
-	# Polvo atomizado: no existe una línea que delate la trayectoria completa.
-	# Cada mota recorre el arco de forma independiente y el barrido continuo crea
-	# una sucesión de pequeñas nubes en lugar de un rayo o una manguera.
-	powder_effects.spawn_arc(start, target, intensity)
-
-func _grain_stack_height(value: float) -> float:
-	# Las piezas lógicas conservan una altura estable. Su valor solo cambia el
-	# área de PowderSurface, donde el valor visual se traduce a píxeles de pantalla.
-	return GRAIN_HEIGHT
 
 func _spawn_energy_ring(origin: Vector2, color: Color, radius: float = 20.0) -> void:
 	var ring := Line2D.new()
@@ -900,28 +852,25 @@ func _storage_space() -> float:
 	return maxf(0.0, _storage_capacity() - cells)
 
 func _reserved_storage() -> float:
-	var reserved := 0.0
+	var reserved := automatic_reserved_units + manual_reserved_units
 	for piece in loose_chunks:
 		if not is_instance_valid(piece) or not bool(piece.get_meta("carried", false)):
 			continue
-		var kind: String = piece.get_meta("kind", "grain")
+		var kind: String = piece.get_meta("kind", "unknown")
 		if kind == "impurity":
 			continue
 		var value := float(piece.get_meta("value", 1.0))
-		reserved += value * (_box_yield_multiplier() if kind == "grain" else 1.0)
+		reserved += value * (_box_yield_multiplier() if kind == "rock" else 1.0)
 	return reserved
 
 func _storage_claim_space() -> float:
 	return maxf(0.0, _storage_space() - _reserved_storage())
 
-func _manual_reserved_storage() -> float:
-	return manual_reserved_units
-
 func _manual_claim_space() -> float:
-	return maxf(0.0, _storage_space() - _manual_reserved_storage())
+	return maxf(0.0, _storage_space() - _reserved_storage())
 
 func _reserve_manual_piece(piece: PilePiece, stored_value: float) -> void:
-	if piece.get_meta("kind", "grain") == "impurity":
+	if piece.get_meta("kind", "unknown") == "impurity":
 		return
 	piece.set_meta("manual_reservation", stored_value)
 	manual_reserved_units += stored_value
@@ -930,6 +879,18 @@ func _release_manual_reservation(piece: PilePiece) -> void:
 	var reserved := float(piece.get_meta("manual_reservation", 0.0))
 	manual_reserved_units = maxf(0.0, manual_reserved_units - reserved)
 	piece.set_meta("manual_reservation", 0.0)
+
+func _reserve_manual_amount(amount: float) -> void:
+	manual_reserved_units += maxf(0.0, amount)
+
+func _release_manual_amount(amount: float) -> void:
+	manual_reserved_units = maxf(0.0, manual_reserved_units - maxf(0.0, amount))
+
+func _reserve_automatic_amount(amount: float) -> void:
+	automatic_reserved_units += maxf(0.0, amount)
+
+func _release_automatic_amount(amount: float) -> void:
+	automatic_reserved_units = maxf(0.0, automatic_reserved_units - maxf(0.0, amount))
 
 func _store_cocaine(amount: float) -> float:
 	var accepted := minf(maxf(0.0, amount), _storage_space())
@@ -983,6 +944,9 @@ func _pawn_smart_clump_size(pawn: Sprite2D) -> int:
 func _pawn_claim_capacity(pawn: Sprite2D) -> int:
 	return _transport_capacity() * _pawn_smart_clump_size(pawn)
 
+func _pawn_claim_capacity_for_normal() -> int:
+	return _transport_capacity() * _smart_clump_size()
+
 func _deposit_duration() -> float:
 	return 0.30 / _deposit_speed_multiplier()
 
@@ -1016,6 +980,8 @@ func _pile_access_point(side: String) -> Vector2:
 	var rightmost_column := 2
 	for column in (pile_columns[side] as Dictionary).keys():
 		rightmost_column = maxi(rightmost_column, int(column))
+	for column in (powder_field.columns[side] as Dictionary).keys():
+		rightmost_column = maxi(rightmost_column, int(column))
 	var edge := maxf(34.0, float(rightmost_column) * GRAIN_SPACING + 22.0)
 	return Vector2(_pile_center(side) + edge, _ground_y() - 14.0)
 
@@ -1028,7 +994,7 @@ func _set_pawn_carrying(pawn: Sprite2D, carrying: bool) -> void:
 		var holds_bacteria := false
 		for piece_value in pawn.get_meta("cargo", []):
 			var piece := piece_value as PilePiece
-			if is_instance_valid(piece) and piece.get_meta("kind", "grain") == "bacteria":
+			if is_instance_valid(piece) and piece.get_meta("kind", "unknown") == "bacteria":
 				holds_bacteria = true
 				break
 		target = HANDLER_CARRY if carrying and holds_bacteria else HANDLER_EMPTY
@@ -1037,12 +1003,9 @@ func _set_pawn_carrying(pawn: Sprite2D, carrying: bool) -> void:
 	elif specialist:
 		target = SPECIALIST_EMPTY
 	else:
-		# Los recolectores normales llevan un pellizco de nieve, no una ristra de
-		# canicas. La carga real sigue existiendo fuera de pantalla como datos.
 		target = PAWN_EMPTY
 	if not carrying:
-		var mound := pawn.get_node_or_null("PowderMound") as Node2D
-		if mound: mound.visible = false
+		powder_effects.remove_mass_volume("pawn_%d" % pawn.get_instance_id())
 	if pawn.texture == target:
 		return
 	pawn.texture = target
@@ -1069,73 +1032,27 @@ func _texture_opaque_bottom(texture: Texture2D) -> float:
 	texture_foot_cache[key] = opaque_bottom
 	return opaque_bottom
 
-func _pawn_carries_powder_mound(pawn: Sprite2D) -> bool:
-	if bool(pawn.get_meta("specialist", false)) or bool(pawn.get_meta("detector", false)) or bool(pawn.get_meta("handler", false)):
-		return false
-	var cargo: Array = pawn.get_meta("cargo", [])
-	if cargo.is_empty():
-		return false
-	for value in cargo:
-		var piece := value as PilePiece
-		if not is_instance_valid(piece) or str(piece.get_meta("kind", "grain")) != "grain":
-			return false
-	return true
+func _texture_opaque_area(texture: Texture2D) -> float:
+	var key := texture.resource_path
+	if texture_opaque_area_cache.has(key):
+		return float(texture_opaque_area_cache[key])
+	var image := texture.get_image()
+	var pixels := 0
+	if image and not image.is_empty():
+		for y in range(image.get_height()):
+			for x in range(image.get_width()):
+				if image.get_pixel(x, y).a > 0.08:
+					pixels += 1
+	var result := float(maxi(1, pixels))
+	texture_opaque_area_cache[key] = result
+	return result
 
-func _ensure_pawn_powder_mound(pawn: Sprite2D) -> Node2D:
-	var existing := pawn.get_node_or_null("PowderMound") as Node2D
-	if existing:
-		return existing
-	var mound := Node2D.new()
-	mound.name = "PowderMound"
-	mound.z_index = 16
-	mound.visible = false
-	var outline := Polygon2D.new()
-	outline.name = "Outline"
-	outline.polygon = PackedVector2Array([Vector2(-190, 92), Vector2(-170, 10), Vector2(-112, -58), Vector2(-40, -92), Vector2(42, -82), Vector2(122, -42), Vector2(178, 20), Vector2(194, 92)])
-	outline.color = Color("32283a")
-	mound.add_child(outline)
-	var powder := Polygon2D.new()
-	powder.name = "Powder"
-	powder.polygon = PackedVector2Array([Vector2(-166, 78), Vector2(-148, 12), Vector2(-98, -44), Vector2(-36, -68), Vector2(35, -59), Vector2(103, -28), Vector2(153, 24), Vector2(169, 78)])
-	powder.color = Color("f4f0dc")
-	mound.add_child(powder)
-	var shade := Polygon2D.new()
-	shade.name = "PowderShade"
-	shade.polygon = PackedVector2Array([Vector2(-152, 62), Vector2(-68, 34), Vector2(12, 44), Vector2(92, 18), Vector2(156, 58), Vector2(160, 78), Vector2(-160, 78)])
-	shade.color = Color("d5d0c3")
-	mound.add_child(shade)
-	var glint := Polygon2D.new()
-	glint.name = "PowderGlint"
-	glint.polygon = PackedVector2Array([Vector2(-94, -30), Vector2(-38, -54), Vector2(16, -45), Vector2(-24, -24)])
-	glint.color = Color("ffffff")
-	mound.add_child(glint)
-	pawn.add_child(mound)
-	return mound
+func _pawn_carries_powder_mound(pawn: Sprite2D) -> bool:
+	return float(pawn.get_meta("powder_amount", 0.0)) > 0.0001
 
 func _refresh_pawn_cargo_visual(pawn: Sprite2D) -> void:
 	var cargo: Array = pawn.get_meta("cargo", [])
-	var powder_mound := _pawn_carries_powder_mound(pawn)
-	var mound := _ensure_pawn_powder_mound(pawn) if powder_mound else pawn.get_node_or_null("PowderMound") as Node2D
-	if mound:
-		mound.visible = powder_mound
-	if powder_mound:
-		var clump_size := _pawn_smart_clump_size(pawn)
-		var bundles := ceili(float(cargo.size()) / float(clump_size))
-		var cargo_mass := 0.0
-		for value in cargo:
-			var carried_piece := value as PilePiece
-			if is_instance_valid(carried_piece): cargo_mass += float(carried_piece.get_meta("value", 1.0))
-		# Una unidad es apenas un pellizco. La mini-montaña solo alcanza el tamaño
-		# anterior cuando la carga real justifica visualmente ese volumen.
-		var mass_scale := 0.26 + minf(0.72, log(maxf(1.0, cargo_mass) + 1.0) / log(2.0) * 0.16)
-		mound.set_meta("load_scale", mass_scale + minf(0.24, float(bundles - 1) * 0.08))
-		for value in cargo:
-			var powder_piece := value as PilePiece
-			if is_instance_valid(powder_piece):
-				powder_piece.visible = false
-				pile_renderer.refresh_group(powder_piece)
-		_update_pawn_powder_mound(pawn)
-		return
+	_update_pawn_powder_mound(pawn)
 	var clump_size := _pawn_smart_clump_size(pawn)
 	var clump_scale := 1.0 + 0.08 * sqrt(float(clump_size - 1))
 	for index in range(cargo.size()):
@@ -1143,7 +1060,7 @@ func _refresh_pawn_cargo_visual(pawn: Sprite2D) -> void:
 		if not is_instance_valid(piece):
 			continue
 		var bundle_head := index % clump_size == 0
-		if bool(pawn.get_meta("handler", false)) and str(piece.get_meta("kind", "grain")) == "bacteria":
+		if bool(pawn.get_meta("handler", false)) and str(piece.get_meta("kind", "unknown")) == "bacteria":
 			bundle_head = false
 		piece.set_meta("cargo_visual_index", int(index / clump_size))
 		piece.set_meta("cargo_visual_scale", clump_scale)
@@ -1152,12 +1069,14 @@ func _refresh_pawn_cargo_visual(pawn: Sprite2D) -> void:
 		pile_renderer.refresh_group(piece)
 
 func _update_pawn_powder_mound(pawn: Sprite2D) -> void:
-	var mound := pawn.get_node_or_null("PowderMound") as Node2D
-	if not mound or not mound.visible:
+	var id := "pawn_%d" % pawn.get_instance_id()
+	var amount := float(pawn.get_meta("powder_amount", 0.0))
+	if amount <= 0.0001:
+		powder_effects.remove_mass_volume(id)
 		return
 	var front := 1.0 if pawn.flip_h else -1.0
-	mound.position = Vector2(front * 320.0, -248.0)
-	mound.scale = Vector2.ONE * float(mound.get_meta("load_scale", 1.0))
+	var position := pawn.position + Vector2(front * 13.0, -16.0)
+	powder_effects.set_mass_volume(id, position, amount, _fossa_visual_area_per_unit(), "heap", front)
 
 func _update_pawns(delta: float) -> void:
 	for node in pawns.get_children():
@@ -1170,15 +1089,16 @@ func _update_pawns(delta: float) -> void:
 			continue
 		var state: String = pawn.get_meta("state", "to_pile")
 		var cargo: Array = pawn.get_meta("cargo", [])
+		var has_cargo := not cargo.is_empty() or float(pawn.get_meta("powder_amount", 0.0)) > 0.0001
 		# Recuperación barata frente a estados incompletos tras reconstruir la caja,
 		# cambiar de fosa o retirar una pieza mientras el peón iba hacia ella.
 		if state not in ["to_pile", "working", "lifting", "to_box", "deposit"]:
-			state = "to_box" if not cargo.is_empty() else "to_pile"
+			state = "to_box" if has_cargo else "to_pile"
 			pawn.set_meta("state", state)
-		elif state in ["lifting", "to_box", "deposit"] and cargo.is_empty():
+		elif state in ["lifting", "to_box", "deposit"] and not has_cargo:
 			state = "to_pile"
 			pawn.set_meta("state", state)
-		elif state in ["to_pile", "working"] and not cargo.is_empty():
+		elif state in ["to_pile", "working"] and has_cargo:
 			state = "to_box"
 			pawn.set_meta("state", state)
 		var side: String = pawn.get_meta("side", active_side)
@@ -1241,9 +1161,8 @@ func _update_pawns(delta: float) -> void:
 							pawn.set_meta("timer", 0.24)
 							_set_pawn_carrying(pawn, true)
 				else:
-					var claimed := _claim_top_pieces(side, _pawn_claim_capacity(pawn), pawn)
-					pawn.set_meta("cargo", claimed)
-					if claimed.is_empty():
+					var claimed := _claim_pawn_load(side, pawn)
+					if not claimed:
 						pawn.set_meta("timer", 0.25)
 					else:
 						pawn.set_meta("state", "lifting")
@@ -1317,12 +1236,19 @@ func _choose_work_side(index: int) -> String:
 		return "left" if index % 2 == 0 else "right"
 	return "left" if left_score > right_score else "right"
 
-func _spawn_chunk(origin: Vector2, value: float, side: String = active_side, preferred_column: int = 999, source: String = "player", powder_effect: bool = false) -> void:
+func _next_powder_transfer_id() -> String:
+	powder_transfer_serial += 1
+	return "powder_transfer_%d" % powder_transfer_serial
+
+func _spawn_powder_drop(origin: Vector2, value: float, side: String, preferred_column: int = 999, source: String = "player") -> void:
+	if value <= 0.0:
+		return
 	var column := _choose_landing_column(side, preferred_column)
-	var piece := _create_piece("grain", side, value, 0, column, randf_range(0.068, 0.078), "", source)
-	_drop_piece(piece, origin)
-	if powder_effect:
-		_spawn_powder_fall(origin, side, clampi(roundi(3.0 + log(maxf(1.0, value)) / log(10.0) * 2.0), 3, 10), 1.0, column)
+	var id := _next_powder_transfer_id()
+	var target := Vector2(_pile_center(side) + float(column) * GRAIN_SPACING, powder_surface.surface_y_at(side, _pile_center(side) + float(column) * GRAIN_SPACING))
+	var duration := randf_range(0.82, 1.18)
+	powder_effects.set_mass_volume(id, origin, value, _fossa_visual_area_per_unit(), "fall")
+	particle_motions.append({"kind":"powder_drop", "id":id, "amount":value, "source":source, "side":side, "column":column, "elapsed":0.0, "duration":duration, "start":origin, "target":target})
 
 func _spawn_special_piece(kind: String, side: String, material: String = "") -> void:
 	var scale := randf_range(0.078, 0.092) if kind == "impurity" else randf_range(0.07, 0.085)
@@ -1334,8 +1260,6 @@ func _drop_piece(piece: PilePiece, origin: Vector2) -> void:
 	_index_remove_piece(piece)
 	piece.position = origin + Vector2(randf_range(-10.0, 10.0), 0.0)
 	piece.rotation = randf_range(-0.18, 0.18)
-	if piece.get_meta("kind", "grain") == "grain":
-		piece.visible = false
 	piece.set_meta("landed", false)
 	pile_renderer.refresh_group(piece)
 	var landing := _landing_position(piece)
@@ -1346,6 +1270,29 @@ func _drop_piece(piece: PilePiece, origin: Vector2) -> void:
 func _update_particle_motions(delta: float) -> void:
 	for index in range(particle_motions.size() - 1, -1, -1):
 		var motion: Dictionary = particle_motions[index]
+		if str(motion.kind).begins_with("powder_"):
+			motion.elapsed = float(motion.elapsed) + delta
+			var powder_progress := clampf(float(motion.elapsed) / maxf(0.001, float(motion.duration)), 0.0, 1.0)
+			var powder_position: Vector2
+			if motion.kind == "powder_manual":
+				var inverse := 1.0 - powder_progress
+				powder_position = Vector2(motion.start) * inverse * inverse + Vector2(motion.control) * 2.0 * inverse * powder_progress + Vector2(motion.target) * powder_progress * powder_progress
+			else:
+				powder_position = Vector2(motion.start).lerp(Vector2(motion.target), powder_progress * powder_progress)
+			powder_effects.set_mass_volume(motion.id, powder_position, float(motion.amount), _fossa_visual_area_per_unit(), "stream" if motion.kind == "powder_manual" else "fall")
+			if powder_progress < 1.0:
+				continue
+			particle_motions.remove_at(index)
+			powder_effects.remove_mass_volume(motion.id)
+			if motion.kind == "powder_drop":
+				powder_field.add(str(motion.side), int(motion.column), float(motion.amount), str(motion.source))
+				compaction_steps[motion.side] = int(compaction_steps.get(motion.side, 0)) + maxi(1, floori(float(motion.amount)))
+				_maybe_compact(str(motion.side))
+				_align_compacted_rocks(str(motion.side))
+				powder_surface.refresh()
+			else:
+				_finish_manual_powder_delivery(motion)
+			continue
 		var piece := motion.piece as PilePiece
 		if not piece or not piece.alive:
 			particle_motions.remove_at(index)
@@ -1367,24 +1314,23 @@ func _update_particle_motions(delta: float) -> void:
 			_finish_manual_delivery(piece)
 
 func _create_piece(kind: String, side: String, value: float, hardness: int, column: int, piece_scale: float, material: String = "", source: String = "player") -> PilePiece:
+	if kind == "grain":
+		push_error("La nieve normal debe entrar en PowderField, no crear un PilePiece.")
+		return null
 	var piece := PilePieceData.new() as PilePiece
 	piece.renderer = pile_renderer
 	piece.texture = BACTERIA_TEXTURE if kind == "bacteria" else GRAIN_TEXTURE
-	if kind == "grain" and source == "player":
-		piece.material = PLAYER_GRAIN_MATERIAL
 	column = _constrain_column(side, column)
+	if kind == "rock":
+		piece_scale = sqrt(maxf(0.0, value) * FOSSA_PIXEL_WORLD_AREA / maxf(1.0, _texture_opaque_area(piece.texture)))
 	piece.scale = Vector2(piece_scale, piece_scale)
 	piece.set_meta("base_scale", piece_scale)
 	piece.set_meta("kind", kind)
 	piece.set_meta("value", value)
-	# Los primeros golpes necesitan un mínimo legible. Desde cinco unidades la
-	# superficie vuelve a ser estrictamente lineal: N extraído = N píxeles.
-	var visual_value := 4.0 if kind == "grain" and source == "player" and value <= 4.0 else value
-	piece.set_meta("visual_value", visual_value)
 	piece.set_meta("side", side)
 	piece.set_meta("column", column)
 	piece.set_meta("x_jitter", randf_range(-1.8, 1.8))
-	piece.set_meta("height", ROCK_HEIGHT if kind == "rock" else (10.0 if kind == "bacteria" else _grain_stack_height(value)))
+	piece.set_meta("height", maxf(2.0, sqrt(value * FOSSA_PIXEL_WORLD_AREA)) if kind == "rock" else (10.0 if kind == "bacteria" else GRAIN_HEIGHT))
 	piece.set_meta("material", material)
 	piece.set_meta("source", source)
 	piece.set_meta("landed", true)
@@ -1392,6 +1338,8 @@ func _create_piece(kind: String, side: String, value: float, hardness: int, colu
 	piece.set_meta("hardness", hardness)
 	piece.set_meta("max_hardness", hardness)
 	if kind == "rock":
+		piece.set_meta("joe_amount", value if source != "player" else 0.0)
+		piece.set_meta("player_amount", value if source == "player" else 0.0)
 		piece.modulate = Color("d6d2c4")
 		var crack := Line2D.new()
 		crack.name = "Crack"
@@ -1439,14 +1387,9 @@ func _reset_pile_index() -> void:
 	pile_columns = {"left":{}, "right":{}}
 	pile_heights = {"left":{}, "right":{}}
 	reserved_heights = {"left":{}, "right":{}}
-	pile_load_cache = {"left":0.0, "right":0.0}
-	pile_visual_load_cache = {"left":0.0, "right":0.0}
-	pile_mass_columns = {"left":{}, "right":{}}
-	pile_revision = {"left":int(pile_revision.get("left", 0)) + 1, "right":int(pile_revision.get("right", 0)) + 1}
-	joe_grain_load_cache = {"left":0.0, "right":0.0}
 	rock_count_cache = {"left":0, "right":0}
 	untreated_rock_count_cache = {"left":0, "right":0}
-	kind_count_cache = {"grain":0, "rock":0, "impurity":0, "bacteria":0}
+	kind_count_cache = {"rock":0, "impurity":0, "bacteria":0}
 
 func _index_add_piece(piece: PilePiece) -> void:
 	if not _piece_is_in_pile(piece):
@@ -1454,16 +1397,9 @@ func _index_add_piece(piece: PilePiece) -> void:
 	var side: String = piece.get_meta("side", "right")
 	var column := int(piece.get_meta("column", 0))
 	var height := float(piece.get_meta("height", GRAIN_HEIGHT))
-	var value := float(piece.get_meta("value", 1.0))
-	var visual_value := float(piece.get_meta("visual_value", value))
-	pile_load_cache[side] = float(pile_load_cache[side]) + value
-	pile_visual_load_cache[side] = float(pile_visual_load_cache[side]) + visual_value
-	var mass_columns: Dictionary = pile_mass_columns[side]
-	mass_columns[column] = float(mass_columns.get(column, 0.0)) + visual_value
-	pile_revision[side] = int(pile_revision.get(side, 0)) + 1
-	var kind := str(piece.get_meta("kind", "grain"))
-	if kind == "grain" and piece.get_meta("source", "player") != "player":
-		joe_grain_load_cache[side] = float(joe_grain_load_cache[side]) + value
+	var kind := str(piece.get_meta("kind", "unknown"))
+	if kind == "grain":
+		return
 	kind_count_cache[kind] = int(kind_count_cache.get(kind, 0)) + 1
 	if kind == "rock":
 		rock_count_cache[side] = int(rock_count_cache[side]) + 1
@@ -1486,20 +1422,9 @@ func _index_remove_piece(piece: PilePiece) -> void:
 	var side: String = piece.get_meta("side", "right")
 	var column := int(piece.get_meta("column", 0))
 	var height := float(piece.get_meta("height", GRAIN_HEIGHT))
-	var value := float(piece.get_meta("value", 1.0))
-	var visual_value := float(piece.get_meta("visual_value", value))
-	pile_load_cache[side] = maxf(0.0, float(pile_load_cache[side]) - value)
-	pile_visual_load_cache[side] = maxf(0.0, float(pile_visual_load_cache[side]) - visual_value)
-	var mass_columns: Dictionary = pile_mass_columns[side]
-	var remaining_mass := maxf(0.0, float(mass_columns.get(column, 0.0)) - visual_value)
-	if remaining_mass <= 0.001:
-		mass_columns.erase(column)
-	else:
-		mass_columns[column] = remaining_mass
-	pile_revision[side] = int(pile_revision.get(side, 0)) + 1
-	var kind := str(piece.get_meta("kind", "grain"))
-	if kind == "grain" and piece.get_meta("source", "player") != "player":
-		joe_grain_load_cache[side] = maxf(0.0, float(joe_grain_load_cache[side]) - value)
+	var kind := str(piece.get_meta("kind", "unknown"))
+	if kind == "grain":
+		return
 	kind_count_cache[kind] = maxi(0, int(kind_count_cache.get(kind, 0)) - 1)
 	if kind == "rock":
 		rock_count_cache[side] = maxi(0, int(rock_count_cache[side]) - 1)
@@ -1529,21 +1454,16 @@ func _rebuild_pile_index(side_filter: String = "") -> void:
 		pile_columns[side_filter] = {}
 		pile_heights[side_filter] = {}
 		reserved_heights[side_filter] = {}
-		pile_load_cache[side_filter] = 0.0
-		pile_visual_load_cache[side_filter] = 0.0
-		pile_mass_columns[side_filter] = {}
-		pile_revision[side_filter] = int(pile_revision.get(side_filter, 0)) + 1
-		joe_grain_load_cache[side_filter] = 0.0
 		rock_count_cache[side_filter] = 0
 		untreated_rock_count_cache[side_filter] = 0
-		kind_count_cache = {"grain":0, "rock":0, "impurity":0, "bacteria":0}
+		kind_count_cache = {"rock":0, "impurity":0, "bacteria":0}
 		for other_side in ["left", "right"]:
 			if other_side == side_filter:
 				continue
 			for stack_value in (pile_columns[other_side] as Dictionary).values():
 				for piece_value in stack_value:
 					var existing := piece_value as PilePiece
-					var existing_kind := str(existing.get_meta("kind", "grain"))
+					var existing_kind := str(existing.get_meta("kind", "unknown"))
 					kind_count_cache[existing_kind] = int(kind_count_cache.get(existing_kind, 0)) + 1
 	for piece in loose_chunks:
 		if not is_instance_valid(piece) or not piece.alive:
@@ -1565,7 +1485,8 @@ func _reserved_column_height(side: String, column: int, ignore: PilePiece = null
 	return maxf(0.0, height)
 
 func _terrain_height(side: String, column: int) -> float:
-	return _column_height(side, column) + _reserved_column_height(side, column)
+	var powder_height := powder_field.column_amount(side, column) * _fossa_visual_area_per_unit() / GRAIN_SPACING
+	return powder_height + _column_height(side, column) + _reserved_column_height(side, column)
 
 func _constrain_column(side: String, column: int) -> int:
 	if side == "right" and column < RIGHT_WALL_COLUMN:
@@ -1590,11 +1511,24 @@ func _fossa_capacity(side: String = active_side) -> float:
 	return float(FOSSA_COMPRESSION_CAPACITIES[compression])
 
 func _fossa_visual_area_per_unit() -> float:
-	var compression := clampi(int(levels.get("fossa_compression", 0)), 0, FOSSA_COMPRESSION_VISUAL_DIVISORS.size() - 1)
-	return FOSSA_PIXEL_WORLD_AREA / float(FOSSA_COMPRESSION_VISUAL_DIVISORS[compression])
+	return FOSSA_PIXEL_WORLD_AREA
+
+func _powder_visual_units(amount: float) -> float:
+	# Excepción exclusivamente visual: de una a cuatro unidades conservan su valor
+	# lógico, pero usan cuatro píxeles para no desaparecer por el reescalado.
+	if amount > 0.0001 and amount < 5.0:
+		return 4.0
+	return maxf(0.0, amount)
 
 func _fossa_free_space(side: String = active_side) -> float:
-	return maxf(0.0, _fossa_capacity(side) - _pile_load(side))
+	return maxf(0.0, _fossa_capacity(side) - _pile_load(side) - _incoming_powder(side))
+
+func _incoming_powder(side: String) -> float:
+	var total := 0.0
+	for motion in particle_motions:
+		if str(motion.get("kind", "")) == "powder_drop" and str(motion.get("side", "")) == side:
+			total += float(motion.get("amount", 0.0))
+	return total
 
 func _fossa_accepts(side: String, amount: float) -> float:
 	return minf(maxf(0.0, amount), _fossa_free_space(side))
@@ -1650,7 +1584,7 @@ func _choose_landing_column(side: String, preferred_column: int = 999) -> int:
 func _movable_top_piece(side: String, column: int) -> PilePiece:
 	var stack: Array = (pile_columns[side] as Dictionary).get(column, [])
 	var top: PilePiece = stack.back() if not stack.is_empty() else null
-	if top and top.get_meta("kind", "grain") == "rock":
+	if top and top.get_meta("kind", "unknown") == "rock":
 		return null
 	return top
 
@@ -1705,34 +1639,34 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 			var candidate := candidate_value as PilePiece
 			if not _piece_is_in_pile(candidate, side):
 				continue
-			var kind: String = candidate.get_meta("kind", "grain")
+			var kind: String = candidate.get_meta("kind", "unknown")
 			if specialist and kind != "rock": continue
 			if kind == "rock" and (not specialist or int(candidate.get_meta("hardness", 0)) > 0): continue
 			if kind == "bacteria" and not handler: continue
 			if kind == "impurity" and int(levels.detector) > 0 and not bool(pawn.get_meta("detector", false)): continue
-			var stored_value := float(candidate.get_meta("value", 1.0)) * (_box_yield_multiplier() if kind == "grain" else 1.0)
+			var stored_value := float(candidate.get_meta("value", 1.0)) * (_box_yield_multiplier() if kind == "rock" else 1.0)
 			if kind != "impurity" and stored_value > remaining_storage + 0.001: continue
 			collectable.append(candidate)
 		if collectable.is_empty(): break
 		var preferred: Array[PilePiece] = []
 		if handler:
-			preferred = collectable.filter(func(item: PilePiece) -> bool: return item.get_meta("kind", "grain") == "bacteria")
+			preferred = collectable.filter(func(item: PilePiece) -> bool: return item.get_meta("kind", "unknown") == "bacteria")
 		elif bool(pawn.get_meta("detector", false)):
-			preferred = collectable.filter(func(item: PilePiece) -> bool: return item.get_meta("kind", "grain") == "impurity")
+			preferred = collectable.filter(func(item: PilePiece) -> bool: return item.get_meta("kind", "unknown") == "impurity")
 		elif specialist:
-			preferred = collectable.filter(func(item: PilePiece) -> bool: return item.get_meta("kind", "grain") == "rock")
+			preferred = collectable.filter(func(item: PilePiece) -> bool: return item.get_meta("kind", "unknown") == "rock")
 		var source := preferred if not preferred.is_empty() else collectable
 		if specialist and source.is_empty():
 			break
 		var piece := source[randi_range(0, mini(6, source.size() - 1))]
-		var piece_kind: String = piece.get_meta("kind", "grain")
+		var piece_kind: String = piece.get_meta("kind", "unknown")
 		_index_remove_piece(piece)
 		# La carga del peón se representa después como una única mini-pila. Ocultar
 		# aquí la pieza evita que un fotograma muestre bolitas arrancadas del polvo.
 		piece.visible = false
 		_set_piece_carried(piece, true)
 		if piece_kind != "impurity":
-			remaining_storage -= float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if piece_kind == "grain" else 1.0)
+			remaining_storage -= float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if piece_kind == "rock" else 1.0)
 		piece.z_index = 20
 		cargo.append(piece)
 	pawn.set_meta("cargo", cargo)
@@ -1741,57 +1675,37 @@ func _claim_top_pieces(side: String, capacity: int, pawn: Sprite2D) -> Array:
 	_restack_pile(side)
 	return cargo
 
-func _surface_piece_at(world_pos: Vector2) -> PilePiece:
-	var side := "left" if world_pos.x < SEPTUM_X else "right"
-	if side == "left" and not septum_open:
-		return null
-	# La silueta ya no se deriva de las posiciones de las piezas lógicas. Si el
-	# clic cae dentro del polvo renderizado, cualquier grano superior sirve como
-	# representación exacta de la masa que se está retirando.
-	if powder_surface and world_pos.y >= powder_surface.surface_y_at(side, world_pos.x) and world_pos.y <= _ground_y() + 5.0:
-		var powder := _collectable_powder_near_x(side, world_pos.x)
-		if powder:
-			return powder
-	var nearest: PilePiece = null
-	var nearest_x := INF
-	for piece in _top_pieces(side):
-		if str(piece.get_meta("kind", "grain")) == "rock":
-			continue
-		var visual_height := maxf(6.0, float(piece.get_meta("height", GRAIN_HEIGHT)))
-		var hit_width := maxf(GRAIN_SPACING * 1.35, piece.texture.get_width() * absf(piece.scale.x) * 0.55)
-		var distance_x := absf(world_pos.x - piece.position.x)
-		if distance_x <= hit_width and world_pos.y >= piece.position.y - visual_height and world_pos.y <= _ground_y() + 5.0 and distance_x < nearest_x:
-			nearest = piece
-			nearest_x = distance_x
-	return nearest
-
-func _collectable_powder_near_x(side: String, x: float) -> PilePiece:
-	# La superficie es continua, pero los recursos siguen siendo datos discretos.
-	# Buscamos nieve bajo el punto pulsado ignorando los apelmazados que pueda
-	# haber más arriba en esa misma columna.
-	var center_column := roundi((x - _pile_center(side)) / GRAIN_SPACING)
-	var columns: Dictionary = pile_columns[side]
-	var limit := _pile_radius_limit(side)
-	for radius in range(limit * 2 + 1):
-		var candidates := [center_column] if radius == 0 else [center_column - radius, center_column + radius]
-		for column_value in candidates:
-			var column := int(column_value)
-			if not columns.has(column):
-				continue
-			var stack: Array = columns[column]
-			for index in range(stack.size() - 1, -1, -1):
-				var piece := stack[index] as PilePiece
-				if not _piece_is_in_pile(piece, side):
-					continue
-				if str(piece.get_meta("kind", "grain")) not in ["rock", "bacteria"]:
-					return piece
-	return null
+func _claim_pawn_load(side: String, pawn: Sprite2D) -> bool:
+	var specialist := bool(pawn.get_meta("specialist", false))
+	var detector := bool(pawn.get_meta("detector", false))
+	var handler := bool(pawn.get_meta("handler", false))
+	if specialist:
+		return not _claim_top_pieces(side, _pawn_claim_capacity(pawn), pawn).is_empty()
+	if detector or handler:
+		var discrete := _claim_top_pieces(side, _pawn_claim_capacity(pawn), pawn)
+		if not discrete.is_empty():
+			return true
+	var yield_multiplier := _box_yield_multiplier()
+	var raw_capacity := minf(float(_pawn_claim_capacity(pawn)), _storage_claim_space() / maxf(0.001, yield_multiplier))
+	var taken: Dictionary = powder_field.take(side, raw_capacity)
+	var amount := float(taken.amount)
+	if amount <= 0.0001:
+		return false
+	pawn.set_meta("powder_amount", amount)
+	pawn.set_meta("powder_player", float(taken.player))
+	pawn.set_meta("powder_joe", float(taken.joe))
+	pawn.set_meta("powder_reserved", amount * yield_multiplier)
+	_reserve_automatic_amount(amount * yield_multiplier)
+	powder_surface.refresh()
+	_align_compacted_rocks(side)
+	_refresh_pawn_cargo_visual(pawn)
+	return true
 
 func _blocking_pile_piece_at(world_pos: Vector2) -> PilePiece:
 	var side := "left" if world_pos.x < SEPTUM_X else "right"
 	for value in loose_chunks:
 		var piece := value as PilePiece
-		if not _piece_is_in_pile(piece, side) or str(piece.get_meta("kind", "grain")) not in ["rock", "bacteria"]:
+		if not _piece_is_in_pile(piece, side) or str(piece.get_meta("kind", "unknown")) not in ["rock", "bacteria"]:
 			continue
 		var radius := maxf(7.0, minf(16.0, piece.texture.get_width() * absf(piece.scale.x) * 0.44))
 		if world_pos.distance_squared_to(piece.position) <= radius * radius and _piece_opaque_at(piece, world_pos):
@@ -1827,7 +1741,7 @@ func _direct_loose_piece_at(world_pos: Vector2) -> PilePiece:
 		for value in columns[column]:
 			var piece := value as PilePiece
 			if not _piece_is_in_pile(piece, side): continue
-			var kind: String = piece.get_meta("kind", "grain")
+			var kind: String = piece.get_meta("kind", "unknown")
 			if kind in ["rock", "bacteria"]: continue
 			var radius := maxf(5.5, minf(9.0, piece.texture.get_width() * absf(piece.scale.x) * 0.72))
 			var distance := world_pos.distance_squared_to(piece.position)
@@ -1882,7 +1796,7 @@ func _mine_fallen_wall_chunk(chunk: Sprite2D, amount: float) -> void:
 	chunk.set_meta("mass", maxf(0.0, mass - released))
 	var column := roundi((chunk.position.x - _pile_center(side)) / GRAIN_SPACING)
 	if released > 0.0:
-		_spawn_chunk(chunk.position - Vector2(0.0, 34.0), released, side, column, "detached")
+		_spawn_powder_drop(chunk.position - Vector2(0.0, 34.0), released, side, column, "player")
 	var crack := chunk.get_node_or_null("Crack") as Line2D
 	if crack:
 		crack.visible = true
@@ -1910,40 +1824,61 @@ func _manual_collect_at(world_pos: Vector2, _show_feedback: bool = true, continu
 	var piece := _blocking_pile_piece_at(world_pos)
 	if not piece:
 		piece = _direct_loose_piece_at(world_pos)
-	if not piece:
-		piece = _surface_piece_at(world_pos)
-	if not piece:
-		return false
 	if box_jammed:
 		_float_text("LA CAJA ESTÁ ATASCADA", world_pos)
 		return true
-	var kind: String = piece.get_meta("kind", "grain")
-	if kind == "rock":
-		_float_text("DEMASIADO APELMAZADA", world_pos)
+	if piece:
+		var kind: String = piece.get_meta("kind", "unknown")
+		if kind == "rock":
+			_float_text("DEMASIADO APELMAZADA", world_pos)
+			return true
+		if kind == "bacteria":
+			_float_text("ESO SE MUEVE", world_pos)
+			return true
+		if kind == "impurity":
+			return _manual_collect_impurity(piece)
+	var side := "left" if world_pos.x < SEPTUM_X else "right"
+	if side == "left" and not septum_open:
+		return false
+	if not powder_surface or world_pos.y < powder_surface.surface_y_at(side, world_pos.x) or world_pos.y > _ground_y() + 5.0:
+		return false
+	return _manual_collect_powder(side, world_pos, continuous_stream)
+
+func _manual_collect_powder(side: String, world_pos: Vector2, continuous_stream: bool) -> bool:
+	var yield_multiplier := _box_yield_multiplier()
+	var raw_capacity := _manual_claim_space() / maxf(0.001, yield_multiplier)
+	var scoop := minf(_click_power(), minf(raw_capacity, _pile_load(side)))
+	if scoop <= 0.0001:
+		_float_text("ALMACÉN LLENO", world_pos)
 		return true
-	if kind == "bacteria":
-		_float_text("ESO SE MUEVE", world_pos)
-		return true
-	var stored_value := float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if kind == "grain" else 1.0)
-	if kind != "impurity" and stored_value > _manual_claim_space() + 0.001:
-		_float_text("ALMACÃ‰N LLENO", world_pos)
-		return true
+	var preferred_column := roundi((world_pos.x - _pile_center(side)) / GRAIN_SPACING)
+	var taken: Dictionary = powder_field.take(side, scoop, preferred_column)
+	var amount := float(taken.amount)
+	if amount <= 0.0001:
+		return false
+	var requested := amount * yield_multiplier
+	_reserve_manual_amount(requested)
+	var id := _next_powder_transfer_id()
+	var target := Vector2(_box_x() + 8.0, _ground_y() - 24.0)
+	var control := (world_pos + target) * 0.5 - Vector2(0.0, 85.0 + absf(target.x - world_pos.x) * 0.08)
+	var duration := MANUAL_DELIVERY_BASE_TIME + minf(0.28, world_pos.distance_to(target) / 1500.0)
+	powder_effects.set_mass_volume(id, world_pos, amount, _fossa_visual_area_per_unit(), "stream")
+	particle_motions.append({"kind":"powder_manual", "id":id, "amount":amount, "player":float(taken.player), "joe":float(taken.joe), "side":side, "column":preferred_column, "requested":requested, "elapsed":0.0, "duration":duration, "start":world_pos, "control":control, "target":target, "continuous":continuous_stream})
+	powder_surface.refresh()
+	_align_compacted_rocks(side)
+	return true
+
+func _manual_collect_impurity(piece: PilePiece) -> bool:
 	var side: String = piece.get_meta("side", "right")
 	_index_remove_piece(piece)
-	if kind == "grain":
-		piece.visible = false
 	_set_piece_carried(piece, true)
 	piece.set_meta("manual_flying", true)
-	_reserve_manual_piece(piece, stored_value)
 	piece.z_index = 30
-	_settle_surface(side, 3)
 	_restack_pile(side)
 	var start := piece.position
 	var target := Vector2(_box_x() + 8.0, _ground_y() - 24.0)
 	var control := (start + target) * 0.5 - Vector2(0.0, 85.0 + absf(target.x - start.x) * 0.08)
 	var duration := MANUAL_DELIVERY_BASE_TIME + minf(0.28, start.distance_to(target) / 1500.0)
-	if kind == "grain":
-		_spawn_powder_stream(start, target, 1.5 if continuous_stream else 0.72)
 	particle_motions.append({"kind":"manual", "piece":piece, "elapsed":0.0, "duration":duration, "start":start, "control":control, "target":target})
 	return true
 
@@ -1969,16 +1904,9 @@ func _update_continuous_sweep(delta: float) -> void:
 		continuous_sweep_held = false
 		return
 	var world_pos := stage.get_global_transform_with_canvas().affine_inverse() * screen_pos
-	var piece := _surface_piece_at(world_pos)
-	if not piece or box_jammed:
+	if box_jammed or not _manual_collect_at(world_pos, false, true):
 		continuous_sweep_clock = 0.05
 		return
-	var kind: String = piece.get_meta("kind", "grain")
-	var stored_value := float(piece.get_meta("value", 1.0)) * (_box_yield_multiplier() if kind == "grain" else 1.0)
-	if kind in ["rock", "bacteria"] or (kind != "impurity" and stored_value > _manual_claim_space() + 0.001):
-		continuous_sweep_clock = 0.08
-		return
-	_manual_collect_at(world_pos, false, true)
 	continuous_sweep_clock = _continuous_sweep_interval()
 
 func _animate_manual_flight(progress: float, piece: Variant, start: Vector2, control: Vector2, target: Vector2) -> void:
@@ -2001,7 +1929,7 @@ func _finish_manual_delivery(piece: Variant) -> void:
 	var sprite := piece as PilePiece
 	if not sprite:
 		return
-	var kind: String = sprite.get_meta("kind", "grain")
+	var kind: String = sprite.get_meta("kind", "unknown")
 	var value := float(sprite.get_meta("value", 1.0))
 	var previous_contamination := contamination
 	var delivered := 0.0
@@ -2035,6 +1963,36 @@ func _finish_manual_delivery(piece: Variant) -> void:
 	_check_phase_progress()
 	_update_ui()
 
+func _finish_manual_powder_delivery(transfer: Dictionary) -> void:
+	var requested := float(transfer.requested)
+	_release_manual_amount(requested)
+	var delivered := _store_cocaine(requested)
+	var amount := float(transfer.amount)
+	if delivered <= 0.0:
+		powder_field.add(str(transfer.side), int(transfer.column), float(transfer.player), "player")
+		powder_field.add(str(transfer.side), int(transfer.column), float(transfer.joe), "joe")
+		powder_surface.refresh()
+		_align_compacted_rocks(str(transfer.side))
+		_float_text("ALMACÉN LLENO", _storage_feedback_position())
+		return
+	var fraction := delivered / maxf(0.001, requested)
+	var progress_value := amount * fraction
+	phase_work += progress_value
+	var joe_progress := float(transfer.joe) * fraction
+	if joe_progress > 0.0:
+		_improve_joe(joe_progress)
+	# Una reserva manual debería garantizar el total. Esta devolución protege
+	# frente a cambios de capacidad ocurridos durante el vuelo.
+	if fraction < 0.9999:
+		powder_field.add(str(transfer.side), int(transfer.column), float(transfer.player) * (1.0 - fraction), "player")
+		powder_field.add(str(transfer.side), int(transfer.column), float(transfer.joe) * (1.0 - fraction), "joe")
+		powder_surface.refresh()
+	_float_text("+%s" % _number(delivered), _storage_feedback_position())
+	_update_box()
+	_box_bump()
+	_check_phase_progress()
+	_update_ui()
+
 func _cargo_position(pawn: Sprite2D, index: int, capacity: int) -> Vector2:
 	var columns := mini(3, capacity)
 	var row := index / columns
@@ -2045,7 +2003,6 @@ func _cargo_position(pawn: Sprite2D, index: int, capacity: int) -> Vector2:
 func _update_carried_pieces(pawn: Sprite2D) -> void:
 	if _pawn_carries_powder_mound(pawn):
 		_update_pawn_powder_mound(pawn)
-		return
 	var cargo: Array = pawn.get_meta("cargo", [])
 	for piece_value in cargo:
 		var piece := piece_value as PilePiece
@@ -2054,10 +2011,9 @@ func _update_carried_pieces(pawn: Sprite2D) -> void:
 
 func _begin_deposit(pawn: Sprite2D) -> void:
 	var cargo: Array = pawn.get_meta("cargo", [])
-	var mound := pawn.get_node_or_null("PowderMound") as Node2D
-	if mound and mound.visible:
-		mound.set_meta("deposit_start", mound.position)
-		mound.set_meta("deposit_scale", mound.scale.x)
+	if _pawn_carries_powder_mound(pawn):
+		var front := 1.0 if pawn.flip_h else -1.0
+		pawn.set_meta("powder_deposit_start", pawn.position + Vector2(front * 13.0, -16.0))
 	for piece_value in cargo:
 		var piece := piece_value as PilePiece
 		if is_instance_valid(piece): piece.set_meta("deposit_start", piece.position)
@@ -2067,14 +2023,10 @@ func _begin_deposit(pawn: Sprite2D) -> void:
 func _update_deposit(pawn: Sprite2D, progress: float) -> void:
 	var cargo: Array = pawn.get_meta("cargo", [])
 	var target := Vector2(_box_x() + 8.0, _ground_y() - 24.0)
-	var mound := pawn.get_node_or_null("PowderMound") as Node2D
-	if mound and mound.visible:
-		var mound_start: Vector2 = mound.get_meta("deposit_start", mound.position)
-		var local_target := pawn.to_local(target)
-		var mound_progress := smoothstep(0.0, 1.0, progress)
-		mound.position = mound_start.lerp(local_target, mound_progress)
-		mound.scale = Vector2.ONE * lerpf(float(mound.get_meta("deposit_scale", mound.scale.x)), 0.22, mound_progress)
-		return
+	var powder_amount := float(pawn.get_meta("powder_amount", 0.0))
+	if powder_amount > 0.0001:
+		var powder_start: Vector2 = pawn.get_meta("powder_deposit_start", pawn.position)
+		powder_effects.set_mass_volume("pawn_%d" % pawn.get_instance_id(), powder_start.lerp(target, smoothstep(0.0, 1.0, progress)), powder_amount, _fossa_visual_area_per_unit(), "stream")
 	for index in range(cargo.size()):
 		var piece := cargo[index] as PilePiece
 		if not is_instance_valid(piece): continue
@@ -2084,18 +2036,41 @@ func _update_deposit(pawn: Sprite2D, progress: float) -> void:
 		piece.position = start.lerp(target, smoothstep(0.0, 1.0, delayed))
 		var base_scale: float = float(piece.get_meta("base_scale", 0.07))
 		var cargo_scale := float(piece.get_meta("cargo_visual_scale", 1.0))
-		piece.scale = Vector2.ONE * lerpf(base_scale * cargo_scale, 0.015, delayed)
+		# La carga conserva su superficie hasta cruzar la boca del almacén.
+		piece.scale = Vector2.ONE * base_scale * cargo_scale
 
 func _finish_delivery(pawn: Sprite2D) -> void:
 	var delivered := 0.0
 	var contamination_delta := 0.0
 	var previous_contamination := contamination
+	var powder_amount := float(pawn.get_meta("powder_amount", 0.0))
+	if powder_amount > 0.0001:
+		var requested_powder := float(pawn.get_meta("powder_reserved", powder_amount * _box_yield_multiplier()))
+		_release_automatic_amount(requested_powder)
+		var powder_accepted := _store_automatic_cocaine(requested_powder)
+		var powder_fraction := powder_accepted / maxf(0.001, requested_powder)
+		delivered += powder_accepted
+		phase_work += powder_amount * powder_fraction
+		var joe_powder := float(pawn.get_meta("powder_joe", 0.0))
+		if joe_powder > 0.0:
+			_improve_joe(joe_powder * powder_fraction)
+		if powder_fraction < 0.9999:
+			var side: String = pawn.get_meta("side", active_side)
+			var return_column := _choose_landing_column(side)
+			powder_field.add(side, return_column, float(pawn.get_meta("powder_player", 0.0)) * (1.0 - powder_fraction), "player")
+			powder_field.add(side, return_column, joe_powder * (1.0 - powder_fraction), "joe")
+			powder_surface.refresh()
+	powder_effects.remove_mass_volume("pawn_%d" % pawn.get_instance_id())
+	pawn.set_meta("powder_amount", 0.0)
+	pawn.set_meta("powder_player", 0.0)
+	pawn.set_meta("powder_joe", 0.0)
+	pawn.set_meta("powder_reserved", 0.0)
 	var cargo: Array = pawn.get_meta("cargo", [])
 	for piece_value in cargo:
 		var piece := piece_value as PilePiece
 		if not is_instance_valid(piece): continue
 		var value := float(piece.get_meta("value", 0.0))
-		var kind: String = piece.get_meta("kind", "grain")
+		var kind: String = piece.get_meta("kind", "unknown")
 		var consumed := true
 		if kind == "impurity":
 			impurities_handled += 1
@@ -2108,7 +2083,7 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 				contamination_delta += _impurity_contamination(str(piece.get_meta("material", "")), value)
 		elif kind == "bacteria":
 			if bool(pawn.get_meta("handler", false)):
-				var accepted := _store_automatic_cocaine(value)
+				var accepted := _store_cocaine(value)
 				if accepted > 0.0:
 					delivered += accepted
 					bacteria_handled += 1
@@ -2121,13 +2096,24 @@ func _finish_delivery(pawn: Sprite2D) -> void:
 				consumed = false
 		else:
 			var requested := value * _box_yield_multiplier()
-			var accepted := _store_automatic_cocaine(requested)
+			# Esta pieza ya reservó su hueco al ser marcada como transportada. Usar
+			# _store_automatic_cocaine aquí volvería a descontar su propia reserva.
+			var accepted := _store_cocaine(requested)
 			if accepted > 0.0:
 				delivered += accepted
-				var progress_value := value * accepted / maxf(0.001, requested)
+				var accepted_fraction := accepted / maxf(0.001, requested)
+				var progress_value := value * accepted_fraction
 				phase_work += progress_value
-				if piece.get_meta("source", "player") != "player":
-					_improve_joe(progress_value)
+				var joe_value := float(piece.get_meta("joe_amount", value if piece.get_meta("source", "player") != "player" else 0.0))
+				var player_value := float(piece.get_meta("player_amount", value - joe_value))
+				if joe_value > 0.0:
+					_improve_joe(joe_value * accepted_fraction)
+				if accepted_fraction < 0.9999:
+					var return_side := str(piece.get_meta("side", active_side))
+					var return_column := int(piece.get_meta("column", _choose_landing_column(return_side)))
+					powder_field.add(return_side, return_column, player_value * (1.0 - accepted_fraction), "player")
+					powder_field.add(return_side, return_column, joe_value * (1.0 - accepted_fraction), "joe")
+					powder_surface.refresh()
 			else:
 				consumed = false
 		if consumed:
@@ -2183,7 +2169,7 @@ func _specialist_rock_target(side: String, from: Vector2) -> PilePiece:
 	var best_score := INF
 	for value in loose_chunks:
 		var candidate := value as PilePiece
-		if not _piece_is_in_pile(candidate, side) or candidate.get_meta("kind", "grain") != "rock":
+		if not _piece_is_in_pile(candidate, side) or candidate.get_meta("kind", "unknown") != "rock":
 			continue
 		# Abrir un pedrusco tiene prioridad absoluta. Entre rocas equivalentes,
 		# el casco azul elige la más cercana para que el trayecto se lea fluido.
@@ -2223,21 +2209,18 @@ func _maybe_compact(side: String) -> void:
 	var pressure_rate := _auto_hit_rate() + _special_extraction_rate(true)
 	var interval := _compaction_interval()
 	if _pile_load(side) < COMPACTION_THRESHOLD or int(compaction_steps.get(side, 0)) < interval: return
-	var grains := _dense_grain_cluster(side)
-	if grains.size() < COMPACTION_GRAINS: return
-	var value := 0.0
-	var source := "player"
-	for grain in grains:
-		value += float(grain.get_meta("value", 1.0))
-		if grain.get_meta("source", "player") != "player":
-			source = "joe"
-		_index_remove_piece(grain)
-		loose_chunks.erase(grain)
-		grain.queue_free()
+	var column := powder_field.densest_column(side, float(COMPACTION_GRAINS))
+	if column == 999: return
+	var compacted: Dictionary = powder_field.take(side, float(COMPACTION_GRAINS), column)
+	var value := float(compacted.amount)
+	if value < float(COMPACTION_GRAINS) - 0.001: return
+	var source := "joe" if float(compacted.joe) > 0.0 else "player"
 	compaction_steps[side] = 0
 	_restack_pile(side)
 	var hardness := clampi(2 + floori(log(maxf(1.0, pressure_rate + 1.0)) / log(4.0)), 2, 9)
-	var rock := _create_piece("rock", side, value, hardness, _choose_landing_column(side), randf_range(0.17, 0.205), "", source)
+	var rock := _create_piece("rock", side, value, hardness, column, randf_range(0.17, 0.205), "", source)
+	rock.set_meta("joe_amount", float(compacted.joe))
+	rock.set_meta("player_amount", float(compacted.player))
 	rock.rotation = randf_range(-0.18, 0.18)
 	rock.scale = Vector2.ZERO
 	var compact_tween := create_tween()
@@ -2280,41 +2263,25 @@ func _prune_manual_mining_clicks() -> void:
 	while not manual_mining_click_times.is_empty() and manual_mining_click_times[0] < cutoff:
 		manual_mining_click_times.pop_front()
 
-func _dense_grain_cluster(side: String) -> Array[PilePiece]:
-	var grains: Array[PilePiece] = []
-	for stack_value in (pile_columns[side] as Dictionary).values():
-		var stack: Array = stack_value
-		for index in range(maxi(0, stack.size() - 4), stack.size()):
-			var piece := stack[index] as PilePiece
-			if piece.get_meta("kind", "grain") == "grain":
-				grains.append(piece)
-	var spatial := {}
-	for grain in grains:
-		var cell := Vector2i(floori(grain.position.x / 22.0), floori(grain.position.y / 22.0))
-		if not spatial.has(cell):
-			spatial[cell] = []
-		(spatial[cell] as Array).append(grain)
-	for center in grains:
-		var neighbours: Array[PilePiece] = []
-		var center_cell := Vector2i(floori(center.position.x / 22.0), floori(center.position.y / 22.0))
-		for offset_y in range(-1, 2):
-			for offset_x in range(-1, 2):
-				for candidate_value in spatial.get(center_cell + Vector2i(offset_x, offset_y), []):
-					var candidate := candidate_value as PilePiece
-					if candidate != center and center.position.distance_squared_to(candidate.position) <= 484.0:
-						neighbours.append(candidate)
-		if neighbours.size() >= COMPACTION_GRAINS - 1:
-			neighbours.sort_custom(func(a: PilePiece, b: PilePiece) -> bool: return center.position.distance_squared_to(a.position) < center.position.distance_squared_to(b.position))
-			var cluster: Array[PilePiece] = [center]
-			cluster.append_array(neighbours.slice(0, COMPACTION_GRAINS - 1))
-			return cluster
-	return []
-
 func _pile_load(side: String) -> float:
-	return float(pile_load_cache.get(side, 0.0))
+	return powder_field.amount(side) + _compacted_powder_load(side)
 
 func _pile_visual_load(side: String) -> float:
-	return float(pile_visual_load_cache.get(side, 0.0))
+	return _pile_load(side)
+
+func _compacted_powder_load(side: String) -> float:
+	var total := 0.0
+	for piece in loose_chunks:
+		if _piece_is_in_pile(piece, side) and str(piece.get_meta("kind", "")) == "rock":
+			total += float(piece.get_meta("value", 0.0))
+	return total
+
+func _compacted_joe_powder_load(side: String) -> float:
+	var total := 0.0
+	for piece in loose_chunks:
+		if _piece_is_in_pile(piece, side) and str(piece.get_meta("kind", "")) == "rock":
+			total += float(piece.get_meta("joe_amount", 0.0))
+	return total
 
 func _untreated_rock_count(side: String) -> int:
 	return int(untreated_rock_count_cache.get(side, 0))
@@ -2356,7 +2323,7 @@ func _click_wall(side: String) -> void:
 		_show_fossa_saturated(side)
 		return
 	_damage_wall(hit, side)
-	_spawn_chunk(Vector2(_mine_x(side), _ground_y() - randf_range(160.0, 310.0)), hit, side, 999, "player", true)
+	_spawn_powder_drop(Vector2(_mine_x(side), _ground_y() - randf_range(160.0, 310.0)), hit, side, 999, "player")
 	_float_text("-%s" % _number(hit), Vector2(_mine_x(side), _ground_y() - 280.0))
 	if int(levels.click_burst) > 0 and _wall_hp(side) > 0.0:
 		manual_clicks_since_burst += 1
@@ -2367,7 +2334,7 @@ func _click_wall(side: String) -> void:
 			var burst := minf(float(repeats) * _click_power(), minf(_wall_hp(side), _fossa_free_space(side)))
 			if burst > 0.0:
 				_damage_wall(burst, side)
-				_spawn_extraction_payload(side, burst, _mine_x(side), repeats)
+				_spawn_extraction_payload(side, burst, _mine_x(side))
 				_float_text("¡RÁFAGA!  -%s" % _number(burst), Vector2(_mine_x(side), _ground_y() - 245.0))
 			else:
 				_show_fossa_saturated(side)
@@ -2548,7 +2515,9 @@ func _update_box() -> void:
 	_update_storage_visual()
 
 func _rebuild_pawns() -> void:
-	for child in pawns.get_children(): child.queue_free()
+	for child in pawns.get_children():
+		_release_pawn_powder(child as Sprite2D)
+		child.queue_free()
 	for piece in loose_chunks:
 		if is_instance_valid(piece) and bool(piece.get_meta("carried", false)):
 			_set_piece_carried(piece, false)
@@ -2586,9 +2555,28 @@ func _rebuild_pawns() -> void:
 		_set_pawn_carrying(pawn, false)
 		pawn.set_meta("state", "to_pile")
 		pawn.set_meta("cargo", [])
+		pawn.set_meta("powder_amount", 0.0)
+		pawn.set_meta("powder_player", 0.0)
+		pawn.set_meta("powder_joe", 0.0)
+		pawn.set_meta("powder_reserved", 0.0)
 		pawn.set_meta("side", _choose_work_side(index))
 		pawn.position = Vector2(_box_x() - float(index) * 18.0, _ground_y() - 14.0)
 		pawns.add_child(pawn)
+
+func _release_pawn_powder(pawn: Sprite2D) -> void:
+	if not pawn:
+		return
+	var amount := float(pawn.get_meta("powder_amount", 0.0))
+	var reserved := float(pawn.get_meta("powder_reserved", 0.0))
+	_release_automatic_amount(reserved)
+	powder_effects.remove_mass_volume("pawn_%d" % pawn.get_instance_id())
+	if amount <= 0.0001:
+		return
+	var side: String = pawn.get_meta("side", active_side)
+	var column := _choose_landing_column(side)
+	powder_field.add(side, column, float(pawn.get_meta("powder_player", 0.0)), "player")
+	powder_field.add(side, column, float(pawn.get_meta("powder_joe", 0.0)), "joe")
+	powder_surface.refresh()
 
 func _rebuild_punchers() -> void:
 	for child in punchers.get_children():
@@ -2880,10 +2868,9 @@ func _resolve_punch(puncher: Sprite2D) -> void:
 	total_clicks += output
 	var direction := -1.0 if side == "left" else 1.0
 	var impact_x := _wall_free_x(side) + direction * 4.0
-	_spawn_extraction_payload(side, float(output), impact_x, PUGILIST_GRAINS_PER_HIT)
+	_spawn_extraction_payload(side, float(output), impact_x)
 	_spawn_impact_dust(Vector2(impact_x, _ground_y() - 10.0), Color("d6b8bc"), 14 if debut else 4)
 	if debut:
-		_spawn_debut_powder_burst(side, Vector2(impact_x, _ground_y() - 18.0), 1.0)
 		unit_debuts_seen["pugilist"] = true
 	_impact_shake(5.5 if debut else (3.0 if combo_round else 1.6))
 	_play_sfx(SFX_PUNCH, -7.0 if combo_round else -9.0, randf_range(0.86, 1.08))
@@ -3219,12 +3206,9 @@ func _special_extraction_hit(kind: String, origin: Vector2) -> void:
 	_damage_wall(damage, side)
 	total_clicks += roundi(damage)
 	var impact_x := _wall_free_x(side)
-	_spawn_extraction_payload(side, damage, impact_x, 24)
+	_spawn_extraction_payload(side, damage, impact_x)
 	var dust_color := Color("64d9ed") if kind in ["plasma", "meteor"] else (Color("e5b94d") if kind == "hammer" else Color("eef4e7"))
 	_spawn_impact_dust(Vector2(impact_x, _ground_y() - 8.0), dust_color, (26 if debut else (14 if kind in ["ram", "elephant", "hammer", "meteor"] else 10)))
-	if debut:
-		var debut_intensity := {"ram":1.25, "elephant":1.65, "hammer":1.85, "plasma":2.1, "meteor":2.35, "supersaiyan":2.6}
-		_spawn_debut_powder_burst(side, Vector2(impact_x, _ground_y() - 20.0), float(debut_intensity.get(kind, 1.4)))
 	if kind == "ram":
 		_play_sfx(SFX_PUNCH, -4.0, 0.76)
 		_impact_shake(4.0)
@@ -3255,12 +3239,12 @@ func _queue_special_debut(kind: String) -> void:
 	var names := {"ram":"LEUCOCARNERO", "elephant":"LEUCOFANTE", "hammer":"LEUCOMARTILLO", "plasma":"CAÑÓN DE PLASMA", "meteor":"NEUTRÓFILO METEORITO", "supersaiyan":"LEUCOCITO SUPERSAIYAN"}
 	_show_toast("%s  ·  PREPARANDO SU PRIMER GOLPE" % str(names.get(kind, "NUEVA UNIDAD")), 3.8)
 
-func _spawn_extraction_payload(side: String, amount: float, impact_x: float, visuals: int) -> void:
-	if amount <= 0.0: return
-	var count := maxi(1, visuals)
-	var value := amount / float(count)
-	for index in range(count):
-		_spawn_chunk(Vector2(impact_x + randf_range(-10.0, 10.0), _ground_y() - randf_range(185.0, 320.0)), value, side, 999, "player", true)
+func _spawn_extraction_payload(side: String, amount: float, impact_x: float) -> void:
+	if amount <= 0.0:
+		return
+	# Un golpe genera una sola masa geométrica cuya superficie es exactamente el
+	# daño infligido. Ya no se reparte en diez o veinticuatro "bolas" con valor.
+	_spawn_powder_drop(Vector2(impact_x + randf_range(-10.0, 10.0), _ground_y() - randf_range(185.0, 320.0)), amount, side, 999, "player")
 
 func _click_power() -> float:
 	return _click_power_for(int(levels.nails))
@@ -3305,7 +3289,7 @@ func _buy(id: String) -> void:
 	if upgrade.kind in ["pawn", "coordination", "specialist", "detector", "handler"]: _rebuild_pawns()
 	elif upgrade.kind in ["smart_clump", "pawn_renaissance"]:
 		_rebuild_pawns()
-		_show_toast("APELMAZADO INTELIGENTE  ·  %d GRANOS POR BOLA DE CARGA" % _smart_clump_size())
+		_show_toast("APELMAZADO INTELIGENTE  ·  CARGA TOTAL %d UNIDADES" % _pawn_claim_capacity_for_normal())
 	elif upgrade.kind == "speed":
 		_rebuild_pawns()
 		_show_toast("AUTOVÍA PEATONAL  ·  LOS PEONES ACELERAN UN 50%")
@@ -3435,7 +3419,7 @@ func _remove_future_crisis_pieces() -> void:
 	var removed: Array[PilePiece] = []
 	for piece in loose_chunks.duplicate():
 		if not is_instance_valid(piece): continue
-		var kind: String = piece.get_meta("kind", "grain")
+		var kind: String = piece.get_meta("kind", "unknown")
 		var remove := (current_phase < 2 and kind == "rock") or (current_phase < 3 and kind == "impurity") or (current_phase < 5 and kind == "bacteria")
 		if remove:
 			removed.append(piece)
@@ -3464,7 +3448,7 @@ func _align_compacted_rocks(side: String) -> void:
 	var rocks: Array[PilePiece] = []
 	for value in loose_chunks:
 		var rock := value as PilePiece
-		if _piece_is_in_pile(rock, side) and str(rock.get_meta("kind", "grain")) == "rock" and bool(rock.get_meta("landed", true)):
+		if _piece_is_in_pile(rock, side) and str(rock.get_meta("kind", "unknown")) == "rock" and bool(rock.get_meta("landed", true)):
 			rocks.append(rock)
 	rocks.sort_custom(func(a: PilePiece, b: PilePiece) -> bool: return a.position.x < b.position.x if side == "right" else a.position.x > b.position.x)
 	var previous_x := -INF if side == "right" else INF
@@ -3549,13 +3533,6 @@ func _start_another_line(source: String) -> void:
 	var source_text := "RAYITA CON SERRÍN" if source == "adulterated" else "OTRA RAYITA"
 	_show_toast("%s  ·  +%s DE POLVO" % [source_text, _number(grain_count)])
 	_float_text("+%s DE POLVO" % _number(grain_count), Vector2(_pile_center(active_side), _ground_y() - 250.0))
-	# La cortina anticipa las mismas zonas que recibirá la dosis. Así el terreno
-	# crece bajo los copos que el jugador ha visto, no en un montículo arbitrario.
-	var preview_bounds := _column_bounds(active_side, mini(_pile_radius_limit(active_side), 18 + current_phase * 2))
-	for anchor_value in ANOTHER_LINE_ANCHORS:
-		var preview_column := roundi(lerpf(float(preview_bounds.x), float(preview_bounds.y), float(anchor_value)))
-		var preview_x := _pile_center(active_side) + float(preview_column) * GRAIN_SPACING
-		_spawn_powder_fall(Vector2(preview_x, _ground_y() - randf_range(380.0, 440.0)), active_side, 4, 1.25, preview_column)
 
 func _spawn_line_piece(origin: Vector2, side: String, column: int, index: int) -> void:
 	var value := 1.0
@@ -3569,7 +3546,7 @@ func _spawn_line_piece(origin: Vector2, side: String, column: int, index: int) -
 		var piece := _create_piece("impurity", side, value, 0, _choose_landing_column(side, column), randf_range(0.078, 0.09), adulterant, "joe")
 		_drop_piece(piece, origin)
 	else:
-		_spawn_chunk(origin, value, side, column, "joe", index % 10 == 0)
+		_spawn_powder_drop(origin, value, side, column, "joe")
 
 func _finish_another_line() -> void:
 	if puncher_unlocked:
@@ -3983,7 +3960,7 @@ func _update_joe_high(delta: float) -> void:
 func _joe_powder_pressure() -> float:
 	# La cocaína arrancada por el jugador ya ha reducido el colocón al salir de
 	# la pared. Solo el polvo que añade Joe puede ejercer presión desde el suelo.
-	var joe_burden := float(joe_grain_load_cache.left) + float(joe_grain_load_cache.right)
+	var joe_burden := powder_field.joe_amount("left") + powder_field.joe_amount("right") + _compacted_joe_powder_load("left") + _compacted_joe_powder_load("right")
 	# Una rayita completa sin atender devuelve exactamente 1,5 puntos por minuto,
 	# sea cual sea su tamaño. Retirar la mitad de sus granos corta la presión a la
 	# mitad, de modo que el evento no se vuelve decorativo en el late game.
@@ -4284,7 +4261,7 @@ func _add_ground_transporter(kind: String, capacity: float, speed: float) -> voi
 	root.set_meta("speed", speed)
 	root.set_meta("state", "to_pile")
 	root.set_meta("side", active_side)
-	root.set_meta("cargo", [])
+	root.set_meta("cargo", {})
 	root.set_meta("timer", 0.0)
 	if kind == "cart":
 		var cart := Sprite2D.new()
@@ -4345,10 +4322,8 @@ func _add_transport_load_readout(root: Node2D) -> void:
 func _update_transport_load_readout(root: Node2D) -> void:
 	var label := root.get_node_or_null("LoadReadout") as Label
 	if not label: return
-	var load := 0.0
-	for value in root.get_meta("cargo", []):
-		var piece := value as PilePiece
-		if is_instance_valid(piece): load += float(piece.get_meta("value", 1.0))
+	var cargo: Dictionary = root.get_meta("cargo", {})
+	var load := float(cargo.get("amount", 0.0))
 	label.text = "CARGA  %s / %s" % [_number(load), _number(float(root.get_meta("capacity", 0.0)))]
 	label.scale.x = root.scale.x
 
@@ -4360,7 +4335,7 @@ func _add_train() -> void:
 	root.set_meta("transport_kind", "train")
 	root.set_meta("state", "waiting")
 	root.set_meta("side", "right")
-	root.set_meta("cargo", [])
+	root.set_meta("cargo", {})
 	root.set_meta("timer", 1.2)
 	var train := Sprite2D.new()
 	train.name = "Vehicle"
@@ -4374,6 +4349,7 @@ func _update_transporters(delta: float) -> void:
 	for child in transporters.get_children():
 		var root := child as Node2D
 		if not root: continue
+		_update_transport_powder_visual(root)
 		if root.get_meta("transport_kind", "") == "train":
 			_update_train(root, delta)
 		else:
@@ -4381,6 +4357,7 @@ func _update_transporters(delta: float) -> void:
 
 func _update_ground_transporter(root: Node2D, delta: float) -> void:
 	_update_transport_load_readout(root)
+	_update_transport_powder_visual(root)
 	if box_jammed: return
 	var state: String = root.get_meta("state", "to_pile")
 	var side: String = root.get_meta("side", active_side)
@@ -4415,58 +4392,41 @@ func _move_transport_root(root: Node2D, target: Vector2, speed: float, delta: fl
 	root.position = root.position.move_toward(target, speed * delta)
 	root.position.y = _ground_y()
 
-func _claim_transport_cocaine(side: String, capacity: float, take_all: bool) -> Array:
-	var cargo: Array = []
-	var remaining := minf(capacity, _storage_claim_space())
-	var candidates: Array = loose_chunks.duplicate() if take_all else _top_pieces(side)
-	for value in candidates:
-		var piece := value as PilePiece
-		if not _piece_is_in_pile(piece, side) or piece.get_meta("kind", "grain") != "grain": continue
-		var piece_value := float(piece.get_meta("value", 1.0))
-		if piece_value > remaining + 0.001: continue
-		piece.visible = false
-		_set_piece_carried(piece, true)
-		cargo.append(piece)
-		remaining -= piece_value
-		if remaining <= 0.001: break
-	_rebuild_pile_index(side)
-	_settle_surface(side, 5)
-	_restack_pile(side)
+func _claim_transport_cocaine(side: String, capacity: float, _take_all: bool) -> Dictionary:
+	var yield_multiplier := _box_yield_multiplier()
+	var raw_capacity := minf(capacity, _storage_claim_space() / maxf(0.001, yield_multiplier))
+	var cargo: Dictionary = powder_field.take(side, raw_capacity)
+	var amount := float(cargo.amount)
+	if amount <= 0.0001:
+		return {}
+	cargo["reserved"] = amount * yield_multiplier
+	cargo["side"] = side
+	_reserve_automatic_amount(float(cargo.reserved))
+	powder_surface.refresh()
+	_align_compacted_rocks(side)
 	return cargo
 
 func _deliver_transport_cargo(root: Node2D, at: Vector2) -> void:
-	var delivered := 0.0
-	var clean_progress := 0.0
-	var joe_clean_progress := 0.0
-	var available_storage := _manual_claim_space()
-	var side: String = root.get_meta("side", active_side)
-	var consumed_pieces: Array[PilePiece] = []
-	for value in root.get_meta("cargo", []):
-		var piece := value as PilePiece
-		if not is_instance_valid(piece): continue
-		var piece_value := float(piece.get_meta("value", 1.0))
-		var requested := piece_value * _box_yield_multiplier()
-		if requested <= available_storage + 0.001:
-			delivered += requested
-			available_storage -= requested
-			clean_progress += piece_value
-			if piece.get_meta("source", "player") != "player":
-				joe_clean_progress += piece_value
-			consumed_pieces.append(piece)
-		else:
-			piece.visible = true
-			_set_piece_carried(piece, false)
-			piece.position = _landing_position(piece)
-	if consumed_pieces.is_empty():
-		_rebuild_pile_index(side)
-	else:
-		_erase_loose_pieces(consumed_pieces)
+	var cargo: Dictionary = root.get_meta("cargo", {})
+	var amount := float(cargo.get("amount", 0.0))
+	var reserved := float(cargo.get("reserved", 0.0))
+	var side := str(cargo.get("side", root.get_meta("side", active_side)))
+	_release_automatic_amount(reserved)
+	var delivered := _store_automatic_cocaine(reserved)
+	var fraction := delivered / maxf(0.001, reserved)
+	var clean_progress := amount * fraction
+	var joe_clean_progress := float(cargo.get("joe", 0.0)) * fraction
 	if delivered > 0.0:
-		cells += delivered
 		phase_work += clean_progress
 		if joe_clean_progress > 0.0:
 			_improve_joe(joe_clean_progress)
-	root.set_meta("cargo", [])
+	if fraction < 0.9999:
+		var column := _choose_landing_column(side)
+		powder_field.add(side, column, float(cargo.get("player", 0.0)) * (1.0 - fraction), "player")
+		powder_field.add(side, column, float(cargo.get("joe", 0.0)) * (1.0 - fraction), "joe")
+		powder_surface.refresh()
+	root.set_meta("cargo", {})
+	powder_effects.remove_mass_volume("transport_%d" % root.get_instance_id())
 	if delivered > 0.0:
 		var title := "EXPRESO" if root.get_meta("transport_kind", "") == "train" else ("MUGIDÓFILO" if root.get_meta("transport_kind", "") == "ox" else "CARRITO")
 		_float_text("%s  +%s" % [title, _number(delivered)], at - Vector2(0.0, 92.0))
@@ -4475,13 +4435,28 @@ func _deliver_transport_cargo(root: Node2D, at: Vector2) -> void:
 	_update_ui()
 
 func _release_transport_cargo(root: Node) -> void:
-	for value in root.get_meta("cargo", []):
-		var piece := value as PilePiece
-		if not is_instance_valid(piece): continue
-		piece.visible = true
-		_set_piece_carried(piece, false)
-		piece.position = _landing_position(piece)
-	_rebuild_pile_index()
+	var cargo: Dictionary = root.get_meta("cargo", {})
+	_release_automatic_amount(float(cargo.get("reserved", 0.0)))
+	var amount := float(cargo.get("amount", 0.0))
+	if amount > 0.0001:
+		var side := str(cargo.get("side", root.get_meta("side", active_side)))
+		var column := _choose_landing_column(side)
+		powder_field.add(side, column, float(cargo.get("player", 0.0)), "player")
+		powder_field.add(side, column, float(cargo.get("joe", 0.0)), "joe")
+		powder_surface.refresh()
+	powder_effects.remove_mass_volume("transport_%d" % root.get_instance_id())
+	root.set_meta("cargo", {})
+
+func _update_transport_powder_visual(root: Node2D) -> void:
+	var cargo: Dictionary = root.get_meta("cargo", {})
+	var amount := float(cargo.get("amount", 0.0))
+	var id := "transport_%d" % root.get_instance_id()
+	if amount <= 0.0001 or not root.visible:
+		powder_effects.remove_mass_volume(id)
+		return
+	var direction := -root.scale.x
+	var offset := Vector2(18.0 * direction, -34.0 if root.get_meta("transport_kind", "") == "cart" else -46.0)
+	powder_effects.set_mass_volume(id, root.position + offset, amount, _fossa_visual_area_per_unit(), "vehicle", direction)
 
 func _erase_loose_pieces(pieces: Array[PilePiece]) -> void:
 	if pieces.is_empty():
@@ -4815,7 +4790,7 @@ func _quick_upgrade_effect(upgrade_id: String, level: int) -> String:
 		"continuous_sweep": return "BARRIDO %.2f → %.2f S" % [_continuous_sweep_interval_for(level), _continuous_sweep_interval_for(level + 1)]
 		"pawn": return "+1 PEÓN RECOLECTOR"
 		"pawn_capacity": return "CARGA %d → %d" % [_transport_capacity(), _transport_capacity() + 1]
-		"smart_clump": return "%d → %d GRANOS POR BOLA  ·  %d → %d POR VIAJE" % [_smart_clump_size(level), _smart_clump_size(level + 1), _transport_capacity() * _smart_clump_size(level), _transport_capacity() * _smart_clump_size(level + 1)]
+		"smart_clump": return "CARGA %d → %d UNIDADES" % [_transport_capacity() * _smart_clump_size(level), _transport_capacity() * _smart_clump_size(level + 1)]
 		"breaker": return "CASCOS %d → %d" % [level, level + 1]
 		"detector": return "+1 QUIMIORRECEPTOR"
 		"sponge_power":
@@ -4989,18 +4964,18 @@ func _update_ui() -> void:
 		var effect := "CLIC %s → %s" % [_number(_click_power_for(level)), _number(_click_power_for(level + 1))]
 		if upgrade.kind == "pawn": effect = "+1 peón"
 		elif upgrade.kind == "pawn_capacity": effect = "CARGA POR PEÓN  %d → %d" % [_transport_capacity(), _transport_capacity() + 1]
-		elif upgrade.kind == "smart_clump": effect = "%d → %d GRANOS POR BOLA  ·  CARGA TOTAL %d → %d" % [_smart_clump_size(level), _smart_clump_size(level + 1), _transport_capacity() * _smart_clump_size(level), _transport_capacity() * _smart_clump_size(level + 1)]
-		elif upgrade.kind == "pawn_renaissance": effect = "BOLA BLANDA  %d → %d GRANOS" % [_smart_clump_size(), SMART_CLUMP_RENAISSANCE_SIZES[clampi(level + 1, 0, SMART_CLUMP_RENAISSANCE_SIZES.size() - 1)]]
+		elif upgrade.kind == "smart_clump": effect = "CARGA TOTAL %d → %d UNIDADES" % [_transport_capacity() * _smart_clump_size(level), _transport_capacity() * _smart_clump_size(level + 1)]
+		elif upgrade.kind == "pawn_renaissance": effect = "CARGA COMPACTADA  ×%d → ×%d" % [_smart_clump_size(), SMART_CLUMP_RENAISSANCE_SIZES[clampi(level + 1, 0, SMART_CLUMP_RENAISSANCE_SIZES.size() - 1)]]
 		elif upgrade.kind == "speed": effect = "VELOCIDAD DE PEONES +50%"
 		elif upgrade.kind == "storage":
 			var next_storage := float(upgrade.power)
 			if str(upgrade.id) == "plant_buffer": next_storage = float(STORAGE_CAPACITIES[10 + clampi(level, 0, 1)])
 			elif str(upgrade.id) == "plant_capacity": next_storage = float(STORAGE_CAPACITIES[12 + clampi(level, 0, 2)])
 			effect = ("CAPACIDAD %s" if maxed else "NUEVO LÍMITE %s") % _number(next_storage)
-		elif upgrade.kind == "transport_cart": effect = "12 GRANOS POR VIAJE  ·  NO MINA"
+		elif upgrade.kind == "transport_cart": effect = "12 UNIDADES POR VIAJE  ·  NO MINA"
 		elif upgrade.kind == "transport_capacity": effect = "CARGA DEL CARRITO  %s → %s" % [_number(_cart_capacity()), _number(float(upgrade.power))]
 		elif upgrade.kind == "cart_renaissance": effect = "CARRITO CLÁSICO  %s → %s POR VIAJE" % [_number(_cart_capacity()), _number(float(CART_RENAISSANCE_CAPACITIES[clampi(level + 1, 0, CART_RENAISSANCE_CAPACITIES.size() - 1)]))]
-		elif upgrade.kind == "transport_ox": effect = "%s GRANOS POR VIAJE  ·  NO MINA" % _number(_ox_capacity())
+		elif upgrade.kind == "transport_ox": effect = "%s UNIDADES POR VIAJE  ·  NO MINA" % _number(_ox_capacity())
 		elif upgrade.kind == "transport_ox_capacity":
 			var next_ox_level := int(levels.get("ox_capacity", 0)) + int(levels.get("ox_heavy_capacity", 0)) + 1
 			if str(upgrade.id) == "ox_vault_capacity": next_ox_level = 5 + level
@@ -5042,15 +5017,15 @@ func _update_ui() -> void:
 				effect = "SIGUIENTE EVOLUCIÓN EN FASE %d" % mini(PHASES.size(), level + 2)
 			else:
 				var training_multiplier := (3.0 if int(levels.get("punch_training", 0)) > 0 else 1.0) * (2.0 if int(levels.get("bronchial_rage", 0)) > 0 else 1.0) * (3.0 if int(levels.get("punch_collective", 0)) > 0 else 1.0)
-				var current_ball := float(PUGILIST_DAMAGE[clampi(level, 0, PUGILIST_DAMAGE.size() - 1)]) * training_multiplier / float(PUGILIST_GRAINS_PER_HIT)
-				var next_ball := float(PUGILIST_DAMAGE[clampi(level + 1, 0, PUGILIST_DAMAGE.size() - 1)]) * training_multiplier / float(PUGILIST_GRAINS_PER_HIT)
-				effect = "%d BOLAS DE %s → %s" % [PUGILIST_GRAINS_PER_HIT, _number(current_ball), _number(next_ball)]
+				var current_hit := float(PUGILIST_DAMAGE[clampi(level, 0, PUGILIST_DAMAGE.size() - 1)]) * training_multiplier
+				var next_hit := float(PUGILIST_DAMAGE[clampi(level + 1, 0, PUGILIST_DAMAGE.size() - 1)]) * training_multiplier
+				effect = "DAÑO POR GOLPE  %s → %s" % [_number(current_hit), _number(next_hit)]
 		elif upgrade.kind == "wall_scan": effect = "REVELA LA RESISTENCIA EXACTA"
 		elif upgrade.kind == "auto_speed":
 			var rank := clampi(int(levels.punch_power), 0, PUGILIST_INTERVALS.size() - 1)
 			effect = "INTERVALO %.2f → %.2f S" % [float(PUGILIST_INTERVALS[rank]), float(PUGILIST_INTERVALS[rank]) * 0.625]
-		elif upgrade.kind == "manual_sweep": effect = "MANTENER PULSADO  ·  %.2f S POR GRANO" % _continuous_sweep_interval_for(level + 1)
-		elif upgrade.kind == "click_burst": effect = "RÁFAGA  %d BOLAS DE %s" % [level if maxed else level + 1, _number(_click_power())]
+		elif upgrade.kind == "manual_sweep": effect = "MANTENER PULSADO  ·  %s UNIDADES CADA %.2f S" % [_number(_click_power()), _continuous_sweep_interval_for(level + 1)]
+		elif upgrade.kind == "click_burst": effect = "RÁFAGA  +%s UNIDADES" % _number(float(level if maxed else level + 1) * _click_power())
 		elif upgrade.kind == "click_rhythm": effect = "-1 clic para provocar la ráfaga"
 		elif upgrade.kind in ["sponge", "sponge_power"]:
 			var future_sponges := level + 1 if upgrade.kind == "sponge" else int(levels.sponge)
@@ -5228,9 +5203,9 @@ func _serialize_pile_compact() -> Array:
 		var runs: Array = []
 		for piece_value in pieces:
 			var piece := piece_value as PilePiece
-			var signature := [str(piece.get_meta("kind", "grain")), str(piece.get_meta("material", "")), str(piece.get_meta("source", "player")), float(piece.get_meta("value", 1.0)), int(piece.get_meta("hardness", 0)), int(piece.get_meta("max_hardness", 0))]
-			if not runs.is_empty() and (runs.back() as Array).slice(0, 6) == signature:
-				(runs.back() as Array)[6] = int((runs.back() as Array)[6]) + 1
+			var signature := [str(piece.get_meta("kind", "unknown")), str(piece.get_meta("material", "")), str(piece.get_meta("source", "player")), float(piece.get_meta("value", 1.0)), int(piece.get_meta("hardness", 0)), int(piece.get_meta("max_hardness", 0)), float(piece.get_meta("joe_amount", 0.0)), float(piece.get_meta("player_amount", 0.0))]
+			if not runs.is_empty() and (runs.back() as Array).slice(0, 8) == signature:
+				(runs.back() as Array)[8] = int((runs.back() as Array)[8]) + 1
 			else:
 				signature.append(1)
 				runs.append(signature)
@@ -5247,6 +5222,10 @@ func _serialize_fallen_wall_chunks() -> Array:
 func _clear_pile() -> void:
 	particle_motions.clear()
 	manual_reserved_units = 0.0
+	automatic_reserved_units = 0.0
+	powder_field.clear()
+	if powder_effects:
+		powder_effects.clear()
 	for piece in loose_chunks:
 		if is_instance_valid(piece): piece.queue_free()
 	loose_chunks.clear()
@@ -5278,7 +5257,6 @@ func _restore_fallen_wall_chunks(data: Variant) -> void:
 			chunk.set_meta("max_mass", maxf(mass, float(entry.get("max_mass", WALL_CHUNK_MASS))))
 
 func _restore_pile_compact(data: Variant) -> void:
-	_clear_pile()
 	if typeof(data) != TYPE_ARRAY:
 		return
 	for column_value in data:
@@ -5293,16 +5271,63 @@ func _restore_pile_compact(data: Variant) -> void:
 			var run: Array = run_value
 			var kind := str(run[0])
 			var hardness := int(run[4])
+			var modern_run := run.size() >= 9
+			var run_count := maxi(0, int(run[8] if modern_run else run[6]))
 			var scale := 0.18 if kind == "rock" else (0.084 if kind == "impurity" else (0.078 if kind == "bacteria" else 0.072))
-			for amount in range(maxi(0, int(run[6]))):
+			if kind == "grain":
+				powder_field.add(side, column, float(run[3]) * float(run_count), str(run[2]))
+				continue
+			for amount in range(run_count):
 				var piece := _create_piece(kind, side, float(run[3]), int(run[5]), column, scale, str(run[1]), str(run[2]))
 				piece.set_meta("hardness", hardness)
+				if kind == "rock":
+					var joe_amount := float(run[6]) if modern_run else (float(run[3]) if str(run[2]) != "player" else 0.0)
+					var player_amount := float(run[7]) if modern_run else float(run[3]) - joe_amount
+					piece.set_meta("joe_amount", joe_amount)
+					piece.set_meta("player_amount", player_amount)
 				if kind == "rock" and hardness == 0:
 					piece.modulate = Color("eef4e7")
 					var crack := piece.get_node_or_null("Crack") as Line2D
 					if crack: crack.visible = true
 	_rebuild_pile_index()
 	_restack_pile()
+	powder_surface.refresh()
+
+func _serialize_powder_state() -> Array:
+	var data: Array = powder_field.serialize()
+	for motion in particle_motions:
+		if not str(motion.get("kind", "")).begins_with("powder_"):
+			continue
+		data.append([str(motion.get("side", active_side)), int(motion.get("column", _choose_landing_column(str(motion.get("side", active_side))))), float(motion.get("player", motion.get("amount", 0.0) if str(motion.get("source", "player")) == "player" else 0.0)), float(motion.get("joe", motion.get("amount", 0.0) if str(motion.get("source", "player")) != "player" else 0.0))])
+	for node in pawns.get_children():
+		var pawn := node as Sprite2D
+		if pawn and float(pawn.get_meta("powder_amount", 0.0)) > 0.0:
+			data.append([str(pawn.get_meta("side", active_side)), _choose_landing_column(str(pawn.get_meta("side", active_side))), float(pawn.get_meta("powder_player", 0.0)), float(pawn.get_meta("powder_joe", 0.0))])
+	for node in transporters.get_children():
+		var cargo: Dictionary = node.get_meta("cargo", {})
+		if float(cargo.get("amount", 0.0)) > 0.0:
+			var side := str(cargo.get("side", node.get_meta("side", active_side)))
+			data.append([side, _choose_landing_column(side), float(cargo.get("player", 0.0)), float(cargo.get("joe", 0.0))])
+	return data
+
+func _powder_units_by_state() -> Dictionary:
+	# Diagnóstico para pruebas: ninguna unidad puede existir a la vez en dos
+	# estados ni desaparecer al cambiar de pila, vuelo, carga o almacén.
+	var result := {"pile":powder_field.amount("left") + powder_field.amount("right"), "incoming":0.0, "manual_transit":0.0, "pawns":0.0, "vehicles":0.0, "compacted":0.0, "stored":cells}
+	for motion in particle_motions:
+		var kind := str(motion.get("kind", ""))
+		if kind == "powder_drop": result.incoming += float(motion.get("amount", 0.0))
+		elif kind == "powder_manual": result.manual_transit += float(motion.get("amount", 0.0))
+	for node in pawns.get_children():
+		result.pawns += float(node.get_meta("powder_amount", 0.0))
+	for node in transporters.get_children():
+		var cargo: Dictionary = node.get_meta("cargo", {})
+		result.vehicles += float(cargo.get("amount", 0.0))
+	for piece in loose_chunks:
+		if is_instance_valid(piece) and str(piece.get_meta("kind", "")) == "rock":
+			result.compacted += float(piece.get_meta("value", 0.0))
+	result["total"] = float(result.pile) + float(result.incoming) + float(result.manual_transit) + float(result.pawns) + float(result.vehicles) + float(result.compacted) + float(result.stored)
+	return result
 
 func _save() -> void:
 	if overdose_active or (not playing and not phase_event_pending): return
@@ -5314,7 +5339,7 @@ func _save() -> void:
 			"right_hp":right_hp, "right_max":right_max, "left_hp":left_hp, "left_max":left_max,
 			"right_cleared":right_cleared, "left_cleared":left_cleared,
 			"septum_open":septum_open, "active_side":active_side, "levels":levels,
-			"total_clicks":total_clicks, "pile_compact":_serialize_pile_compact(), "fallen_wall_chunks":_serialize_fallen_wall_chunks(),
+			"total_clicks":total_clicks, "powder_field":_serialize_powder_state(), "pile_compact":_serialize_pile_compact(), "fallen_wall_chunks":_serialize_fallen_wall_chunks(),
 			"compaction_steps":compaction_steps, "compaction_announced":compaction_announced,
 			"current_phase":current_phase, "phase_work":phase_work, "phase_events":phase_events, "joe_high":joe_high, "victory_reached":victory_reached,
 			"contamination":contamination, "box_jammed":box_jammed, "tissue_damage":tissue_damage, "infection":infection,
@@ -5334,9 +5359,10 @@ func _save() -> void:
 func _load() -> void:
 	if not FileAccess.file_exists(save_path): return
 	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
-	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 0)) != SAVE_VERSION:
+	if typeof(data) != TYPE_DICTIONARY or not _save_version_supported(int(data.get("version", 0))):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
 		return
+	var loaded_version := int(data.get("version", 0))
 	cells = float(data.get("cells", 0.0))
 	right_hp = float(data.get("right_hp", FIRST_WALL_HP))
 	right_max = float(data.get("right_max", FIRST_WALL_HP))
@@ -5387,6 +5413,9 @@ func _load() -> void:
 			if bool(saved_debut_pending[kind]) and not bool(unit_debuts_seen.get(str(kind), false)):
 				unit_debut_pending[str(kind)] = true
 	_restore_pinned_upgrades(data.get("pinned_upgrades", []))
+	_clear_pile()
+	if loaded_version >= 20:
+		powder_field.restore(data.get("powder_field", []))
 	_restore_pile_compact(data.get("pile_compact", []))
 	_restore_fallen_wall_chunks(data.get("fallen_wall_chunks", []))
 	var saved_steps = data.get("compaction_steps", {})
@@ -5464,8 +5493,13 @@ func _discard_obsolete_save() -> void:
 	if not FileAccess.file_exists(save_path):
 		return
 	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
-	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 0)) != SAVE_VERSION:
+	if typeof(data) != TYPE_DICTIONARY or not _save_version_supported(int(data.get("version", 0))):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
+
+func _save_version_supported(version: int) -> bool:
+	# La versión 19 guardaba nieve como series de bolas. Se admite una sola vez
+	# para convertir cada valor y cada repetición en masa real de PowderField.
+	return version in [19, SAVE_VERSION]
 
 func _request_new_game() -> void:
 	if FileAccess.file_exists(save_path): $NewGameDialog.popup_centered()

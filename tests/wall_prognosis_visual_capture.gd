@@ -22,7 +22,8 @@ func _capture() -> void:
 	game.right_hp = game.right_max * 0.01
 	seed(91354)
 	for index in range(52):
-		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), randf_range(0.068, 0.078))
+		game.powder_field.add("right", game._choose_landing_column("right"), 1.0, "player")
+	game.powder_surface.refresh()
 	game._restack_pile("right")
 	game._update_world()
 	game._update_crisis_visuals()

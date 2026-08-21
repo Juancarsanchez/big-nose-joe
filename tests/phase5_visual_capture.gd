@@ -28,12 +28,13 @@ func _capture() -> void:
 	game._rebuild_transporters()
 	seed(73119)
 	for index in range(64):
-		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), randf_range(0.068, 0.078))
+		game.powder_field.add("right", game._choose_landing_column("right"), 1.0, "player")
 	for index in range(12):
 		var material: String = ["serrín", "yeso", "tiza"][index % 3]
 		game._create_piece("impurity", "right", 1.0, 0, game._choose_landing_column("right"), 0.064, material)
 	for index in range(9):
 		game._create_piece("bacteria", "right", 2.0, 0, game._choose_landing_column("right"), 0.078)
+	game.powder_surface.refresh()
 	game._trigger_scratch()
 	game._trigger_mucus()
 	game._update_crisis_visuals()

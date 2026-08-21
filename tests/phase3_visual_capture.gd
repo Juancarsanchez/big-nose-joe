@@ -28,12 +28,13 @@ func _capture() -> void:
 	game._rebuild_adaptations()
 	seed(73137)
 	for index in range(92):
-		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), randf_range(0.068, 0.078))
+		game.powder_field.add("right", game._choose_landing_column("right"), 1.0, "player")
 	for index in range(18):
 		var material: String = ["serrín", "yeso", "tiza"][index % 3]
 		game._create_piece("impurity", "right", 1.0, 0, game._choose_landing_column("right"), randf_range(0.078, 0.092), material)
 	for index in range(4):
 		game._create_piece("rock", "right", 6.0, 0, game._choose_landing_column("right"), 0.18)
+	game.powder_surface.refresh()
 	game._restack_pile("right")
 	game._trigger_spray()
 	game._update_crisis_visuals()

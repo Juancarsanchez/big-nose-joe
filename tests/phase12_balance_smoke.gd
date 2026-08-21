@@ -153,19 +153,16 @@ func _run() -> void:
 	_check(game._smart_clump_size() == 55 and is_equal_approx(game._cart_capacity(), 500000000.0) and game._punch_output() >= 100 * int(game.PUGILIST_DAMAGE[3]), "The first renaissance tier must visibly revive pawns, the classic cart and the old Pugilist squad independently.")
 	game._select_technology_unit("pawn")
 	game._update_ui()
-	_check((game.buttons.pawn_renaissance as Button).text.contains("55 → 144"), "The pawn page must expose the exact next renaissance payload.")
+	_check((game.buttons.pawn_renaissance as Button).text.contains("×55 → ×144"), "The pawn page must expose the exact next renaissance payload.")
 	game._select_technology_unit("cart")
 	game._update_ui()
 	_check((game.buttons.cart_renaissance as Button).text.contains("500.0M → 5.0B"), "The cart page must expose its independent industrial payload jump.")
 	game._select_technology_unit("pugilist")
 	game._update_ui()
 	_check((game.buttons.punch_renaissance as Button).text.contains("×100 → ×1000"), "The Pugilist page must expose its independent late-game multiplier without hiding it in a combined purchase.")
-	var elephant_payload_piece: float = float(game.ELEPHANT_DAMAGE[4]) / 24.0
-	var plasma_payload_piece: float = float(game.PLASMA_DAMAGE[3]) / 24.0
-	var supersaiyan_payload_piece: float = float(game.SUPERSAIYAN_DAMAGE[2]) / 24.0
-	_check(elephant_payload_piece <= 2000000000.0 and elephant_payload_piece <= 3000000000.0, "Every maxed Leukophant particle must fit in its completed phase-three transport and reserve.")
-	_check(plasma_payload_piece <= 80000000000.0 and plasma_payload_piece <= 150000000000.0, "Every maxed plasma particle must fit in its phase-four transport and plant.")
-	_check(supersaiyan_payload_piece <= 50000000000000.0, "Every maxed Supersaiyan particle must fit whole inside the final fusion plant.")
+	_check(float(game.ELEPHANT_DAMAGE[4]) <= game.FOSSA_COMPRESSION_CAPACITIES[3], "A maxed Leukophant hit must fit in the expanded continuous fossa.")
+	_check(float(game.PLASMA_DAMAGE[3]) <= game.FOSSA_COMPRESSION_CAPACITIES[3], "A maxed plasma hit must fit in the expanded continuous fossa.")
+	_check(float(game.SUPERSAIYAN_DAMAGE[2]) <= game.FOSSA_COMPRESSION_CAPACITIES[3], "A final Kamehameha must fit as one divisible continuous mass, not as hidden-value balls.")
 	_check(game.RAM_DAMAGE.back() < game.ELEPHANT_DAMAGE[0] and game.ELEPHANT_DAMAGE.back() < game.PLASMA_DAMAGE[0] and game.METEOR_DAMAGE.back() < game.PLASMA_DAMAGE.back() and game.PLASMA_DAMAGE.back() < game.SUPERSAIYAN_DAMAGE[0], "The large-impact ladder must keep Leucoram, Leukophant, late plasma, Meteor and final Supersaiyan in a readable order.")
 	_check(game.ELEPHANT_DAMAGE.back() / game.ELEPHANT_INTERVAL < game.HAMMER_DAMAGE[0] / game.HAMMER_INTERVAL and game.HAMMER_DAMAGE.back() / game.HAMMER_INTERVAL < game.PLASMA_DAMAGE[0] / game.CANNON_INTERVAL, "Leucomartillo must fill the phase-four DPS gap between a completed Leukophant and the first Plasma Cannon.")
 
@@ -225,7 +222,8 @@ func _run() -> void:
 	_set_levels(game, {"puncher":1, "punch_union":1, "punch_training":1, "punch_speed":1, "punch_power":1, "bronchial_rage":1})
 	game.current_phase = 2
 	game.joe_high = 70.0
-	game.joe_grain_load_cache = {"left":0.0, "right":4000.0}
+	game.powder_field.clear()
+	game.powder_field.add("right", 0, 4000.0, "joe")
 	var transition_efficiency: float = game._cleaning_efficiency()
 	var transition_pressure: float = game._joe_powder_pressure()
 	_check(is_equal_approx(transition_efficiency, float(game.PHASE_CLEANING_EFFICIENCY[1]) * float(game.PHASE_TRANSITION_MULTIPLIERS[1])), "Phase two must begin with a temporary cleaning bridge instead of a 1,200-fold efficiency cliff.")
@@ -276,7 +274,8 @@ func _run() -> void:
 	game.current_phase = 2
 	game.joe_high = 50.0
 	game.joe_high_display = 50.0
-	game.joe_grain_load_cache = {"left":0.0, "right":9900.0}
+	game.powder_field.clear()
+	game.powder_field.add("right", 0, 9900.0, "joe")
 	game._update_joe_high(10.0)
 	_check(is_equal_approx(game.joe_high, 50.25), "A saturated Joe-made pile must add exactly 0.025 high points per second after phase one.")
 

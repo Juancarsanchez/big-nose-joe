@@ -74,36 +74,42 @@ func _run() -> void:
 	game._clear_pile()
 	game.levels.container = 1
 	game.cells = 0.0
-	var reserved_by_workers = game._create_piece("grain", "right", 1000.0, 0, 0, 0.072)
-	reserved_by_workers.set_meta("carried", true)
-	var manual_priority_piece = game._create_piece("grain", "right", 300.0, 0, 1, 0.072)
-	_check(is_zero_approx(game._storage_claim_space()), "Worker cargo may reserve all newly unlocked storage while it is in transit.")
-	_check(game._manual_collect_at(manual_priority_piece.position) and bool(manual_priority_piece.get_meta("manual_flying", false)), "A manual click must ignore worker reservations when the upgraded store has real free space.")
-	_check(is_zero_approx(game._store_automatic_cocaine(1000.0)), "Automatic deliveries must preserve the space reserved by a manual flight.")
-	_check(is_equal_approx(game._store_cocaine(300.0), 300.0), "The reserved manual cargo must still fit when it reaches the upgraded store.")
-	manual_priority_piece.set_meta("manual_flying", false)
-	manual_priority_piece.set_meta("carried", false)
-	game._release_manual_reservation(manual_priority_piece)
-	game.loose_chunks.erase(manual_priority_piece)
-	manual_priority_piece.queue_free()
-	_check(is_equal_approx(game.cells, 300.0) and is_equal_approx(game._store_automatic_cocaine(700.0), 700.0), "Manual cargo must arrive first without losing later automatic deliveries that still fit.")
+	game._reserve_automatic_amount(700.0)
+	game._reserve_manual_amount(300.0)
+	_check(is_zero_approx(game._storage_claim_space()) and is_zero_approx(game._manual_claim_space()), "Manual and automatic transit must share one reservation ledger and never overbook storage.")
+	game._release_manual_amount(300.0)
+	_check(is_equal_approx(game._manual_claim_space(), 300.0), "Releasing one flight must expose exactly its real storage space.")
+	game._release_automatic_amount(700.0)
+	_check(is_equal_approx(game._store_cocaine(1000.0), 1000.0), "All released reservations must remain deliverable without hidden ball slots.")
 	game._clear_pile()
 	game.cells = 0.0
-	var buried_grain = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
+	game.powder_field.add("right", 0, 10.0, "player")
+	game.powder_surface.refresh()
 	var covering_rock = game._create_piece("rock", "right", 6.0, 4, 0, 0.18)
-	var visible_snow_below := Vector2(covering_rock.position.x, game.powder_surface.surface_y_at("right", covering_rock.position.x) + 4.0)
-	_check(game._manual_collect_at(visible_snow_below) and bool(buried_grain.get_meta("manual_flying", false)), "A precise click on visible snow below a clump must select powder instead of the clump's broad hit area.")
+	game._align_compacted_rocks("right")
+	var visible_snow_beside := Vector2(covering_rock.position.x + 12.0, game.powder_surface.surface_y_at("right", covering_rock.position.x + 12.0) + 1.0)
+	_check(game._manual_collect_at(visible_snow_beside) and game.particle_motions.any(func(motion: Dictionary) -> bool: return str(motion.kind) == "powder_manual"), "A precise click on visible snow beside a clump must select continuous powder instead of the clump's broad hit area.")
 	game._clear_pile()
 	game.levels.container = 0
 	game.cells = 457.0
-	var aggregated_grain = game._create_piece("grain", "right", 1000.0, 0, 0, 0.072)
-	_check(game._manual_collect_at(aggregated_grain.position) and not bool(aggregated_grain.get_meta("carried", false)), "An indivisible grain that does not fit must report full storage and remain in the pile.")
-	_check(is_equal_approx(float(aggregated_grain.get_meta("value", 0.0)), 1000.0) and is_equal_approx(game._pile_load("right"), 1000.0), "Storage pressure must never split a valuable grain into fractions.")
+	game.levels.nails = 4
+	game.powder_field.add("right", 0, 1000.0, "player")
+	game.powder_surface.refresh()
+	_check(game._manual_collect_powder("right", Vector2(game._pile_center("right"), game._ground_y()), false), "Continuous powder must fill the exact remaining storage space.")
+	_check(is_equal_approx(game._pile_load("right"), 957.0) and is_equal_approx(float(game.particle_motions.back().amount), 43.0), "A 43-unit gap must split exactly 43 units from the pile instead of rejecting an indivisible ball.")
+	game._update_particle_motions(2.0)
+	_check(is_equal_approx(game.cells, 500.0), "The exact 43-unit manual load must fill the starter box.")
 	game._clear_pile()
-	var worker_aggregate = game._create_piece("grain", "right", 1000.0, 0, 0, 0.072)
+	game.cells = 0.0
+	game.levels.nails = 0
+	game.powder_field.add("right", 0, 1000.0, "player")
 	var test_collector := Sprite2D.new()
-	var split_cargo: Array = game._claim_top_pieces("right", 1, test_collector)
-	_check(split_cargo.is_empty() and is_equal_approx(float(worker_aggregate.get_meta("value", 0.0)), 1000.0), "Automatic collectors must also leave an indivisible grain untouched when it does not fit.")
+	test_collector.set_meta("cargo", [])
+	test_collector.set_meta("specialist", false)
+	test_collector.set_meta("detector", false)
+	test_collector.set_meta("handler", false)
+	_check(game._claim_pawn_load("right", test_collector) and is_equal_approx(float(test_collector.get_meta("powder_amount", 0.0)), 3.0) and is_equal_approx(game._pile_load("right"), 997.0), "Automatic collectors must split exactly their real capacity from continuous powder.")
+	game._release_pawn_powder(test_collector)
 	test_collector.free()
 	game._clear_pile()
 	game.cells = 0.0
@@ -158,15 +164,18 @@ func _run() -> void:
 	_check(game._upgrade_available(game._upgrade("smart_clump")), "Smart Clumping must unlock after cart logistics and the first blue helmet exist.")
 	game.levels.smart_clump = 1
 	var smart_collector := Sprite2D.new()
-	for index in range(9):
-		game._create_piece("grain", "right", 1.0, 0, index, 0.072)
-	var smart_cargo: Array = game._claim_top_pieces("right", game._pawn_claim_capacity(smart_collector), smart_collector)
-	var smart_mound := smart_collector.get_node_or_null("PowderMound") as Node2D
-	_check(smart_cargo.size() == 9 and is_instance_valid(smart_mound) and smart_mound.visible and smart_cargo.all(func(piece) -> bool: return not piece.visible), "Level-one Smart Clumping must turn three base slots into one visible powder mound containing nine real grains.")
-	await create_timer(0.25).timeout
+	smart_collector.set_meta("cargo", [])
+	smart_collector.set_meta("specialist", false)
+	smart_collector.set_meta("detector", false)
+	smart_collector.set_meta("handler", false)
+	game.powder_field.add("right", 0, 9.0, "player")
+	_check(game._claim_pawn_load("right", smart_collector) and is_equal_approx(float(smart_collector.get_meta("powder_amount", 0.0)), 9.0), "Level-one Smart Clumping must turn three base slots into nine real divisible units.")
+	var smart_id := "pawn_%d" % smart_collector.get_instance_id()
+	_check(is_equal_approx(game.powder_effects.mass_volume_world_area(smart_id) * game.WORLD_SCALE * game.WORLD_SCALE, 9.0), "The compacted hand load must still occupy exactly nine screen pixels.")
 	var helmet_probe := Sprite2D.new()
 	helmet_probe.set_meta("specialist", true)
 	_check(game._pawn_claim_capacity(helmet_probe) == 3, "Blue helmets must keep their rock-handling capacity instead of receiving the normal-pawn bundle multiplier.")
+	game._release_pawn_powder(smart_collector)
 	smart_collector.free()
 	helmet_probe.free()
 	game._clear_pile()
@@ -182,10 +191,10 @@ func _run() -> void:
 	game.another_line_events = 0
 	_check(game.wall_label.text.contains("???") and not game.wall_label.text.contains("10.0B"), "Wall resistance must remain unknown during the opening.")
 	game.joe_high = 80.0
-	game._create_piece("grain", "right", 10000.0, 0, 0, 0.072, "", "player")
+	game.powder_field.add("right", 0, 10000.0, "player")
 	game._update_joe_high(10.0)
 	_check(is_equal_approx(game.joe_high, 80.0), "Player-mined powder on the opening pile must not cancel the high reduction it already produced.")
-	game._create_piece("grain", "right", 6240.0, 0, 1, 0.072, "", "joe")
+	game.powder_field.add("right", 1, 6240.0, "joe")
 	game._update_joe_high(1.0)
 	_check(is_equal_approx(game.joe_high, 80.025), "An unattended Joe wave must always restore exactly 1.5 high points per minute, even in the opening.")
 	game._clear_pile()
@@ -223,10 +232,12 @@ func _run() -> void:
 	var fallen := game.fallen_wall_chunks[0] as Sprite2D
 	game._land_fallen_wall_chunk(fallen)
 	var detached_hp := float(fallen.get_meta("hp", 0.0))
+	var detached_mass := float(fallen.get_meta("mass", 0.0))
 	_check(detached_hp >= 20.0 and fallen.get_node_or_null("HealthFill") == null and fallen.get_node_or_null("HealthBack") == null, "A fallen wall block must keep substantial health without the stray horizontal bar.")
-	var loose_before_block: int = game.loose_chunks.size()
+	var powder_before_block: float = float(game._powder_units_by_state().total)
 	game._mine_fallen_wall_chunk(fallen, 1.0)
-	_check(is_instance_valid(fallen) and is_equal_approx(float(fallen.get_meta("hp", 0.0)), detached_hp - 1.0) and game.loose_chunks.size() == loose_before_block + 1, "A wall block must survive one hit and visibly release part of its stored powder.")
+	var released_from_block := detached_mass - float(fallen.get_meta("mass", 0.0))
+	_check(is_instance_valid(fallen) and is_equal_approx(float(fallen.get_meta("hp", 0.0)), detached_hp - 1.0) and is_equal_approx(float(game._powder_units_by_state().total), powder_before_block + released_from_block), "A wall block must survive one hit and visibly release exactly the mass removed from it.")
 	game.levels.nails = 100
 	var hp_before_power_click := float(fallen.get_meta("hp", 0.0))
 	game.playing = true
@@ -315,27 +326,30 @@ func _run() -> void:
 	var safety := 500
 	while game.another_line_wave > 0 and safety > 0:
 		game._update_another_line(0.20)
+		game._update_particle_motions(0.20)
 		safety -= 1
-	_check(is_equal_approx(game.ANOTHER_LINE_INTERVAL, 120.0) and expected_flood == 240 and game.loose_chunks.size() == expected_flood, "The first Otra rayita must be a clearly visible rain of 240 real grains.")
-	_check(is_equal_approx(game._pile_load("right"), 240.0) and game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), 1.0) and piece.get_meta("source", "") == "joe"), "Every Joe grain must remain an indivisible one-unit nuisance rather than an aggregated transport shortcut.")
+	game._update_particle_motions(2.0)
+	var line_state: Dictionary = game._powder_units_by_state()
+	_check(is_equal_approx(game.ANOTHER_LINE_INTERVAL, 120.0) and expected_flood == 240 and is_equal_approx(float(line_state.pile) + float(line_state.compacted), float(expected_flood)), "The first Otra rayita must be a clearly visible rain of 240 real units.")
+	_check(is_equal_approx(game._pile_load("right"), 240.0) and is_equal_approx(game.powder_field.joe_amount("right") + game._compacted_joe_powder_load("right"), 240.0), "Every Joe unit must remain exact through continuous powder and any six-unit compacted rocks.")
 	_check(game._another_line_grain_count(100000.0) == 1600 and game._another_line_grain_count(2000000.0) == 4000, "Joe's line must scale into a real logistical storm at industrial extraction levels.")
 	game._update_joe_high(1.0)
 	_check(is_equal_approx(game.joe_high, high_before_line + game.ANOTHER_LINE_HIGH_GAIN + game.ANOTHER_LINE_MAX_PRESSURE), "Joe's extra line must immediately add half a point and then exert exactly 1.5 points per minute while all its powder remains unattended.")
-	var wave_columns := {}
-	for piece in game.loose_chunks:
-		var column := int(piece.get_meta("column", 0))
-		wave_columns[column] = int(wave_columns.get(column, 0)) + 1
-	var tallest_wave_column := 0
+	var wave_columns: Dictionary = game.powder_field.mass_columns("right")
+	var tallest_wave_column := 0.0
 	for count in wave_columns.values():
-		tallest_wave_column = maxi(tallest_wave_column, int(count))
-	_check(wave_columns.size() >= 8, "Otra rayita must create several connected hills instead of one vertical needle.")
-	_check(wave_columns.size() <= 44 and tallest_wave_column >= 5, "Otra rayita must retain meaningful vertical relief instead of becoming a flat flood.")
+		tallest_wave_column = maxf(tallest_wave_column, float(count))
+	_check(wave_columns.size() >= 6, "Otra rayita must create several connected hills instead of one vertical needle.")
+	_check(wave_columns.size() <= 44 and tallest_wave_column >= 4, "Otra rayita must retain meaningful vertical relief instead of becoming a flat flood.")
 	game._select_technology_unit("pugilist")
 	_check(game.puncher_unlocked and (game.buttons.puncher as Button).visible, "The first extra line must unlock the pugilist adaptation on its own page.")
-	_check((game.buttons.puncher as Button).has_theme_stylebox_override("normal"), "The newly mandatory pugilist must receive the blue halo.")
+	game._select_technology_unit("breaker")
+	game._update_ui()
+	_check((game.buttons.breaker as Button).has_theme_stylebox_override("normal"), "Once the rain has compacted, the blue-helmet solution must receive the mandatory halo.")
 	game._clear_pile()
-	var outlined_player_grain = game._create_piece("grain", "right", 4.0, 0, 0, 0.072)
-	_check(outlined_player_grain.material == game.PLAYER_GRAIN_MATERIAL, "Player-mined grains must differ from Joe's only through the dedicated pronounced outline layer.")
+	game.powder_field.add("right", 0, 4.0, "player")
+	game.powder_field.add("right", 0, 2.0, "joe")
+	_check(is_equal_approx(game.powder_field.amount("right"), 6.0) and is_equal_approx(game.powder_field.joe_amount("right"), 2.0), "Player and Joe powder must share one surface while retaining exact source totals for pressure.")
 	game._clear_pile()
 
 	# Pugilists keep their visible run while their numerical damage escalates hard.
@@ -359,11 +373,12 @@ func _run() -> void:
 	game._clear_pile()
 	clicks_before_debut = game.total_clicks
 	var debut_safety := 80
-	while game.loose_chunks.size() < game.PUGILIST_GRAINS_PER_HIT and debut_safety > 0:
+	while game._incoming_powder("right") < 50.0 and debut_safety > 0:
 		game._update_punchers(0.08)
 		debut_safety -= 1
-	_check(game.loose_chunks.size() == 10 and game.total_clicks == clicks_before_debut + 50, "The first pugilist rank must deal fifty units as exactly ten rendered grains.")
-	_check(game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), 5.0)), "Every opening pugilist grain must be worth five: ten times five equals the displayed fifty damage.")
+	_check(is_equal_approx(game._incoming_powder("right"), 50.0) and game.total_clicks == clicks_before_debut + 50, "The first pugilist rank must deal and render exactly fifty continuous units.")
+	var punch_motion: Dictionary = game.particle_motions.filter(func(motion: Dictionary) -> bool: return str(motion.kind) == "powder_drop").back()
+	_check(is_equal_approx(float(punch_motion.amount), 50.0) and is_equal_approx(game.powder_effects.mass_volume_world_area(punch_motion.id) * game.WORLD_SCALE * game.WORLD_SCALE, 50.0), "The opening punch must create fifty visible pixels, never ten hidden-value balls.")
 	var punch_labels: Array = game.effects.get_children().filter(func(node: Node) -> bool: return node is Label and (node as Label).text.contains("PUM"))
 	_check(not punch_labels.is_empty() and (punch_labels.back() as Label).text.contains("-50") and not (punch_labels.back() as Label).text.contains("BOLAS"), "The impact feedback must show only total damage, never the internal ten-ball formula.")
 	_check(absf(debut_puncher.position.x - game._puncher_strike_position(debut_puncher).x) < 0.6, "The punch must resolve at the visible edge of the cocaine wall.")
@@ -432,15 +447,15 @@ func _run() -> void:
 	await process_frame
 	game.playing = true
 	game.punch_clock = 0.0
-	var chunks_before_round: int = game.loose_chunks.size()
+	var incoming_before_round: float = game._incoming_powder("right")
 	game._update_punchers(game._punch_interval())
-	_check(not game._punchers_idle() and game.loose_chunks.size() == chunks_before_round, "A regular automatic round must also travel before dealing damage.")
+	_check(not game._punchers_idle() and is_equal_approx(game._incoming_powder("right"), incoming_before_round), "A regular automatic round must also travel before dealing damage.")
 	var round_safety := 120
-	while game.loose_chunks.size() < chunks_before_round + 20 and round_safety > 0:
+	while game._incoming_powder("right") < incoming_before_round + 1000.0 and round_safety > 0:
 		game._update_punchers(0.08)
 		round_safety -= 1
-	_check(game.loose_chunks.size() == chunks_before_round + 20, "Two federated pugilists must each create the same readable ten-particle impact.")
-	_check(game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), 50.0)), "Federated pugilists must release ten grains of fifty units each.")
+	var round_motions: Array = game.particle_motions.filter(func(motion: Dictionary) -> bool: return str(motion.kind) == "powder_drop")
+	_check(is_equal_approx(game._incoming_powder("right"), incoming_before_round + 1000.0) and round_motions.size() == 2, "Two federated pugilists must each create one exact 500-unit powder mass.")
 	var return_safety := 120
 	var saw_puncher_facing_home := false
 	while not game._punchers_idle() and return_safety > 0:
@@ -537,8 +552,7 @@ func _run() -> void:
 	var clicks_before_burst: int = game.total_clicks
 	var wall_before_burst: float = game.right_hp
 	game._click_wall("right")
-	_check(game.loose_chunks.size() == 3, "A level-two manual burst must add two full-power grains to the normal clicked grain.")
-	_check(game.loose_chunks.all(func(piece) -> bool: return is_equal_approx(float(piece.get_meta("value", 0.0)), game._click_power())), "Every keratin burst grain must carry the player's complete current click power.")
+	_check(is_equal_approx(game._incoming_powder("right"), game._click_power() * 3.0), "A level-two manual burst must add two full-power payloads to the normal click without creating balls.")
 	_check(game.total_clicks == clicks_before_burst + 1 and is_equal_approx(game.right_hp, wall_before_burst - game._click_power() * 3.0), "A burst must amplify one manual click without pretending to be several clicks.")
 	game._clear_pile()
 
@@ -698,8 +712,10 @@ func _run() -> void:
 	game.joe_high = 70.0
 	game.joe_high_display = 70.0
 	game.playing = true
-	var blocked_grain = game._create_piece("grain", "right", 1.0, 0, 0, 0.072)
-	_check(game._manual_collect_at(blocked_grain.position) and not bool(blocked_grain.get_meta("carried", false)), "A jammed box must reject manual deliveries too.")
+	game.powder_field.add("right", 0, 1.0, "player")
+	game.powder_surface.refresh()
+	var blocked_point := Vector2(game._pile_center("right"), game.powder_surface.surface_y_at("right", game._pile_center("right")) + 0.5)
+	_check(game._manual_collect_at(blocked_point) and is_equal_approx(game._pile_load("right"), 1.0), "A jammed box must reject manual continuous-powder deliveries too.")
 	game.levels.detector = 1
 	game.levels.sponge = 1
 	game._update_box_jam(4.0)
@@ -742,7 +758,7 @@ func _run() -> void:
 
 	game._clear_pile()
 	game._trigger_chalk()
-	_check(is_equal_approx(game._pile_load("right"), game.CHALK_UNITS) and game._kind_count("impurity") == 60, "The independent chalk event must add 600 real units every cycle.")
+	_check(game._kind_count("impurity") == 60, "The independent chalk event must add sixty real impurity stains without pretending they are cocaine pixels.")
 	game._clear_pile()
 	game.joe_high = 34.0
 	game._check_phase_progress()

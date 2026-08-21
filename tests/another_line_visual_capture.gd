@@ -29,11 +29,11 @@ func _capture() -> void:
 		game._update_another_line(0.20)
 	await create_timer(1.35).timeout
 
-	var pile_before_punch: int = game.loose_chunks.size()
+	var pile_before_punch: float = float(game._pile_load("right")) + float(game._incoming_powder("right"))
 	game._buy("puncher")
 	game._update_punchers(1.40)
 	var punch_safety := 100
-	while game.loose_chunks.size() < pile_before_punch + game.PUGILIST_GRAINS_PER_HIT and punch_safety > 0:
+	while game._pile_load("right") + game._incoming_powder("right") <= pile_before_punch and punch_safety > 0:
 		game._update_punchers(0.06)
 		punch_safety -= 1
 	game._update_ui()

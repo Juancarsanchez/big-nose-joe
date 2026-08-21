@@ -24,14 +24,13 @@ func _capture() -> void:
 	game.stage.position.x = -round(game.camera_x * game.WORLD_SCALE)
 	seed(41872)
 	for index in range(96):
-		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), randf_range(0.068, 0.078))
-	game._restack_pile("right")
+		game.powder_field.add("right", game._choose_landing_column("right"), 1.0, "player")
+	game.powder_surface.refresh()
 	game._update_ui()
 	game.playing = true
 	for launch in range(5):
-		var surface: Array = game._top_pieces("right")
-		var piece = surface[(launch * 3) % surface.size()]
-		game._manual_collect_at(Vector2(piece.position.x, game._ground_y() - 2.0))
+		var x: float = float(game._pile_center("right")) + float(launch - 2) * 18.0
+		game._manual_collect_at(Vector2(x, game.powder_surface.surface_y_at("right", x) + 1.0))
 		await create_timer(0.055).timeout
 	await create_timer(0.18).timeout
 	await process_frame

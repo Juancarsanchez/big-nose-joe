@@ -21,7 +21,8 @@ func _capture() -> void:
 	game.cells = 18400.0
 	seed(80526)
 	for index in range(170):
-		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), randf_range(0.068, 0.078))
+		game.powder_field.add("right", game._choose_landing_column("right"), 1.0, "player")
+	game.powder_surface.refresh()
 	game._rebuild_infrastructure()
 	game._rebuild_transporters()
 	var train: Node2D = null

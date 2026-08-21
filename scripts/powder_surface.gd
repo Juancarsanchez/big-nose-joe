@@ -49,7 +49,7 @@ func _draw_side(side: String) -> void:
 	var start_x := float(profile.start)
 	var heights: PackedFloat32Array = profile.heights
 	surface_profiles[side] = profile
-	var joe_ratio := clampf(float(source.joe_grain_load_cache.get(side, 0.0)) / mass, 0.0, 1.0)
+	var joe_ratio := clampf(float(source.powder_field.joe_amount(side)) / mass, 0.0, 1.0)
 	var joe_heights := PackedFloat32Array()
 	for height in heights:
 		joe_heights.append(clampf(height * joe_ratio, 0.0, 22.0))
@@ -69,13 +69,13 @@ func _draw_side(side: String) -> void:
 	_draw_impurity_stains(columns, start_x, heights, spacing, ground)
 
 func _calculate_profile(side: String) -> Dictionary:
-	var economic_mass := float(source._pile_load(side))
-	var visual_mass := float(source._pile_visual_load(side))
-	if economic_mass <= 0.001 or visual_mass <= 0.001:
+	var economic_mass := float(source.powder_field.amount(side))
+	if economic_mass <= 0.001:
 		return {}
 	var ground := float(source._ground_y()) - 3.0
 	var center := float(source._pile_center(side))
 	var area_per_unit := float(source._fossa_visual_area_per_unit())
+	var visual_mass := float(source._powder_visual_units(economic_mass))
 	var area := visual_mass * area_per_unit
 	var bounds: Vector2i = source._column_bounds(side, source._pile_radius_limit(side))
 	var physical_min := center + float(bounds.x) * float(source.GRAIN_SPACING)
@@ -84,7 +84,7 @@ func _calculate_profile(side: String) -> Dictionary:
 	var deposits: Array[Dictionary] = []
 	var start_x := physical_max
 	var end_x := physical_min
-	var mass_columns: Dictionary = source.pile_mass_columns.get(side, {})
+	var mass_columns: Dictionary = source.powder_field.mass_columns(side)
 	for column_value in mass_columns:
 		var column := int(column_value)
 		var column_mass := float(mass_columns[column_value])
@@ -133,14 +133,16 @@ func _calculate_profile(side: String) -> Dictionary:
 	for index in range(heights.size()):
 		var ripple := 1.0 + sin(float(index) * 1.71 + (0.4 if side == "right" else 1.3)) * 0.035
 		heights[index] *= ripple
+	# Si toda la pila contiene menos de cinco unidades, la normalización aplica la
+	# excepción de legibilidad 1–4 → 4 sin alterar la masa económica almacenada.
 	_normalize_area(heights, area, spacing)
 	_limit_height(heights, maxf(260.0, ground - 265.0), spacing)
 	_normalize_area(heights, area, spacing)
-	return {"mass":economic_mass, "visual_mass":visual_mass, "revision":int(source.pile_revision.get(side, 0)), "start":start_x, "spacing":spacing, "width":desired_width, "heights":heights}
+	return {"mass":economic_mass, "revision":int(source.powder_field.revisions.get(side, 0)), "start":start_x, "spacing":spacing, "width":desired_width, "heights":heights}
 
 func surface_y_at(side: String, x: float) -> float:
 	var profile: Dictionary = surface_profiles.get(side, {})
-	if profile.is_empty() or not is_equal_approx(float(profile.get("mass", -1.0)), float(source._pile_load(side))) or int(profile.get("revision", -1)) != int(source.pile_revision.get(side, 0)):
+	if profile.is_empty() or not is_equal_approx(float(profile.get("mass", -1.0)), float(source.powder_field.amount(side))) or int(profile.get("revision", -1)) != int(source.powder_field.revisions.get(side, 0)):
 		profile = _calculate_profile(side)
 		surface_profiles[side] = profile
 	var heights: PackedFloat32Array = profile.get("heights", PackedFloat32Array())
@@ -156,6 +158,14 @@ func surface_y_at(side: String, x: float) -> float:
 	var high := mini(low + 1, heights.size() - 1)
 	var height := lerpf(heights[low], heights[high], progress - float(low))
 	return float(source._ground_y()) - 3.0 - height
+
+func represented_world_area(side: String) -> float:
+	var profile := _calculate_profile(side)
+	var heights: PackedFloat32Array = profile.get("heights", PackedFloat32Array())
+	var area := 0.0
+	for height in heights:
+		area += float(height) * float(profile.get("spacing", 1.0))
+	return area
 
 func _smooth(values: PackedFloat32Array) -> PackedFloat32Array:
 	var result := values.duplicate()
@@ -249,7 +259,7 @@ func _draw_impurity_stains(columns: Dictionary, start_x: float, heights: PackedF
 	var stains: Array = []
 	for stack_value in columns.values():
 		for piece in stack_value:
-			if str(piece.get_meta("kind", "grain")) == "impurity":
+			if str(piece.get_meta("kind", "unknown")) == "impurity":
 				stains.append(piece)
 	if stains.is_empty():
 		return

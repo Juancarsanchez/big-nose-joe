@@ -21,19 +21,19 @@ func _capture() -> void:
 	game._clear_pile()
 	seed(180826)
 	for index in range(520):
-		game._create_piece("grain", "right", 3.0, 0, game._choose_landing_column("right"), 0.072, "", "player")
+		game.powder_field.add("right", game._choose_landing_column("right"), 3.0, "player")
 	for index in range(95):
-		game._create_piece("grain", "right", 1.0, 0, game._choose_landing_column("right"), 0.072, "", "joe")
+		game.powder_field.add("right", game._choose_landing_column("right"), 1.0, "joe")
 	for index in range(22):
 		var material := "serrín" if index % 2 == 0 else "yeso"
 		game._create_piece("impurity", "right", 1.0, 0, game._choose_landing_column("right"), 0.084, material, "joe")
 	game._rebuild_pile_index()
 	game._restack_pile("right")
+	game.powder_surface.refresh()
 	game._rebuild_pawns()
 	var pawn := game.pawns.get_child(0) as Sprite2D
 	pawn.position = game._pile_access_point("right") + Vector2(115.0, 0.0)
-	var cargo: Array = game._claim_top_pieces("right", game._pawn_claim_capacity(pawn), pawn)
-	pawn.set_meta("cargo", cargo)
+	game._claim_pawn_load("right", pawn)
 	game._set_pawn_carrying(pawn, true)
 	game._update_carried_pieces(pawn)
 	game.camera_x = 3220.0

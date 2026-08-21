@@ -96,10 +96,8 @@ func _process(_delta: float) -> void:
 
 func _piece_key(piece: PilePiece) -> String:
 	var side := str(piece.get_meta("side", "right"))
-	var kind := str(piece.get_meta("kind", "grain"))
-	if kind == "grain":
-		kind += "_player" if piece.get_meta("source", "player") == "player" else "_joe"
-	elif kind == "impurity":
+	var kind := str(piece.get_meta("kind", "unknown"))
+	if kind == "impurity":
 		kind += "_" + str(piece.get_meta("material", "unknown"))
 	return side + ":" + kind + (":cargo" if bool(piece.get_meta("carried", false)) else ":pile")
 
@@ -114,8 +112,8 @@ func _should_render(piece: PilePiece) -> bool:
 		# una superficie continua y sus vuelos se representan con polvo ligero en
 		# la capa de efectos. Solo rocas y bacterias conservan una silueta propia;
 		# las impurezas se leen como manchas cuando llegan a la superficie.
-		return str(piece.get_meta("kind", "grain")) in ["rock", "bacteria"]
-	return str(piece.get_meta("kind", "grain")) in ["rock", "bacteria"]
+		return str(piece.get_meta("kind", "unknown")) in ["rock", "bacteria"]
+	return str(piece.get_meta("kind", "unknown")) in ["rock", "bacteria"]
 
 func _create_group(piece: PilePiece, key: String) -> Dictionary:
 	var mesh := QuadMesh.new()

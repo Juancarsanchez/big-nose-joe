@@ -20,7 +20,8 @@ func _capture() -> void:
 	game.cells = 64000.0
 	seed(81426)
 	for index in range(180):
-		game._create_piece("grain", "right", 10.0, 0, game._choose_landing_column("right"), randf_range(0.068, 0.078))
+		game.powder_field.add("right", game._choose_landing_column("right"), 10.0, "player")
+	game.powder_surface.refresh()
 	game._rebuild_pawns()
 	game._rebuild_punchers()
 	game._rebuild_infrastructure()
